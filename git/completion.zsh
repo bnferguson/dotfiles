@@ -7,3 +7,5 @@ if test -f $completion
 then
   source $completion
 fi
+
+compdef _git gco=git-checkout
