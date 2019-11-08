@@ -40,7 +40,6 @@
       "metrics"
       "react"
       "linter-rubocop"
-      "tree-view"
     ]
     followSymlinks: false
     hideGitIgnoredFiles: true
@@ -54,8 +53,8 @@
     ]
     telemetryConsent: "no"
     themes: [
-      "one-light-ui"
-      "one-light-syntax"
+      "city-lights-ui"
+      "one-dark-syntax"
     ]
   editor:
     fontFamily: "Menlo"
