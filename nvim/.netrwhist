@@ -1,0 +1,11 @@
+let g:netrw_dirhistmax  =10
+let g:netrw_dirhistcnt =9
+let g:netrw_dirhist_9='/Users/bnferguson/dev/janus/janus'
+let g:netrw_dirhist_8='/Users/bnferguson/dev/janus'
+let g:netrw_dirhist_7='/Users/bnferguson/dev/ptfe-test-scenarios/terraform/demo-google-v5'
+let g:netrw_dirhist_6='/Users/bnferguson/dev/ptfe-test-scenarios/terraform'
+let g:netrw_dirhist_5='/Users/bnferguson/dev/ptfe-test-scenarios'
+let g:netrw_dirhist_4='/Users/bnferguson/.tmux'
+let g:netrw_dirhist_3='/Users/bnferguson/dev/ptfe-preflight/checks'
+let g:netrw_dirhist_2='/Users/bnferguson/dev/ptfe-preflight'
+let g:netrw_dirhist_1='/Users/bnferguson/.config/alacritty'

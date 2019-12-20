@@ -137,8 +137,16 @@ install_dotfiles () {
   done
 }
 
+install_larger_paths () {
+  info 'adding paths that do not live in root'
+
+  link_file "$HOME/.config/nvim" "$DOTFILES_ROOT/nvim"
+  link_file "$HOME/.config/alacritty" "$DOTFILES_ROOT/alacritty"
+}
+
 setup_gitconfig
 install_dotfiles
+install_larger_paths
 
 # If we're on a Mac, let's install and setup homebrew.
 if [ "$(uname -s)" == "Darwin" ]
