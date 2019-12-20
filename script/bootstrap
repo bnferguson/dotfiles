@@ -140,8 +140,8 @@ install_dotfiles () {
 install_larger_paths () {
   info 'adding paths that do not live in root'
 
-  link_file "$HOME/.config/nvim" "$DOTFILES_ROOT/nvim"
-  link_file "$HOME/.config/alacritty" "$DOTFILES_ROOT/alacritty"
+  link_file "$DOTFILES_ROOT/nvim" "$HOME/.config/nvim"
+  link_file "$DOTFILES_ROOT/alacritty" "$HOME/.config/alacritty"
 }
 
 setup_gitconfig
