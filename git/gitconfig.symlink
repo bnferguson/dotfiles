@@ -10,6 +10,7 @@
         rank-contributors = !$ZSH/bin/git-rank-contributors
         count   = !git shortlog -sn
         addnw   = !sh -c 'git diff -U0 -w --no-color "$@" | git apply --cached --ignore-whitespace --unidiff-zero -'
+        co-pr = !sh -c 'git fetch origin pull/$1/head:pr/$1 && git checkout pr/$1' -
 
 [color]
         diff = auto
