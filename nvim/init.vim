@@ -28,6 +28,8 @@ Plug 'roxma/vim-tmux-clipboard'
 " Initialize plugin system
 call plug#end()
 
+set clipboard^=unnamed
+
 set background=dark
 
 set number

@@ -1,5 +1,6 @@
 let g:netrw_dirhistmax  =10
-let g:netrw_dirhistcnt =9
+let g:netrw_dirhistcnt =0
+let g:netrw_dirhist_0='/Users/bnferguson/dev/terraform-aws-terraform-enterprise/modules/lb'
 let g:netrw_dirhist_9='/Users/bnferguson/dev/janus/janus'
 let g:netrw_dirhist_8='/Users/bnferguson/dev/janus'
 let g:netrw_dirhist_7='/Users/bnferguson/dev/ptfe-test-scenarios/terraform/demo-google-v5'
