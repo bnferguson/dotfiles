@@ -29,3 +29,5 @@ brew 'yarn'
 brew 'youtube-dl'
 
 cask 'alacritty'
+cask 'karabiner-elements'
+cask 'bettertouchtool'

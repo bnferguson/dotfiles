@@ -2,7 +2,7 @@
   "entries": {
     "tap": {
       "homebrew/bundle": {
-        "revision": "bed1552647b7a181e84c7f89a532128d485bef75"
+        "revision": "adab6c2ed75d53776555a708cccac8da954f7430"
       },
       "puma/puma": {
         "revision": "bd977276dace11f9b31e6181aa770d676a996b11"
@@ -60,22 +60,22 @@
         "bottle": false
       },
       "imagemagick": {
-        "version": "7.0.9-8",
+        "version": "7.0.9-12",
         "bottle": {
           "cellar": "/usr/local/Cellar",
           "prefix": "/usr/local",
           "files": {
             "catalina": {
-              "url": "https://homebrew.bintray.com/bottles/imagemagick-7.0.9-8.catalina.bottle.tar.gz",
-              "sha256": "465b851f85405db6bd69a5924bccb53b76b1691934540150e2e16bbd55bfc890"
+              "url": "https://homebrew.bintray.com/bottles/imagemagick-7.0.9-12.catalina.bottle.tar.gz",
+              "sha256": "4dfcd646094ec847694aa6fb1bed486ae0c5f0ed86f43ab4e4dc01d1c539ebe2"
             },
             "mojave": {
-              "url": "https://homebrew.bintray.com/bottles/imagemagick-7.0.9-8.mojave.bottle.tar.gz",
-              "sha256": "9a21a8e887eb6e5d4d00691d828b7879b00853e26f9296ed1957e411c1417b0b"
+              "url": "https://homebrew.bintray.com/bottles/imagemagick-7.0.9-12.mojave.bottle.tar.gz",
+              "sha256": "573c6bb23f71c4ee52875bdca6d0a47f325213ff1739550ada37719029b8362e"
             },
             "high_sierra": {
-              "url": "https://homebrew.bintray.com/bottles/imagemagick-7.0.9-8.high_sierra.bottle.tar.gz",
-              "sha256": "fb0f54c7ec9ea84f104f210d48d8bf9a9d8b8b0485415ad342bfe13db74e5b52"
+              "url": "https://homebrew.bintray.com/bottles/imagemagick-7.0.9-12.high_sierra.bottle.tar.gz",
+              "sha256": "c2698d49eff1a03d9e1aa9181e3213f47aa41c989dbff96da90aa08086163a08"
             }
           }
         }
@@ -152,7 +152,7 @@
         }
       },
       "openssl": {
-        "version": "1.0.2s",
+        "version": "1.0.2t",
         "bottle": null
       },
       "node": {
@@ -224,7 +224,7 @@
       },
       "puma/puma/puma-dev": null,
       "ruby-build": {
-        "version": "20191205",
+        "version": "20191225",
         "bottle": false
       },
       "rbenv": {
@@ -344,7 +344,7 @@
         "bottle": false
       },
       "youtube-dl": {
-        "version": "2019.11.28",
+        "version": "2020.01.01",
         "bottle": false
       },
       "nvim": null,
@@ -378,15 +378,31 @@
             "appdir": "/Applications"
           }
         }
+      },
+      "karabiner-elements": {
+        "version": "12.8.0",
+        "options": {
+          "args": {
+            "appdir": "/Applications"
+          }
+        }
+      },
+      "bettertouchtool": {
+        "version": "3.214",
+        "options": {
+          "args": {
+            "appdir": "/Applications"
+          }
+        }
       }
     }
   },
   "system": {
     "macos": {
       "mojave": {
-        "HOMEBREW_VERSION": "2.2.1-76-gaf98c15",
+        "HOMEBREW_VERSION": "2.2.2",
         "HOMEBREW_PREFIX": "/usr/local",
-        "Homebrew/homebrew-core": "ab4cd9e6434b89a0a8d73a2a22279c39be808908",
+        "Homebrew/homebrew-core": "415b445935d863996aef5927241461d71ad32cb4",
         "CLT": "10.3.0.0.1.1562985497",
         "Xcode": "11.3",
         "macOS": "10.14.6"
