@@ -456,7 +456,7 @@ live_config_reload: true
 #   - (Linux) user login shell
 #   - (Windows) powershell
 shell:
-  program: /usr/local/bin/zsh
+  program: /bin/zsh
   args:
     - --login
 
@@ -722,5 +722,5 @@ key_bindings:
     - { key: C,      mods: Command,         action: Copy             }
     - { key: Key0,   mods: Command,         action: ResetFontSize    }
     - { key: Equals, mods: Command,         action: IncreaseFontSize }
-    - { key: Add,    mods: Command,         action: IncreaseFontSize }
+    - { key: Plus,    mods: Command,         action: IncreaseFontSize }
     - { key: Minus,  mods: Command,         action: DecreaseFontSize }
