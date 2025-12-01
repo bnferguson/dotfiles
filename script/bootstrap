@@ -143,7 +143,6 @@ install_larger_paths () {
   local overwrite_all=false backup_all=false skip_all=false
 
   link_file "$DOTFILES_ROOT/nvim" "$HOME/.config/nvim"
-  link_file "$DOTFILES_ROOT/alacritty" "$HOME/.config/alacritty"
   link_file "$DOTFILES_ROOT/karabiner" "$HOME/.config/karabiner"
 }
 
