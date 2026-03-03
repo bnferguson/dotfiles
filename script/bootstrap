@@ -134,6 +134,20 @@ link_file () {
   fi
 }
 
+# Symlink every file in a source directory into a destination directory,
+# preserving subdirectory structure. Unlike symlinking an entire directory,
+# this lets rsync replace individual file symlinks without "Directory not empty" errors.
+link_tree () {
+  local src_dir=$1 dst_dir=$2
+
+  find "$src_dir" -type f | while read -r src_file; do
+    local rel="${src_file#$src_dir/}"
+    local dst_file="$dst_dir/$rel"
+    mkdir -p "$(dirname "$dst_file")"
+    link_file "$src_file" "$dst_file"
+  done
+}
+
 install_dotfiles () {
   info 'installing dotfiles'
 
@@ -174,12 +188,14 @@ install_larger_paths () {
   chmod 700 "$HOME/.ssh"
   link_file "$DOTFILES_ROOT/ssh/config" "$HOME/.ssh/config"
 
-  # Claude Code config — symlink individual dirs to preserve ~/.claude session data
+  # Claude Code config — symlink individual files to preserve ~/.claude session data.
+  # Use link_tree for subdirectories so rsync can handle them as individual file
+  # symlinks instead of directory symlinks (which fail with "Directory not empty").
   link_file "$DOTFILES_ROOT/claude/settings.json" "$HOME/.claude/settings.json"
   link_file "$DOTFILES_ROOT/claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
-  link_file "$DOTFILES_ROOT/claude/skills" "$HOME/.claude/skills"
-  link_file "$DOTFILES_ROOT/claude/commands" "$HOME/.claude/commands"
-  link_file "$DOTFILES_ROOT/claude/agents" "$HOME/.claude/agents"
+  link_tree "$DOTFILES_ROOT/claude/skills" "$HOME/.claude/skills"
+  link_tree "$DOTFILES_ROOT/claude/commands" "$HOME/.claude/commands"
+  link_tree "$DOTFILES_ROOT/claude/agents" "$HOME/.claude/agents"
 
   if [ "$(uname -s)" == "Darwin" ]; then
     link_file "$DOTFILES_ROOT/karabiner" "$HOME/.config/karabiner"
