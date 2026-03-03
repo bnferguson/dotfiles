@@ -10,6 +10,7 @@ atom.symlink/blob-store
 atom.symlink/recovery
 
 git/gitconfig.local.symlink
+.cache/
 __pycache__/
 
 # Claude Code — only track settings, ignore session logs and memory
