@@ -6,8 +6,27 @@ set -e
 
 cd "$(dirname $0)"/..
 
-# find the installers and run them iteratively
-find . -name install.sh -not -path './.git/*' | while read installer ; do
+# Install packages
+if command -v brew >/dev/null 2>&1; then
+  echo "› brew bundle"
+  brew bundle --file=Brewfile
+elif command -v pacman >/dev/null 2>&1; then
+  echo "› installing packages via pacman"
+  sudo pacman -S --needed --noconfirm \
+    starship mise neovim github-cli jq yq fzf fd ast-grep uv
+elif command -v apt-get >/dev/null 2>&1; then
+  echo "› installing packages via apt"
+  sudo apt-get update
+  sudo apt-get install -y neovim jq fzf fd-find
+  # These need separate install methods on Ubuntu:
+  # starship: curl -sS https://starship.rs/install.sh | sh
+  # mise:     curl https://mise.run | sh
+  # gh:       https://github.com/cli/cli/blob/trunk/docs/install_linux.md
+  echo "  Note: starship, mise, and gh need manual install on Ubuntu — see README"
+fi
+
+# Run topic installers
+find . -name install.sh -not -path './.git/*' -not -path './script/*' | while read installer ; do
   echo "› running $installer"
   sh -c "${installer}"
 done
