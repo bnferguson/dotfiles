@@ -143,8 +143,16 @@ install_larger_paths () {
   local overwrite_all=false backup_all=false skip_all=false
 
   mkdir -p "$HOME/.config"
+  mkdir -p "$HOME/.claude"
   link_file "$DOTFILES_ROOT/nvim" "$HOME/.config/nvim"
   link_file "$DOTFILES_ROOT/starship.toml" "$HOME/.config/starship.toml"
+
+  # Claude Code config — symlink individual dirs to preserve ~/.claude session data
+  link_file "$DOTFILES_ROOT/claude/settings.json" "$HOME/.claude/settings.json"
+  link_file "$DOTFILES_ROOT/claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
+  link_file "$DOTFILES_ROOT/claude/skills" "$HOME/.claude/skills"
+  link_file "$DOTFILES_ROOT/claude/commands" "$HOME/.claude/commands"
+  link_file "$DOTFILES_ROOT/claude/agents" "$HOME/.claude/agents"
 
   if [ "$(uname -s)" == "Darwin" ]; then
     link_file "$DOTFILES_ROOT/karabiner" "$HOME/.config/karabiner"
