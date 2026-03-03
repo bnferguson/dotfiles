@@ -5,6 +5,19 @@ $character"""
 
 add_newline = true
 
+[battery]
+full_symbol = "🔋"
+charging_symbol = "⚡"
+discharging_symbol = "🔋"
+
+[[battery.display]]
+threshold = 20
+style = "bold red"
+
+[[battery.display]]
+threshold = 50
+style = "bold yellow"
+
 [directory]
 truncation_length = 1
 truncate_to_repo = false
