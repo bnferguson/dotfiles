@@ -16,7 +16,7 @@
         ui = true
 [core]
         excludesfile = ~/.gitignore
-        editor = vim
+        editor = zed --wait
 [apply]
         whitespace = nowarn
 [mergetool]
