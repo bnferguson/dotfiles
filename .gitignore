@@ -10,5 +10,9 @@ atom.symlink/blob-store
 atom.symlink/recovery
 
 git/gitconfig.local.symlink
+
+# Claude Code — only track settings, ignore session logs and memory
+.claude/*
+!.claude/settings.local.json
 nvim/plugged
 nvim/node_modules
