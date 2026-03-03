@@ -206,6 +206,11 @@ setup_gitconfig
 install_dotfiles
 install_larger_paths
 
+# Trust the mise config at its real path so mise doesn't prompt in sandboxed environments
+if command -v mise &>/dev/null; then
+  mise trust "$DOTFILES_ROOT/mise/config.toml" 2>/dev/null || true
+fi
+
 # If we're on a Mac, let's install and setup homebrew.
 if [ "$(uname -s)" == "Darwin" ]
 then
