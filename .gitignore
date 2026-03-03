@@ -9,6 +9,5 @@ __pycache__/
 nvim/plugged
 nvim/node_modules
 
-# Claude Code — only track project-level settings
-.claude/*
-!.claude/settings.local.json
+# Claude Code project-level config
+.claude/

@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(fc -R ~/.zsh_history)",
-      "Bash(zsh:*)"
-    ]
-  }
-}
