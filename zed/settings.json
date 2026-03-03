@@ -1,0 +1,43 @@
+// Zed settings
+//
+// For information on how to configure Zed, see the Zed
+// documentation: https://zed.dev/docs/configuring-zed
+//
+// To see all of Zed's default settings without changing your
+// custom settings, run `zed: open default settings` from the
+// command palette (cmd-shift-p / ctrl-shift-p)
+{
+  "show_edit_predictions": false,
+  "edit_predictions": {
+    "mode": "subtle"
+  },
+  "agent": {
+    "always_allow_tool_actions": true,
+    "default_model": {
+      "provider": "lmstudio",
+      "model": "qwen/qwen3-coder-30b"
+    },
+    "model_parameters": []
+  },
+  "languages": {
+    "YAML": {
+      "format_on_save": "off",
+      "use_on_type_format": false
+    }
+  },
+  "show_wrap_guides": true,
+  "buffer_font_family": ".ZedMono",
+  "icon_theme": {
+    "mode": "dark",
+    "light": "Zed (Default)",
+    "dark": "Zed (Default)"
+  },
+  "vim_mode": true,
+  "ui_font_size": 16,
+  "buffer_font_size": 16.0,
+  "theme": {
+    "mode": "dark",
+    "light": "Gruvbox Light",
+    "dark": "Gruvbox Dark"
+  }
+}

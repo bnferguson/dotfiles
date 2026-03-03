@@ -1,14 +1,13 @@
-atom.symlink/.apm
-atom.symlink/.node-gyp
-atom.symlink/.storage
-atom.symlink/blob-store
-atom.symlink/compile-cache/
-atom.symlink/packages
-atom.symlink/storage
-atom.symlink/themes
-atom.symlink/blob-store
-atom.symlink/recovery
-
 git/gitconfig.local.symlink
+
+# Generated / cached
+.cache/
+__pycache__/
+.DS_Store
+
+# Nvim plugins
 nvim/plugged
 nvim/node_modules
+
+# Claude Code — ignore project-level settings (contains local paths)
+.claude/settings.local.json

@@ -142,9 +142,39 @@ install_larger_paths () {
 
   local overwrite_all=false backup_all=false skip_all=false
 
+  mkdir -p "$HOME/.config"
+  mkdir -p "$HOME/.claude"
   link_file "$DOTFILES_ROOT/nvim" "$HOME/.config/nvim"
-  link_file "$DOTFILES_ROOT/alacritty" "$HOME/.config/alacritty"
-  link_file "$DOTFILES_ROOT/karabiner" "$HOME/.config/karabiner"
+  link_file "$DOTFILES_ROOT/starship.toml" "$HOME/.config/starship.toml"
+  mkdir -p "$HOME/.config/mise"
+  link_file "$DOTFILES_ROOT/mise/config.toml" "$HOME/.config/mise/config.toml"
+
+  mkdir -p "$HOME/.config/gh"
+  link_file "$DOTFILES_ROOT/gh/config.yml" "$HOME/.config/gh/config.yml"
+
+  mkdir -p "$HOME/.config/git"
+  link_file "$DOTFILES_ROOT/git/ignore" "$HOME/.config/git/ignore"
+
+  mkdir -p "$HOME/.config/zed"
+  link_file "$DOTFILES_ROOT/zed/settings.json" "$HOME/.config/zed/settings.json"
+
+  mkdir -p "$HOME/.config/ghostty"
+  link_file "$DOTFILES_ROOT/ghostty/config" "$HOME/.config/ghostty/config"
+
+  mkdir -p "$HOME/.ssh"
+  chmod 700 "$HOME/.ssh"
+  link_file "$DOTFILES_ROOT/ssh/config" "$HOME/.ssh/config"
+
+  # Claude Code config — symlink individual dirs to preserve ~/.claude session data
+  link_file "$DOTFILES_ROOT/claude/settings.json" "$HOME/.claude/settings.json"
+  link_file "$DOTFILES_ROOT/claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
+  link_file "$DOTFILES_ROOT/claude/skills" "$HOME/.claude/skills"
+  link_file "$DOTFILES_ROOT/claude/commands" "$HOME/.claude/commands"
+  link_file "$DOTFILES_ROOT/claude/agents" "$HOME/.claude/agents"
+
+  if [ "$(uname -s)" == "Darwin" ]; then
+    link_file "$DOTFILES_ROOT/karabiner" "$HOME/.config/karabiner"
+  fi
 }
 
 setup_gitconfig

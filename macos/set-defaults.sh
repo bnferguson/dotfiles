@@ -6,6 +6,9 @@
 #   https://github.com/mathiasbynens/dotfiles/blob/master/.macos
 #
 # Run ./set-defaults.sh and you'll be good to go.
+#
+# NOTE: Safari settings require your terminal to have Full Disk Access.
+#   System Settings > Privacy & Security > Full Disk Access > add your terminal
 
 # Disable press-and-hold for keys in favor of key repeat.
 defaults write -g ApplePressAndHoldEnabled -bool false
@@ -33,9 +36,12 @@ defaults write com.apple.dock wvous-bl-modifier -int 0
 # Hide Safari's bookmark bar.
 defaults write com.apple.Safari ShowFavoritesBar -bool false
 
+# Always show Safari's URL preview in the lower left on mouseover.
+defaults write com.apple.Safari ShowOverlayStatusBar -bool true
+
 # Set up Safari for development.
-defaults write com.apple.Safari IncludeInternalDebugMenu -bool true
 defaults write com.apple.Safari IncludeDevelopMenu -bool true
 defaults write com.apple.Safari WebKitDeveloperExtrasEnabledPreferenceKey -bool true
 defaults write com.apple.Safari "com.apple.Safari.ContentPageGroupIdentifier.WebKit2DeveloperExtrasEnabled" -bool true
+defaults write com.apple.Safari.SandboxBroker ShowDevelopMenu -bool true
 defaults write NSGlobalDomain WebKitDeveloperExtras -bool true

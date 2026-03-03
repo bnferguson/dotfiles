@@ -1,33 +1,20 @@
-cask_args appdir: '/Applications'
+# Core tools — needed for this dotfiles setup to work
+brew "starship"     # prompt
+brew "mise"         # tool version manager
+brew "neovim"       # editor
+brew "gh"           # github cli
+brew "jq"           # json processing
+brew "yq"           # yaml processing
+brew "fzf"          # fuzzy finder
+brew "fd"           # find alternative
 
-tap 'homebrew/bundle'
-tap 'puma/puma'
+# Development
+brew "ast-grep"     # structural code search
+brew "actionlint"   # github actions linter
+brew "uv"           # python package manager
 
-brew 'ack'
-brew 'coreutils'
-brew 'go'
-brew 'grc'
-brew 'imagemagick'
-brew 'jp2a'
-brew 'jq'
-brew 'libgit2'
-brew 'openssl'
-brew 'node'
-brew 'nvim'
-brew 'readline'
-brew 'postgresql'
-brew 'puma/puma/puma-dev'
-brew 'ruby-build'
-brew 'rbenv'
-brew 'roundup'
-brew 'spaceman-diff'
-brew 'spark'
-brew 'tmux'
-#brew 'unrar'
-brew 'wget'
-brew 'yarn'
-brew 'youtube-dl'
-
-cask 'alacritty'
-cask 'karabiner-elements'
-#cask 'bettertouchtool'
+# macOS casks
+if OS.mac?
+  cask "ghostty"        # terminal
+  cask "1password-cli"  # secrets
+end

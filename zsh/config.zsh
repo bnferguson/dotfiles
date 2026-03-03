@@ -3,7 +3,8 @@ export CLICOLOR=true
 
 fpath=($ZSH/functions $fpath)
 
-autoload -U $ZSH/functions/*(:t)
+# Autoload functions but not _* completion files (those are handled by compinit via fpath)
+autoload -U ${${(M)${(@f)"$(ls $ZSH/functions)"}:#[^_]*}}
 
 HISTFILE=~/.zsh_history
 HISTSIZE=10000
@@ -15,21 +16,19 @@ setopt NO_HUP
 setopt NO_LIST_BEEP
 setopt LOCAL_OPTIONS # allow functions to have local options
 setopt LOCAL_TRAPS # allow functions to have local traps
-setopt HIST_VERIFY
-setopt SHARE_HISTORY # share history between sessions ???
-setopt EXTENDED_HISTORY # add timestamps to history
 setopt PROMPT_SUBST
 setopt COMPLETE_IN_WORD
 setopt IGNORE_EOF
 
-setopt APPEND_HISTORY # adds history
-setopt INC_APPEND_HISTORY SHARE_HISTORY  # adds history incrementally and share it across sessions
-setopt HIST_IGNORE_ALL_DUPS  # don't record dupes in history
+# History
+setopt SHARE_HISTORY
+setopt EXTENDED_HISTORY
+setopt APPEND_HISTORY
+setopt INC_APPEND_HISTORY
+setopt HIST_VERIFY
+setopt HIST_IGNORE_ALL_DUPS
 setopt HIST_REDUCE_BLANKS
-
-# don't expand aliases _before_ completion has finished
-#   like: git comm-[tab]
-#setopt complete_aliases
+setopt HIST_NO_STORE
 
 bindkey '^[^[[D' backward-word
 bindkey '^[^[[C' forward-word
@@ -40,3 +39,7 @@ bindkey '^?' backward-delete-char
 
 # use incremental search
 bindkey '^R' history-incremental-search-backward
+
+# up/down arrow searches history matching current prefix
+bindkey "\e[A" history-beginning-search-backward
+bindkey "\e[B" history-beginning-search-forward

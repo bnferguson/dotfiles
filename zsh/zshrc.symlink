@@ -12,9 +12,10 @@ then
   source ~/.localrc
 fi
 
-# all of our zsh files
+# all of our zsh files (exclude .git, .cache, .claude, node_modules)
+setopt EXTENDED_GLOB
 typeset -U config_files
-config_files=($ZSH/**/*.zsh)
+config_files=($ZSH/(^(.git|.cache|.claude|node_modules))/**/*.zsh)
 
 # load the path files
 for file in ${(M)config_files:#*/path.zsh}
@@ -28,9 +29,23 @@ do
   source $file
 done
 
-# initialize autocomplete here, otherwise functions won't be loaded
+# initialize autocomplete — use cached .zcompdump, rebuild at most once per day
 autoload -U compinit
-compinit
+if [[ -f "$HOME/.zcompdump" ]]; then
+  local _zcomp_age
+  if [[ "$(uname -s)" == "Darwin" ]]; then
+    _zcomp_age=$(stat -f '%Sm' -t '%j' "$HOME/.zcompdump")
+  else
+    _zcomp_age=$(stat -c '%y' "$HOME/.zcompdump" 2>/dev/null | date -f - +'%j' 2>/dev/null)
+  fi
+  if [[ "$(date +'%j')" == "$_zcomp_age" ]]; then
+    compinit -C
+  else
+    compinit
+  fi
+else
+  compinit
+fi
 
 # load every completion after autocomplete loads
 for file in ${(M)config_files:#*/completion.zsh}
