@@ -40,13 +40,20 @@ done
 
 export ZSH=$HOME/.dotfiles
 
-# Set macOS defaults
-$ZSH/macos/set-defaults.sh
+# macOS-specific updates
+if [ "$(uname -s)" = "Darwin" ]; then
+	if [ -f "$ZSH/macos/set-defaults.sh" ]; then
+		$ZSH/macos/set-defaults.sh
+	fi
 
-# Upgrade homebrew
-echo "› brew update"
-brew update
+	if command -v brew >/dev/null 2>&1; then
+		echo "› brew update"
+		brew update
+		echo "› brew upgrade"
+		brew upgrade
+	fi
+fi
 
-# Install software
+# Run topic installers
 echo "› $ZSH/script/install"
 $ZSH/script/install
