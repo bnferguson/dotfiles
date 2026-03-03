@@ -62,9 +62,13 @@ link_file () {
     if [ "$overwrite_all" == "false" ] && [ "$backup_all" == "false" ] && [ "$skip_all" == "false" ]
     then
 
-      local currentSrc="$(readlink $dst)"
+      # Compare resolved real paths to handle both relative and absolute symlinks
+      local currentRealPath=""
+      if [ -L "$dst" ]; then
+        currentRealPath=$(perl -MCwd -e 'print Cwd::realpath($ARGV[0]) // ""' "$dst" 2>/dev/null)
+      fi
 
-      if [ "$currentSrc" == "$src" ]
+      if [ "$currentRealPath" == "$src" ]
       then
 
         skip=true;
@@ -120,9 +124,28 @@ link_file () {
 
   if [ "$skip" != "true" ]  # "false" or empty
   then
-    ln -s "$1" "$2"
-    success "linked $1 to $2"
+    # Use relative symlinks so they work when rsynced to a different root (e.g. sandvault)
+    local dst_real_dir
+    dst_real_dir="$(cd "$(dirname "$2")" && pwd -P)"
+    local rel_src
+    rel_src=$(perl -MFile::Spec -e 'print File::Spec->abs2rel($ARGV[0], $ARGV[1])' "$1" "$dst_real_dir")
+    ln -s "$rel_src" "$2"
+    success "linked $rel_src to $2"
   fi
+}
+
+# Symlink every file in a source directory into a destination directory,
+# preserving subdirectory structure. Unlike symlinking an entire directory,
+# this lets rsync replace individual file symlinks without "Directory not empty" errors.
+link_tree () {
+  local src_dir=$1 dst_dir=$2
+
+  find "$src_dir" -type f | while read -r src_file; do
+    local rel="${src_file#$src_dir/}"
+    local dst_file="$dst_dir/$rel"
+    mkdir -p "$(dirname "$dst_file")"
+    link_file "$src_file" "$dst_file"
+  done
 }
 
 install_dotfiles () {
@@ -165,12 +188,14 @@ install_larger_paths () {
   chmod 700 "$HOME/.ssh"
   link_file "$DOTFILES_ROOT/ssh/config" "$HOME/.ssh/config"
 
-  # Claude Code config — symlink individual dirs to preserve ~/.claude session data
+  # Claude Code config — symlink individual files to preserve ~/.claude session data.
+  # Use link_tree for subdirectories so rsync can handle them as individual file
+  # symlinks instead of directory symlinks (which fail with "Directory not empty").
   link_file "$DOTFILES_ROOT/claude/settings.json" "$HOME/.claude/settings.json"
   link_file "$DOTFILES_ROOT/claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
-  link_file "$DOTFILES_ROOT/claude/skills" "$HOME/.claude/skills"
-  link_file "$DOTFILES_ROOT/claude/commands" "$HOME/.claude/commands"
-  link_file "$DOTFILES_ROOT/claude/agents" "$HOME/.claude/agents"
+  link_tree "$DOTFILES_ROOT/claude/skills" "$HOME/.claude/skills"
+  link_tree "$DOTFILES_ROOT/claude/commands" "$HOME/.claude/commands"
+  link_tree "$DOTFILES_ROOT/claude/agents" "$HOME/.claude/agents"
 
   if [ "$(uname -s)" == "Darwin" ]; then
     link_file "$DOTFILES_ROOT/karabiner" "$HOME/.config/karabiner"
