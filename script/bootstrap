@@ -62,9 +62,13 @@ link_file () {
     if [ "$overwrite_all" == "false" ] && [ "$backup_all" == "false" ] && [ "$skip_all" == "false" ]
     then
 
-      local currentSrc="$(readlink $dst)"
+      # Compare resolved real paths to handle both relative and absolute symlinks
+      local currentRealPath=""
+      if [ -L "$dst" ]; then
+        currentRealPath=$(perl -MCwd -e 'print Cwd::realpath($ARGV[0]) // ""' "$dst" 2>/dev/null)
+      fi
 
-      if [ "$currentSrc" == "$src" ]
+      if [ "$currentRealPath" == "$src" ]
       then
 
         skip=true;
@@ -120,8 +124,13 @@ link_file () {
 
   if [ "$skip" != "true" ]  # "false" or empty
   then
-    ln -s "$1" "$2"
-    success "linked $1 to $2"
+    # Use relative symlinks so they work when rsynced to a different root (e.g. sandvault)
+    local dst_real_dir
+    dst_real_dir="$(cd "$(dirname "$2")" && pwd -P)"
+    local rel_src
+    rel_src=$(perl -MFile::Spec -e 'print File::Spec->abs2rel($ARGV[0], $ARGV[1])' "$1" "$dst_real_dir")
+    ln -s "$rel_src" "$2"
+    success "linked $rel_src to $2"
   fi
 }
 
