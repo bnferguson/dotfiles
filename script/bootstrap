@@ -142,8 +142,13 @@ install_larger_paths () {
 
   local overwrite_all=false backup_all=false skip_all=false
 
+  mkdir -p "$HOME/.config"
   link_file "$DOTFILES_ROOT/nvim" "$HOME/.config/nvim"
-  link_file "$DOTFILES_ROOT/karabiner" "$HOME/.config/karabiner"
+  link_file "$DOTFILES_ROOT/starship.toml" "$HOME/.config/starship.toml"
+
+  if [ "$(uname -s)" == "Darwin" ]; then
+    link_file "$DOTFILES_ROOT/karabiner" "$HOME/.config/karabiner"
+  fi
 }
 
 setup_gitconfig
