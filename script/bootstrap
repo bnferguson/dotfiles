@@ -158,6 +158,9 @@ install_larger_paths () {
   mkdir -p "$HOME/.config/zed"
   link_file "$DOTFILES_ROOT/zed/settings.json" "$HOME/.config/zed/settings.json"
 
+  mkdir -p "$HOME/.config/ghostty"
+  link_file "$DOTFILES_ROOT/ghostty/config" "$HOME/.config/ghostty/config"
+
   # Claude Code config — symlink individual dirs to preserve ~/.claude session data
   link_file "$DOTFILES_ROOT/claude/settings.json" "$HOME/.claude/settings.json"
   link_file "$DOTFILES_ROOT/claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
