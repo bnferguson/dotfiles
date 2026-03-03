@@ -149,6 +149,15 @@ install_larger_paths () {
   mkdir -p "$HOME/.config/mise"
   link_file "$DOTFILES_ROOT/mise/config.toml" "$HOME/.config/mise/config.toml"
 
+  mkdir -p "$HOME/.config/gh"
+  link_file "$DOTFILES_ROOT/gh/config.yml" "$HOME/.config/gh/config.yml"
+
+  mkdir -p "$HOME/.config/git"
+  link_file "$DOTFILES_ROOT/git/ignore" "$HOME/.config/git/ignore"
+
+  mkdir -p "$HOME/.config/zed"
+  link_file "$DOTFILES_ROOT/zed/settings.json" "$HOME/.config/zed/settings.json"
+
   # Claude Code config — symlink individual dirs to preserve ~/.claude session data
   link_file "$DOTFILES_ROOT/claude/settings.json" "$HOME/.claude/settings.json"
   link_file "$DOTFILES_ROOT/claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
