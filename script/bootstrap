@@ -161,6 +161,10 @@ install_larger_paths () {
   mkdir -p "$HOME/.config/ghostty"
   link_file "$DOTFILES_ROOT/ghostty/config" "$HOME/.config/ghostty/config"
 
+  mkdir -p "$HOME/.ssh"
+  chmod 700 "$HOME/.ssh"
+  link_file "$DOTFILES_ROOT/ssh/config" "$HOME/.ssh/config"
+
   # Claude Code config — symlink individual dirs to preserve ~/.claude session data
   link_file "$DOTFILES_ROOT/claude/settings.json" "$HOME/.claude/settings.json"
   link_file "$DOTFILES_ROOT/claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md"

@@ -1,0 +1,5 @@
+# Machine-specific hosts go in ~/.ssh/config.local
+Include config.local
+
+Host *
+  SetEnv TERM=xterm-256color
