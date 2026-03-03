@@ -46,6 +46,10 @@ if [ "$(uname -s)" = "Darwin" ]; then
 		$ZSH/macos/set-defaults.sh
 	fi
 
+	if [ -f "$ZSH/macos/set-hostname.sh" ]; then
+		$ZSH/macos/set-hostname.sh
+	fi
+
 	if command -v brew >/dev/null 2>&1; then
 		echo "› brew update"
 		brew update
