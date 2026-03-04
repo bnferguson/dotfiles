@@ -1,6 +1,6 @@
 # Prompt: newline, then directory + git info, then prompt char on next line
 format = """
-$directory$git_branch$git_status$cmd_duration
+$battery$directory$git_branch$git_status$cmd_duration
 $character"""
 
 add_newline = true
