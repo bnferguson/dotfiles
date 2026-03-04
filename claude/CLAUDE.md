@@ -11,6 +11,8 @@ When replying to PR comments, issues, or any GitHub interaction on my behalf, al
 # Source Control & Code Review
 Use `jj` for all VCS operations — commits, branching, rebasing, push/pull. Only use raw `git` when `jj` can't reach (e.g., `gh` CLI needs a git remote, or a tool only speaks git). Repos should be jj-initialized (`jj git init` in existing git repos).
 
+**Exception — git worktrees:** `jj` does not work inside git worktrees (e.g., those created by Conductor or Claude Code's `isolation: "worktree"` mode). When operating in a worktree, use `git` directly for all VCS operations instead of `jj`.
+
 When reviewing PRs or working with branches, always check if the user is already on the relevant branch and read files locally instead of using GitHub API calls.
 
 # Pull Requests
