@@ -1,0 +1,70 @@
+// Zed keymap — mirrors Neovim leader-key bindings
+// Leader key: \ (default vim leader)
+// See also: nvim/KEYBINDINGS.md for the Neovim equivalents
+[
+  // ── Normal mode ────────────────────────────────────────────────
+  {
+    "context": "VimControl && !menu",
+    "bindings": {
+      // Everyday essentials
+      "\\ s": "workspace::Save",
+      "\\ w": "pane::CloseActiveItem",
+      ", ,": "pane::AlternateFile",
+
+      // Finding things (Telescope equivalents)
+      "\\ p": "file_finder::Toggle",
+      "\\ f": "pane::DeploySearch",
+      "\\ b": "tab_switcher::Toggle",
+
+      // File tree (Neo-tree equivalent)
+      "\\ n": "workspace::ToggleLeftDock",
+
+      // Comments
+      "\\ /": "editor::ToggleComments",
+
+      // Symbols outline
+      "\\ t t": "outline_panel::ToggleFocus",
+
+      // LSP actions
+      "\\ r n": "editor::Rename",
+      "\\ a c": "editor::ToggleCodeActions",
+      "g y": "editor::GoToTypeDefinition",
+      "g r": "editor::FindAllReferences",
+      "[ g": "editor::GoToPreviousDiagnostic",
+      "] g": "editor::GoToDiagnostic",
+
+      // Split/pane navigation (matches Ctrl-h/j/k/l in nvim)
+      "ctrl-h": "workspace::ActivatePaneLeft",
+      "ctrl-j": "workspace::ActivatePaneDown",
+      "ctrl-k": "workspace::ActivatePaneUp",
+      "ctrl-l": "workspace::ActivatePaneRight",
+
+      // Zoom toggle (matches \\ in nvim)
+      "\\ \\": "workspace::ToggleZoom"
+    }
+  },
+
+  // ── Project panel (so \n closes it when focused) ────────────────
+  {
+    "context": "ProjectPanel && not_editing",
+    "bindings": {
+      "\\ n": "workspace::ToggleLeftDock"
+    }
+  },
+
+  // ── Insert mode ────────────────────────────────────────────────
+  {
+    "context": "vim_mode == insert",
+    "bindings": {
+      "ctrl-c": "editor::Cancel"
+    }
+  },
+
+  // ── Visual mode ────────────────────────────────────────────────
+  {
+    "context": "vim_mode == visual",
+    "bindings": {
+      "\\ /": "editor::ToggleComments"
+    }
+  }
+]

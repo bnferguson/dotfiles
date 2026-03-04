@@ -180,6 +180,7 @@ install_larger_paths () {
 
   mkdir -p "$HOME/.config/zed"
   link_file "$DOTFILES_ROOT/zed/settings.json" "$HOME/.config/zed/settings.json"
+  link_file "$DOTFILES_ROOT/zed/keymap.json" "$HOME/.config/zed/keymap.json"
 
   mkdir -p "$HOME/.config/ghostty"
   link_file "$DOTFILES_ROOT/ghostty/config" "$HOME/.config/ghostty/config"
