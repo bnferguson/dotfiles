@@ -2,7 +2,18 @@ return {
   {
     "williamboman/mason.nvim",
     build = ":MasonUpdate",
-    opts = {},
+    config = function()
+      -- Prepend mise-installed runtime bins so Mason uses them instead of
+      -- system Ruby 2.6 (which is too old for ruby-lsp).
+      local mise_root = vim.fn.expand("~/.local/share/mise/installs")
+      for _, tool in ipairs({ "ruby/latest", "go/latest" }) do
+        local bin = mise_root .. "/" .. tool .. "/bin"
+        if vim.uv.fs_stat(bin) then
+          vim.env.PATH = bin .. ":" .. vim.env.PATH
+        end
+      end
+      require("mason").setup()
+    end,
   },
   {
     "williamboman/mason-lspconfig.nvim",
