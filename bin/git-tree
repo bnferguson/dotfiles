@@ -105,29 +105,43 @@ if [ -n "$BASH_VERSION" ]; then
         prev="${COMP_WORDS[COMP_CWORD-1]}"
         commands="checkout co create pr list ls remove rm prune help shellenv"
 
-        # Complete commands if first argument
         if [ $COMP_CWORD -eq 1 ]; then
             COMPREPLY=( $(compgen -W "$commands" -- "$cur") )
             return 0
         fi
 
-        # Complete branch names for checkout/remove/rm
         case "$prev" in
-            checkout|co|remove|rm)
+            checkout|co)
+                local branches
+                branches=$(git for-each-ref --format='%(refname:short)' refs/heads/ refs/remotes/origin/ 2>/dev/null | sed 's@^origin/@@' | sort -u)
+                COMPREPLY=( $(compgen -W "$branches" -- "$cur") )
+                return 0
+                ;;
+            remove|rm)
                 local branches
                 branches=$(git worktree list 2>/dev/null | sed -n 's/.*\[\([^]]*\)\].*/\1/p' | tail -n +2)
                 COMPREPLY=( $(compgen -W "$branches" -- "$cur") )
                 return 0
                 ;;
+            create)
+                # Second arg (base branch) gets branch completion
+                if [ $COMP_CWORD -eq 3 ]; then
+                    local branches
+                    branches=$(git for-each-ref --format='%(refname:short)' refs/heads/ refs/remotes/origin/ 2>/dev/null | sed 's@^origin/@@' | sort -u)
+                    COMPREPLY=( $(compgen -W "$branches" -- "$cur") )
+                    return 0
+                fi
+                ;;
         esac
     }
     complete -F _git_tree_complete git-tree
+    complete -F _git_tree_complete gt
 fi
 
 # Zsh completion
 if [ -n "$ZSH_VERSION" ]; then
     _git_tree_complete_zsh() {
-        local -a commands branches
+        local -a commands
         commands=(
             'checkout:Checkout existing branch in new worktree'
             'co:Checkout existing branch in new worktree'
@@ -146,16 +160,32 @@ if [ -n "$ZSH_VERSION" ]; then
             _describe 'command' commands
         elif (( CURRENT == 3 )); then
             case "$words[2]" in
-                checkout|co|remove|rm)
-                    branches=(${(f)"$(git worktree list 2>/dev/null | sed -n 's/.*\[\([^]]*\)\].*/\1/p' | tail -n +1)"})
+                checkout|co)
+                    local -a branches
+                    branches=(${(f)"$(git for-each-ref --format='%(refname:short)' refs/heads/ refs/remotes/origin/ 2>/dev/null | sed 's@^origin/@@' | sort -u)"})
                     _describe 'branch' branches
+                    ;;
+                create)
+                    # No completion for new branch name
+                    ;;
+                remove|rm)
+                    local -a branches
+                    branches=(${(f)"$(git worktree list 2>/dev/null | sed -n 's/.*\[\([^]]*\)\].*/\1/p' | tail -n +2)"})
+                    _describe 'branch' branches
+                    ;;
+            esac
+        elif (( CURRENT == 4 )); then
+            case "$words[2]" in
+                create)
+                    # Base branch completion
+                    local -a branches
+                    branches=(${(f)"$(git for-each-ref --format='%(refname:short)' refs/heads/ refs/remotes/origin/ 2>/dev/null | sed 's@^origin/@@' | sort -u)"})
+                    _describe 'base branch' branches
                     ;;
             esac
         fi
     }
-    if (( $+functions[compdef] )); then
-        compdef _git_tree_complete_zsh git-tree
-    fi
+    # compdef registration is deferred to completion.zsh (after compinit)
 fi
 EOF
         ;;
