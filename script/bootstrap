@@ -140,7 +140,7 @@ link_file () {
 link_tree () {
   local src_dir=$1 dst_dir=$2
 
-  find "$src_dir" -type f | while read -r src_file; do
+  find "$src_dir" -type f -not -name '.DS_Store' -not -path '*/__pycache__/*' | while read -r src_file; do
     local rel="${src_file#$src_dir/}"
     local dst_file="$dst_dir/$rel"
     mkdir -p "$(dirname "$dst_file")"
@@ -193,6 +193,7 @@ install_larger_paths () {
   # Use link_tree for subdirectories so rsync can handle them as individual file
   # symlinks instead of directory symlinks (which fail with "Directory not empty").
   link_file "$DOTFILES_ROOT/claude/settings.json" "$HOME/.claude/settings.json"
+  link_file "$DOTFILES_ROOT/claude/statusline.sh" "$HOME/.claude/statusline.sh"
   link_file "$DOTFILES_ROOT/claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
   link_tree "$DOTFILES_ROOT/claude/skills" "$HOME/.claude/skills"
   link_tree "$DOTFILES_ROOT/claude/commands" "$HOME/.claude/commands"

@@ -1,8 +1,4 @@
 {
-  "statusLine": {
-    "type": "command",
-    "command": "bash ~/.claude/statusline.sh"
-  },
   "permissions": {
     "allow": [
       "Bash(jj:*)",
@@ -119,6 +115,10 @@
         ]
       }
     ]
+  },
+  "statusLine": {
+    "type": "command",
+    "command": "bash ~/.claude/statusline.sh"
   },
   "enabledPlugins": {
     "linear@claude-plugins-official": true,
