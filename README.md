@@ -9,15 +9,17 @@ Personal dotfiles, originally forked from [holman/dotfiles](https://github.com/h
 | `bin/` | Scripts added to `$PATH` — `tree-me`, `git-sync`, `git-promote`, etc. |
 | `claude/` | Claude Code config — settings, skills, commands, agents |
 | `gh/` | GitHub CLI config |
+| `ghostty/` | Ghostty terminal config |
 | `git/` | Git aliases, global gitconfig, gitignore |
+| `jj/` | Jujutsu VCS config — aliases, completion, config |
 | `karabiner/` | Karabiner-Elements config (macOS only) |
 | `kubernetes/` | kubectl completion (cached for speed) |
 | `macos/` | macOS defaults and install scripts |
 | `mise/` | Global mise tool versions |
 | `nvim/` | Neovim config |
-| `starship.toml` | Starship prompt config |
+| `ssh/` | SSH config |
+| `starship/` | Starship prompt config |
 | `system/` | PATH, EDITOR, ls aliases, keybindings |
-| `tmux/` | tmux config |
 | `zed/` | Zed editor settings |
 | `zsh/` | Shell config, completion, prompt |
 
