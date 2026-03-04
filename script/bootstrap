@@ -197,6 +197,9 @@ install_larger_paths () {
   link_tree "$DOTFILES_ROOT/claude/commands" "$HOME/.claude/commands"
   link_tree "$DOTFILES_ROOT/claude/agents" "$HOME/.claude/agents"
 
+  mkdir -p "$HOME/.config/jj"
+  link_file "$DOTFILES_ROOT/jj/config.toml" "$HOME/.config/jj/config.toml"
+
   if [ "$(uname -s)" == "Darwin" ]; then
     link_file "$DOTFILES_ROOT/karabiner" "$HOME/.config/karabiner"
   fi

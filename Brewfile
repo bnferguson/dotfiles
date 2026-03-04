@@ -9,6 +9,8 @@ brew "fzf"          # fuzzy finder
 brew "fd"           # find alternative
 
 # Development
+brew "jj"           # jujutsu vcs
+brew "dmmulroy/tap/jj-starship"  # jj prompt for starship
 brew "ast-grep"     # structural code search
 brew "actionlint"   # github actions linter
 brew "uv"           # python package manager
