@@ -3,8 +3,6 @@
         path = ~/.gitconfig.local
 [alias]
         co = checkout
-        promote = !$ZSH/bin/git-promote
-        wtf     = !$ZSH/bin/git-wtf
         count   = !git shortlog -sn
         addnw   = !sh -c 'git diff -U0 -w --no-color "$@" | git apply --cached --ignore-whitespace --unidiff-zero -'
 
