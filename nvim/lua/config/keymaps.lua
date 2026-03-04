@@ -30,9 +30,32 @@ map("i", "<Leader>=", "<Esc><C-w>=")
 map("n", "<Leader>s", ":w<CR>")
 map("i", "<Leader>s", "<Esc>:w<CR>")
 
--- Quit
-map("n", "<Leader>w", ":q<CR>")
-map("i", "<Leader>w", "<Esc>:q<CR>")
+-- Quit — skip sidebar windows so \w always targets code buffers
+local function smart_quit()
+  local win = vim.api.nvim_get_current_win()
+  local bt = vim.bo.buftype
+  -- If we're in a sidebar (neo-tree, outline, etc.), just close it
+  if bt == "nofile" or vim.bo.filetype == "neo-tree" then
+    vim.cmd("q")
+    return
+  end
+  -- Count non-sidebar windows
+  local real_wins = 0
+  for _, w in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local buf = vim.api.nvim_win_get_buf(w)
+    if vim.bo[buf].buftype == "" then
+      real_wins = real_wins + 1
+    end
+  end
+  -- If this is the last real window, quit nvim entirely
+  if real_wins <= 1 then
+    vim.cmd("qa")
+  else
+    vim.cmd("q")
+  end
+end
+map("n", "<Leader>w", smart_quit)
+map("i", "<Leader>w", function() vim.cmd("stopinsert"); smart_quit() end)
 
 -- Kill F1 help
 map({ "n", "i" }, "<F1>", "<Esc>")
