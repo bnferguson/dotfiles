@@ -52,6 +52,7 @@ For all of these we can work together on it. You can interview me and then put y
 # JJ Quick Command List
 
 A minimal cheat‑sheet of the day‑to‑day **Jujutsu (`jj`)** commands you (or an agent) really need.
+Keep this up to date: when a `jj` command fails unexpectedly or uses deprecated syntax, fix this cheat sheet with the correct usage.
 
 | Purpose                       | Command                                    | What it does                                                    |
 | ----------------------------- | ------------------------------------------ | --------------------------------------------------------------- |
@@ -63,7 +64,8 @@ A minimal cheat‑sheet of the day‑to‑day **Jujutsu (`jj`)** commands you (o
 | **Split hunks interactively** | `jj split`                                 | Launches diff‑editor to carve current change into smaller ones  |
 | **Undo last (or any) op**     | `jj undo`                                  | Reverts the specified operation in the op‑log                   |
 | **List operations**           | `jj op log`                                | Shows numbered operation history for quick undo/restore         |
-| **Push**                      | `jj git push`                              | Push bookmarks to Git remote; CI never notices                  |
+| **Push**                      | `jj git push --bookmark NAME`              | Push a specific bookmark to Git remote                          |
+| **Push deleted bookmarks**    | `jj git push --deleted`                    | Push all locally-deleted bookmarks to remote (no argument)      |
 | **Fetch / rebase**            | `jj git fetch --all-remotes`               | Fetch all remotes; jj auto‑rebases local changes                |
 | **List bookmarks**            | `jj bookmark list`                         | Display bookmarks pointing at changes                           |
 | **Create bookmark**           | `jj bookmark create feature`               | Label current change as *feature*                               |
@@ -78,5 +80,5 @@ A minimal cheat‑sheet of the day‑to‑day **Jujutsu (`jj`)** commands you (o
 
 ### Automation tips
 
-* Pass `--no-editor` on `describe`, `split`, etc., in headless scripts.
+* Use `jj describe -m "msg"` to set a description without opening an editor. The `--no-editor` flag is deprecated.
 * Prefer `--template '{id} {description|escape_json}\n'` for JSON‑friendly output.
