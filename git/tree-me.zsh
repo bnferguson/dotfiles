@@ -1,0 +1,1 @@
+source <(git-tree shellenv)
