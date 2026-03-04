@@ -206,7 +206,27 @@ install_larger_paths () {
   fi
 }
 
+setup_jjconfig () {
+  local confd="$HOME/.config/jj/conf.d"
+  if ! [ -f "$confd/local.toml" ]
+  then
+    info 'setup jj user config (reusing git author info)'
+
+    # Fall back to parsing the existing git local config if variables weren't set
+    if [ -z "$git_authorname" ] && [ -f git/gitconfig.local.symlink ]; then
+      git_authorname=$(git config -f git/gitconfig.local.symlink user.name)
+      git_authoremail=$(git config -f git/gitconfig.local.symlink user.email)
+    fi
+
+    mkdir -p "$confd"
+    sed -e "s/AUTHORNAME/$git_authorname/g" -e "s/AUTHOREMAIL/$git_authoremail/g" jj/config.local.toml.example > "$confd/local.toml"
+
+    success 'jj user config'
+  fi
+}
+
 setup_gitconfig
+setup_jjconfig
 install_dotfiles
 install_larger_paths
 
