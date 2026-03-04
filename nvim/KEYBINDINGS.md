@@ -7,7 +7,7 @@ Leader key is `\` (default vim leader).
 | Key | Action |
 |-----|--------|
 | `\s` | Save file (works from insert mode too) |
-| `\w` | Quit window (works from insert mode too) |
+| `\w` | Smart quit — closes current code buffer; exits nvim if it's the last one (skips sidebars) |
 | `,,` | Toggle between current and previous buffer |
 | `\y` | Yank selection to system clipboard |
 | `\'` | Toggle quote style under cursor (`'` <-> `"`) |
@@ -120,6 +120,8 @@ Sources (in priority order): LSP, snippets, buffer words, file paths.
 - **Auto-read** — files changed outside nvim are reloaded on focus
 - **Autopairs** — brackets, quotes, etc. close automatically
 - **Gitsigns** — git diff markers appear in the sign column
+- **Neo-tree auto-open** — opens the file tree when nvim launches without a file
+- **Neo-tree auto-close** — if neo-tree is the only window left, nvim exits
 
 ## LSP Servers (via Mason)
 
