@@ -41,10 +41,10 @@ if [[ -f "$HOME/.zcompdump" ]]; then
   if [[ "$(date +'%j')" == "$_zcomp_age" ]]; then
     compinit -C
   else
-    compinit
+    compinit -u
   fi
 else
-  compinit
+  compinit -u
 fi
 
 # load every completion after autocomplete loads
