@@ -29,6 +29,7 @@ setopt HIST_VERIFY
 setopt HIST_IGNORE_ALL_DUPS
 setopt HIST_REDUCE_BLANKS
 setopt HIST_NO_STORE
+setopt NO_BANG_HIST
 
 bindkey '^[^[[D' backward-word
 bindkey '^[^[[C' forward-word
