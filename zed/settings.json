@@ -12,7 +12,9 @@
     "mode": "subtle"
   },
   "agent": {
-    "always_allow_tool_actions": true,
+    "tool_permissions": {
+      "default": "allow"
+    },
     "default_model": {
       "provider": "lmstudio",
       "model": "qwen/qwen3-coder-30b"
@@ -25,7 +27,19 @@
       "use_on_type_format": false
     }
   },
+  // Match nvim: 2-space soft tabs, no wrap, strip trailing whitespace
+  "tab_size": 2,
+  "hard_tabs": false,
+  "soft_wrap": "none",
   "show_wrap_guides": true,
+  "remove_trailing_whitespace_on_save": true,
+  "ensure_final_newline_on_save": true,
+  "scroll_beyond_last_line": "off",
+  "scrolloff": 3,
+  "cursor_blink": false,
+  "gutter": {
+    "line_numbers": true
+  },
   "buffer_font_family": ".ZedMono",
   "icon_theme": {
     "mode": "dark",
