@@ -1,1 +1,1 @@
-source <(git-tree-me shellenv)
+source <(git-tree shellenv)

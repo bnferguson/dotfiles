@@ -1,9 +1,9 @@
 #!/bin/bash
 # Minimal git worktree helper - leverages git's native capabilities
-# Usage: git-tree-me <command> [options]
+# Usage: git-tree <command> [options]
 #
 # For auto-cd and tab completion, add this to your ~/.bashrc or ~/.zshrc:
-#   source <(git-tree-me shellenv)
+#   source <(git-tree shellenv)
 #
 # This enables:
 # - Automatic cd to worktree after checkout/create/pr commands
@@ -17,7 +17,7 @@ WORKTREE_ROOT="${WORKTREE_ROOT:-$HOME/dev/worktrees}"
 # Show help if no arguments
 show_help() {
     cat << 'EOF'
-Usage: git-tree-me <command> [options]
+Usage: git-tree <command> [options]
 
 Worktree management with organized directory structure.
 
@@ -31,18 +31,18 @@ Commands:
   shellenv                      Output shell function for auto-cd (source this)
 
 Examples:
-  git-tree-me checkout feature-branch
-  git-tree-me create my-feature
-  git-tree-me create my-feature develop
-  git-tree-me pr 123
-  git-tree-me pr https://github.com/org/repo/pull/123
-  git-tree-me list
-  git-tree-me remove old-branch
-  git-tree-me prune
+  git-tree checkout feature-branch
+  git-tree create my-feature
+  git-tree create my-feature develop
+  git-tree pr 123
+  git-tree pr https://github.com/org/repo/pull/123
+  git-tree list
+  git-tree remove old-branch
+  git-tree prune
 
 Setup auto-cd:
   Add to ~/.bashrc or ~/.zshrc:
-    source <(git-tree-me shellenv)
+    source <(git-tree shellenv)
 
 Worktrees are organized at: $WORKTREE_ROOT/<repo>/<branch>
 Set WORKTREE_ROOT to customize the location (default: ~/dev/worktrees)
@@ -84,9 +84,9 @@ shift
 case "$command" in
     shellenv)
         cat << 'EOF'
-git-tree-me() {
+git-tree() {
     local output
-    output=$(command git-tree-me "$@")
+    output=$(command git-tree "$@")
     local exit_code=$?
     echo "$output"
     if [ $exit_code -eq 0 ]; then
@@ -98,7 +98,7 @@ git-tree-me() {
 
 # Bash completion
 if [ -n "$BASH_VERSION" ]; then
-    _tree_me_complete() {
+    _git_tree_complete() {
         local cur prev commands
         COMPREPLY=()
         cur="${COMP_WORDS[COMP_CWORD]}"
@@ -121,12 +121,12 @@ if [ -n "$BASH_VERSION" ]; then
                 ;;
         esac
     }
-    complete -F _tree_me_complete git-tree-me
+    complete -F _git_tree_complete git-tree
 fi
 
 # Zsh completion
 if [ -n "$ZSH_VERSION" ]; then
-    _tree_me_complete_zsh() {
+    _git_tree_complete_zsh() {
         local -a commands branches
         commands=(
             'checkout:Checkout existing branch in new worktree'
@@ -154,14 +154,14 @@ if [ -n "$ZSH_VERSION" ]; then
         fi
     }
     if (( $+functions[compdef] )); then
-        compdef _tree_me_complete_zsh git-tree-me
+        compdef _git_tree_complete_zsh git-tree
     fi
 fi
 EOF
         ;;
 
     checkout|co)
-        branch="${1:?Branch name required. Usage: git-tree-me checkout <branch>}"
+        branch="${1:?Branch name required. Usage: git-tree checkout <branch>}"
         path="$WORKTREE_ROOT/$repo/$branch"
 
         # Check if worktree already exists
@@ -180,13 +180,13 @@ EOF
             echo "TREE_ME_CD:$path"
         else
             echo "Error: Branch '$branch' does not exist" >&2
-            echo "Use 'git-tree-me create $branch' to create a new branch" >&2
+            echo "Use 'git-tree create $branch' to create a new branch" >&2
             exit 1
         fi
         ;;
 
     create)
-        branch="${1:?Branch name required. Usage: git-tree-me create <branch> [base-branch]}"
+        branch="${1:?Branch name required. Usage: git-tree create <branch> [base-branch]}"
         base="${2:-$(get_default_base)}"
         path="$WORKTREE_ROOT/$repo/$branch"
 
@@ -205,7 +205,7 @@ EOF
         ;;
 
     pr)
-        input="${1:?PR number or URL required. Usage: git-tree-me pr <number|url>}"
+        input="${1:?PR number or URL required. Usage: git-tree pr <number|url>}"
         pr_number=$(get_pr_number "$input")
 
         # Check if gh is installed
@@ -238,7 +238,7 @@ EOF
         ;;
 
     remove|rm)
-        branch="${1:?Branch name required. Usage: git-tree-me remove <branch>}"
+        branch="${1:?Branch name required. Usage: git-tree remove <branch>}"
         existing=$(git worktree list | grep "\[$branch\]" | awk '{print $1}')
         if [ -z "$existing" ]; then
             echo "Error: No worktree found for branch: $branch" >&2
@@ -259,7 +259,7 @@ EOF
 
     *)
         echo "Error: Unknown command '$command'" >&2
-        echo "Run 'git-tree-me help' for usage information" >&2
+        echo "Run 'git-tree help' for usage information" >&2
         exit 1
         ;;
 esac
