@@ -1,9 +1,5 @@
 #:schema https://docs.jj-vcs.dev/latest/config-schema.json
 
-[user]
-name = "Brandon Ferguson"
-email = "bnferguson@gmail.com"
-
 [ui]
 default-command = "log"
 

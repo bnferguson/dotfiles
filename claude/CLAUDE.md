@@ -82,3 +82,11 @@ Keep this up to date: when a `jj` command fails unexpectedly or uses deprecated 
 
 * Use `jj describe -m "msg"` to set a description without opening an editor. The `--no-editor` flag is deprecated.
 * Prefer `--template '{id} {description|escape_json}\n'` for JSON‑friendly output.
+
+### Using `gh` CLI in jj repos
+
+jj keeps Git in a detached HEAD state, so `gh` can't auto-detect the current branch. Always pass `--head <bookmark>` and `--base main` explicitly when creating PRs:
+
+```bash
+gh pr create --draft --head my-bookmark --base main --title "..." --body "..."
+```
