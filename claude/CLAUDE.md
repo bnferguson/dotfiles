@@ -8,8 +8,10 @@ Don't over comment on obvious things. Comment on non-obvious things.
 # Communication
 When replying to PR comments, issues, or any GitHub interaction on my behalf, always preface with "🤖 Claude here —" so it's clear the response came from Claude.
 
-# Git & Code Review
-When reviewing PRs or working with Git branches, always check if the user is already on the relevant branch and read files locally instead of using GitHub API calls.
+# Source Control & Code Review
+Use `jj` for all VCS operations — commits, branching, rebasing, push/pull. Only use raw `git` when `jj` can't reach (e.g., `gh` CLI needs a git remote, or a tool only speaks git). Repos should be jj-initialized (`jj git init` in existing git repos).
+
+When reviewing PRs or working with branches, always check if the user is already on the relevant branch and read files locally instead of using GitHub API calls.
 
 # Pull Requests
 Prefer simple, direct changes. Pull requests should be small and focused on a single issue. You can make a note of potential features, but avoid making unrelated changes. If the instructions are unclear, ask for clarification.
@@ -32,9 +34,10 @@ For all of these we can work together on it. You can interview me and then put y
 
 # Tool Guidance
 - When interacting with GitHub use `gh`
+- Use `jj` for all bits of source control and commits (refer to JJ Quick Command List)
 - I use `mise` to manage my shell environment for projects
 - I use `brew` to install tools that aren't specified in `mise`
-- When dealing with code structure use `ast-grep`, Selena or an LSP for the given language when available 
+- When dealing with code structure use `ast-grep` an LSP for the given language when available 
 - When dealing with terraform use the Terraform MCP
 - When working with Rails use the `rails` command for migrations and generators
 
@@ -45,3 +48,35 @@ For all of these we can work together on it. You can interview me and then put y
 # Language Specific Claude Skills
 - Ruby/Rails: use the `rails-backend-guidelines` skill and `dhh-code-reviewer` agent to ensure code quality and adherence to best practices.
 - Go: use `effective-go` and `go-concurency-patterns` skills to ensure code quality and adherence to best practices.
+
+# JJ Quick Command List
+
+A minimal cheat‑sheet of the day‑to‑day **Jujutsu (`jj`)** commands you (or an agent) really need.
+
+| Purpose                       | Command                                    | What it does                                                    |
+| ----------------------------- | ------------------------------------------ | --------------------------------------------------------------- |
+| **See changes**               | `jj status`                                | Show working‑copy commit and modified files                     |
+| **Browse history**            | `jj log`                                   | One‑line graph of commits; add `-r : --git` to include Git hashes |
+| **Diff current work**         | `jj diff`                                  | Compare working‑copy commit to its parent                       |
+| **Start a new change**        | `jj new`                                   | Fork a fresh change from `@` (no checkout dance)                |
+| **Write/update message**      | `jj describe -m "msg"`                     | Sets commit message of the working change                       |
+| **Split hunks interactively** | `jj split`                                 | Launches diff‑editor to carve current change into smaller ones  |
+| **Undo last (or any) op**     | `jj undo`                                  | Reverts the specified operation in the op‑log                   |
+| **List operations**           | `jj op log`                                | Shows numbered operation history for quick undo/restore         |
+| **Push**                      | `jj git push`                              | Push bookmarks to Git remote; CI never notices                  |
+| **Fetch / rebase**            | `jj git fetch --all-remotes`               | Fetch all remotes; jj auto‑rebases local changes                |
+| **List bookmarks**            | `jj bookmark list`                         | Display bookmarks pointing at changes                           |
+| **Create bookmark**           | `jj bookmark create feature`               | Label current change as *feature*                               |
+| **Move bookmark**             | `jj bookmark set feature -r REV`           | Point bookmark *feature* at another revision                    |
+| **Track remote bookmark**     | `jj bookmark track feature --remote=origin` | Start tracking a remote bookmark locally                        |
+| **Delete bookmark**           | `jj bookmark delete feature`               | Remove bookmark label                                           |
+
+### Safety net
+
+* `jj op restore <op‑id>` — time‑travel repo back to any previous operation (and still `jj undo` later)
+* Everything is undoable; when in doubt, run `jj op log` followed by `jj undo`.
+
+### Automation tips
+
+* Pass `--no-editor` on `describe`, `split`, etc., in headless scripts.
+* Prefer `--template '{id} {description|escape_json}\n'` for JSON‑friendly output.
