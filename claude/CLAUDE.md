@@ -13,6 +13,8 @@ Use `jj` for all VCS operations — commits, branching, rebasing, push/pull. Onl
 
 **Exception — git worktrees:** `jj` does not work inside git worktrees (e.g., those created by Conductor or Claude Code's `isolation: "worktree"` mode). When operating in a worktree, use `git` directly for all VCS operations instead of `jj`.
 
+Before starting a code review, always pull from remote first (`jj git fetch --all-remotes`) to ensure you're working with the latest changes.
+
 When reviewing PRs or working with branches, always check if the user is already on the relevant branch and read files locally instead of using GitHub API calls.
 
 # Pull Requests

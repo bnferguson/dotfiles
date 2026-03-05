@@ -27,19 +27,34 @@ SHORT_CWD="${SHORT_CWD#/}"
 REPO_ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null)
 BRANCH=""
 if [ -n "$REPO_ROOT" ] && [ -d "$REPO_ROOT/.jj" ]; then
-  BRANCH=$(jj --no-pager --repository "$REPO_ROOT" bookmark list -r '@' -T 'name ++ "\n"' 2>/dev/null | head -1)
-  [ -z "$BRANCH" ] && BRANCH=$(jj --no-pager --repository "$REPO_ROOT" bookmark list -r '@-' -T 'name ++ "\n"' 2>/dev/null | head -1)
+  # Current bookmark, or parent's bookmark if @ has none (common after jj new)
+  BRANCH=$(jj --no-pager --repository "$REPO_ROOT" log -r @ --no-graph -T 'bookmarks' 2>/dev/null | head -1 | xargs)
+  if [ -z "$BRANCH" ]; then
+    BRANCH=$(jj --no-pager --repository "$REPO_ROOT" log -r '@-' --no-graph -T 'bookmarks' 2>/dev/null | head -1 | xargs)
+  fi
 elif [ -n "$REPO_ROOT" ]; then
   BRANCH=$(git -C "$CWD" branch --show-current 2>/dev/null)
 fi
 
-# Detect open PR for current branch (skip if on main to avoid noise)
+# Detect open PR for current branch (cached 5 min per branch)
 PR=""
 if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ -n "$REPO_ROOT" ]; then
-  REMOTE_URL=$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null)
-  PR_NUM=$(GIT_OPTIONAL_LOCKS=0 gh pr list --head "$BRANCH" --json number,url -q '.[0].number' 2>/dev/null)
-  PR_URL=$(GIT_OPTIONAL_LOCKS=0 gh pr list --head "$BRANCH" --json number,url -q '.[0].url' 2>/dev/null)
-  if [ -n "$PR_NUM" ] && [ -n "$PR_URL" ]; then
+  CACHE_DIR="${TMPDIR:-/tmp}/claude-statusline-cache"
+  mkdir -p "$CACHE_DIR"
+  CACHE_KEY=$(echo "${REPO_ROOT}:${BRANCH}" | md5 -q 2>/dev/null || echo "${REPO_ROOT}:${BRANCH}" | md5sum | cut -d' ' -f1)
+  CACHE_FILE="${CACHE_DIR}/${CACHE_KEY}"
+
+  # Use cache if fresh (< 300 seconds)
+  if [ -f "$CACHE_FILE" ] && [ $(( $(date +%s) - $(stat -f %m "$CACHE_FILE" 2>/dev/null || stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0) )) -lt 300 ]; then
+    PR_DATA=$(cat "$CACHE_FILE")
+  else
+    PR_DATA=$(GIT_OPTIONAL_LOCKS=0 gh pr list --head "$BRANCH" --json number,url -q '.[0] | "\(.number) \(.url)"' 2>/dev/null)
+    echo "$PR_DATA" > "$CACHE_FILE"
+  fi
+
+  PR_NUM=$(echo "$PR_DATA" | cut -d' ' -f1)
+  PR_URL=$(echo "$PR_DATA" | cut -d' ' -f2-)
+  if [ -n "$PR_NUM" ] && [ -n "$PR_URL" ] && [ "$PR_NUM" != "null" ]; then
     PR=" \e]8;;${PR_URL}\aPR #${PR_NUM}\e]8;;\a"
   fi
 fi
