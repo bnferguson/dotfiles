@@ -11,6 +11,7 @@ COST=$(echo "$input" | jq -r '.cost.total_cost_usd // empty')
 LINES_ADDED=$(echo "$input" | jq -r '.cost.total_lines_added // empty')
 LINES_REMOVED=$(echo "$input" | jq -r '.cost.total_lines_removed // empty')
 WORKTREE=$(echo "$input" | jq -r '.worktree.name // empty')
+WORKTREE_ORIG_CWD=$(echo "$input" | jq -r '.worktree.original_cwd // empty')
 
 # Colors
 BLUE='\033[34m'
@@ -22,8 +23,10 @@ MAGENTA='\033[35m'
 DIM='\033[2m'
 RESET='\033[0m'
 
-# Shorten home directory to ~
-SHORT_CWD="${CWD/#$HOME/~}"
+# In a worktree, show the original project dir instead of the long worktree path
+DISPLAY_CWD="${CWD}"
+[ -n "$WORKTREE_ORIG_CWD" ] && DISPLAY_CWD="${WORKTREE_ORIG_CWD}"
+SHORT_CWD="${DISPLAY_CWD/#$HOME/~}"
 SHORT_CWD="${SHORT_CWD#/}"
 
 # Detect current branch using the session's cwd
