@@ -1,5 +1,5 @@
 #!/bin/bash
-# Custom Claude Code status line with JJ support, colors, and PR links
+# Custom Claude Code status line with colors and PR links
 input=$(cat)
 
 # Extract fields from JSON
@@ -23,13 +23,10 @@ RESET='\033[0m'
 SHORT_CWD="${CWD/#$HOME/~}"
 SHORT_CWD="${SHORT_CWD#/}"
 
-# Detect current branch/bookmark using the session's cwd
+# Detect current branch using the session's cwd
 REPO_ROOT=$(git -C "$CWD" rev-parse --show-toplevel 2>/dev/null)
 BRANCH=""
-if [ -n "$REPO_ROOT" ] && [ -d "$REPO_ROOT/.jj" ]; then
-  BRANCH=$(jj --no-pager --repository "$REPO_ROOT" bookmark list -r '@' -T 'name ++ "\n"' 2>/dev/null | head -1)
-  [ -z "$BRANCH" ] && BRANCH=$(jj --no-pager --repository "$REPO_ROOT" bookmark list -r '@-' -T 'name ++ "\n"' 2>/dev/null | head -1)
-elif [ -n "$REPO_ROOT" ]; then
+if [ -n "$REPO_ROOT" ]; then
   BRANCH=$(git -C "$CWD" branch --show-current 2>/dev/null)
 fi
 
