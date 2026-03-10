@@ -1,7 +1,6 @@
 # Prompt: newline, then directory + VCS info, then prompt char on next line
-# jj-starship handles both jj and pure git repos
 format = """
-$battery$directory${custom.jj}$cmd_duration
+$battery$directory$git_branch$git_status$cmd_duration
 $character"""
 
 add_newline = true
@@ -49,7 +48,8 @@ format = "[$symbol($version)]($style) "
 detect_files = ["requirements.txt", "pyproject.toml", ".python-version"]
 format = "[$symbol($version)]($style) "
 
-[custom.jj]
-when = "jj-starship detect"
-shell = ["jj-starship"]
-format = "$output "
+[git_branch]
+format = "[$symbol$branch(:$remote_branch)]($style) "
+
+[git_status]
+format = '([$all_status$ahead_behind]($style) )'

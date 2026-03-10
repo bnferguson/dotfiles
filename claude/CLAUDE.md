@@ -11,7 +11,7 @@ When replying to PR comments, issues, or any GitHub interaction on my behalf, al
 # Source Control & Code Review
 Use `git` for all VCS operations.
 
-Before starting a code review, always pull from remote first (`jj git fetch --all-remotes`) to ensure you're working with the latest changes.
+Before starting a code review, always pull from remote first (`git fetch --all`) to ensure you're working with the latest changes.
 
 When reviewing PRs or working with branches, always check if the user is already on the relevant branch and read files locally instead of using GitHub API calls.
 
