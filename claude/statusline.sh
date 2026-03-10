@@ -1,5 +1,5 @@
 #!/bin/bash
-# Custom Claude Code status line with colors and PR links
+# Custom Claude Code status line
 input=$(cat)
 
 # Extract fields from JSON
@@ -30,29 +30,6 @@ if [ -n "$REPO_ROOT" ]; then
   BRANCH=$(git -C "$CWD" branch --show-current 2>/dev/null)
 fi
 
-# Detect open PR for current branch (cached 5 min per branch)
-PR=""
-if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ -n "$REPO_ROOT" ]; then
-  CACHE_DIR="${TMPDIR:-/tmp}/claude-statusline-cache"
-  mkdir -p "$CACHE_DIR"
-  CACHE_KEY=$(echo "${REPO_ROOT}:${BRANCH}" | md5 -q 2>/dev/null || echo "${REPO_ROOT}:${BRANCH}" | md5sum | cut -d' ' -f1)
-  CACHE_FILE="${CACHE_DIR}/${CACHE_KEY}"
-
-  # Use cache if fresh (< 300 seconds)
-  if [ -f "$CACHE_FILE" ] && [ $(( $(date +%s) - $(stat -f %m "$CACHE_FILE" 2>/dev/null || stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0) )) -lt 300 ]; then
-    PR_DATA=$(cat "$CACHE_FILE")
-  else
-    PR_DATA=$(GIT_OPTIONAL_LOCKS=0 gh pr list --head "$BRANCH" --json number,url -q '.[0] | "\(.number) \(.url)"' 2>/dev/null)
-    echo "$PR_DATA" > "$CACHE_FILE"
-  fi
-
-  PR_NUM=$(echo "$PR_DATA" | cut -d' ' -f1)
-  PR_URL=$(echo "$PR_DATA" | cut -d' ' -f2-)
-  if [ -n "$PR_NUM" ] && [ -n "$PR_URL" ] && [ "$PR_NUM" != "null" ]; then
-    PR=" \e]8;;${PR_URL}\aPR #${PR_NUM}\e]8;;\a"
-  fi
-fi
-
 # Context usage with color based on usage level
 CTX=""
 if [ -n "$USED_PCT" ]; then
@@ -81,4 +58,4 @@ VIM=""
 BRANCH_STR="${CYAN}${BRANCH:-detached}${RESET}"
 
 # Build status line
-printf '%b' "${BLUE}${SHORT_CWD}${RESET} ${DIM}|${RESET} ${BRANCH_STR}${PR} ${DIM}|${RESET} ${DIM}${MODEL}${RESET}${CTX}${COST_STR}${VIM}"
+printf '%b' "${BLUE}${SHORT_CWD}${RESET} ${DIM}|${RESET} ${BRANCH_STR} ${DIM}|${RESET} ${DIM}${MODEL}${RESET}${CTX}${COST_STR}${VIM}"
