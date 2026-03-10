@@ -104,13 +104,35 @@
     "defaultMode": "default"
   },
   "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v jj >/dev/null && jj root >/dev/null 2>&1 && jj status || true"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v jj >/dev/null && jj root >/dev/null 2>&1 && jj status || true"
+          }
+        ]
+      }
+    ],
     "Stop": [
       {
         "matcher": "",
         "hooks": [
           {
             "type": "command",
-            "command": "jj show --summary"
+            "command": "command -v jj >/dev/null && jj root >/dev/null 2>&1 && jj show --summary || true"
           }
         ]
       }
@@ -126,6 +148,16 @@
     "typescript-lsp@claude-plugins-official": true,
     "ast-grep@ast-grep-marketplace": true,
     "Notion@claude-plugins-official": true,
-    "chrome-devtools-mcp@chrome-devtools-plugins": true
+    "chrome-devtools-mcp@chrome-devtools-plugins": true,
+    "ruby-skills@ruby-skills": true,
+    "ruby-lsp@ruby-skills": true
+  },
+  "extraKnownMarketplaces": {
+    "ruby-skills": {
+      "source": {
+        "source": "github",
+        "repo": "st0012/ruby-skills"
+      }
+    }
   }
 }
