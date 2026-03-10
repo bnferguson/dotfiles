@@ -8,6 +8,10 @@ CWD=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // ""')
 USED_PCT=$(echo "$input" | jq -r '.context_window.used_percentage // empty')
 VIM_MODE=$(echo "$input" | jq -r '.vim.mode // empty')
 COST=$(echo "$input" | jq -r '.cost.total_cost_usd // empty')
+LINES_ADDED=$(echo "$input" | jq -r '.cost.total_lines_added // empty')
+LINES_REMOVED=$(echo "$input" | jq -r '.cost.total_lines_removed // empty')
+WORKTREE=$(echo "$input" | jq -r '.worktree.name // empty')
+WORKTREE_ORIG_CWD=$(echo "$input" | jq -r '.worktree.original_cwd // empty')
 
 # Colors
 BLUE='\033[34m'
@@ -19,8 +23,10 @@ MAGENTA='\033[35m'
 DIM='\033[2m'
 RESET='\033[0m'
 
-# Shorten home directory to ~
-SHORT_CWD="${CWD/#$HOME/~}"
+# In a worktree, show the original project dir instead of the long worktree path
+DISPLAY_CWD="${CWD}"
+[ -n "$WORKTREE_ORIG_CWD" ] && DISPLAY_CWD="${WORKTREE_ORIG_CWD}"
+SHORT_CWD="${DISPLAY_CWD/#$HOME/~}"
 SHORT_CWD="${SHORT_CWD#/}"
 
 # Detect current branch using the session's cwd
@@ -50,12 +56,22 @@ if [ -n "$COST" ] && [ "$COST" != "0" ]; then
   COST_STR=" ${DIM}\$${COST}${RESET}"
 fi
 
+# Lines changed
+LINES=""
+if [ -n "$LINES_ADDED" ] || [ -n "$LINES_REMOVED" ]; then
+  LINES=" ${GREEN}+${LINES_ADDED:-0}${RESET}${RED}-${LINES_REMOVED:-0}${RESET}"
+fi
+
 # Vim mode indicator
 VIM=""
 [ -n "$VIM_MODE" ] && VIM=" ${MAGENTA}[${VIM_MODE}]${RESET}"
+
+# Worktree indicator
+WT=""
+[ -n "$WORKTREE" ] && WT=" ${YELLOW}[wt: ${WORKTREE}]${RESET}"
 
 # Branch display
 BRANCH_STR="${CYAN}${BRANCH:-detached}${RESET}"
 
 # Build status line
-printf '%b' "${BLUE}${SHORT_CWD}${RESET} ${DIM}|${RESET} ${BRANCH_STR} ${DIM}|${RESET} ${DIM}${MODEL}${RESET}${CTX}${COST_STR}${VIM}"
+printf '%b' "${BLUE}${SHORT_CWD}${RESET} ${DIM}|${RESET} ${BRANCH_STR}${WT} ${DIM}|${RESET} ${DIM}${MODEL}${RESET}${CTX}${COST_STR}${LINES}${VIM}"
