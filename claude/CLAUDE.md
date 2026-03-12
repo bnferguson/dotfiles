@@ -60,5 +60,5 @@ For all of these we can work together on it. You can interview me and then put y
   - YAML/XML: use `yq`
 
 # Language Specific Claude Skills
-- Ruby/Rails: use the `rails-backend-guidelines` skill and `dhh-code-reviewer` agent to ensure code quality and adherence to best practices.
-- Go: use `effective-go` and `go-concurency-patterns` skills to ensure code quality and adherence to best practices.
+- Ruby/Rails: always invoke the `rails-backend-guidelines` skill before writing Rails code, then run the `rails-core-code-reviewer` agent after to verify.
+- Go: always invoke the `effective-go` and `go-concurrency-patterns` skills before writing Go code, then run the `go-core-code-reviewer` agent after to verify.
