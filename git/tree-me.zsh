@@ -1,1 +1,1 @@
-source <(git-tree shellenv)
+source <(git-tree shellenv 2>/dev/null)
