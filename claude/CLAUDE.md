@@ -62,3 +62,7 @@ For all of these we can work together on it. You can interview me and then put y
 # Language Specific Claude Skills
 - Ruby/Rails: always invoke the `rails-backend-guidelines` skill before writing Rails code, then run the `rails-core-code-reviewer` agent after to verify.
 - Go: always invoke the `effective-go` and `go-concurrency-patterns` skills before writing Go code, then run the `go-core-code-reviewer` agent after to verify.
+
+# Prose
+- When writing prose, follow [`style-guide.md`](style-guide.md) for voice and tone
+- Consult [`tropes.md`](tropes.md) for AI writing patterns to avoid
