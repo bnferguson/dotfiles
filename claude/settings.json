@@ -150,7 +150,7 @@
     "Notion@claude-plugins-official": true,
     "chrome-devtools-mcp@chrome-devtools-plugins": true,
     "ruby-skills@ruby-skills": true,
-    "ruby-lsp@ruby-skills": true
+    "ruby-lsp@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "ruby-skills": {
