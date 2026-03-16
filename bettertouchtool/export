@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+#
+# Export all BetterTouchTool presets to the dotfiles repo.
+# Requires BTT's Socket Server to be enabled:
+#   BTT → Settings → Scripting → Command Line → Enable Socket Server
+
+set -e
+
+BTTCLI="/Applications/BetterTouchTool.app/Contents/SharedSupport/bin/bttcli"
+PRESET_DIR="$(cd "$(dirname "$0")" && pwd -P)/presets"
+
+if [ ! -x "$BTTCLI" ]; then
+  echo "error: BetterTouchTool not found at expected path" >&2
+  exit 1
+fi
+
+mkdir -p "$PRESET_DIR"
+
+# Get all preset names from BTT
+preset_names=$("$BTTCLI" get_preset_details | /usr/bin/python3 -c "
+import json, sys
+for p in json.load(sys.stdin):
+    print(p['name'])
+")
+
+if [ -z "$preset_names" ]; then
+  echo "error: no presets found (is BTT running with Socket Server enabled?)" >&2
+  exit 1
+fi
+
+while IFS= read -r name; do
+  output="$PRESET_DIR/${name}.bttpreset"
+  echo "exporting: $name → $output"
+  "$BTTCLI" export_preset name="$name" includeSettings=true compress=false outputPath="$output"
+done <<< "$preset_names"
+
+echo "done — exported to $PRESET_DIR"

@@ -250,5 +250,19 @@ then
   fi
 fi
 
+# BetterTouchTool — import presets if BTT is reachable, otherwise remind.
+if [ "$(uname -s)" == "Darwin" ]; then
+  BTTCLI="/Applications/BetterTouchTool.app/Contents/SharedSupport/bin/bttcli"
+  if [ -x "$BTTCLI" ] && "$BTTCLI" get_preset_details > /dev/null 2>&1; then
+    info "importing BetterTouchTool presets"
+    "$DOTFILES_ROOT/bettertouchtool/import"
+    success "BetterTouchTool presets imported"
+  else
+    info "BetterTouchTool: skipped preset import (BTT not running or Socket Server not enabled)"
+    info "  To import later: bettertouchtool/import"
+    info "  Enable Socket Server: BTT → Settings → Scripting → Command Line"
+  fi
+fi
+
 echo ''
 echo '  All installed!'
