@@ -1,0 +1,35 @@
+#!/usr/bin/env bash
+#
+# Import all BetterTouchTool presets from the dotfiles repo.
+# Requires BTT's Socket Server to be enabled:
+#   BTT → Settings → Scripting → Command Line → Enable Socket Server
+
+set -e
+
+BTTCLI="/Applications/BetterTouchTool.app/Contents/SharedSupport/bin/bttcli"
+PRESET_DIR="$(cd "$(dirname "$0")" && pwd -P)/presets"
+
+if [ ! -x "$BTTCLI" ]; then
+  echo "error: BetterTouchTool not found at expected path" >&2
+  exit 1
+fi
+
+if [ ! -d "$PRESET_DIR" ]; then
+  echo "error: no presets directory found at $PRESET_DIR" >&2
+  exit 1
+fi
+
+found=0
+for preset in "$PRESET_DIR"/*.bttpreset; do
+  [ -f "$preset" ] || continue
+  found=1
+  echo "importing: $(basename "$preset")"
+  "$BTTCLI" import_preset path="$preset" replaceExisting=true
+done
+
+if [ "$found" -eq 0 ]; then
+  echo "no .bttpreset files found in $PRESET_DIR"
+  exit 1
+fi
+
+echo "done — imported presets into BTT"
