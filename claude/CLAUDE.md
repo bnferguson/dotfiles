@@ -5,6 +5,9 @@ If the instructions are unclear, ask for clarification. You're as much for helpi
 
 Don't over comment on obvious things. Comment on non-obvious things.
 
+# Testing & Red-Green-Refactor
+Follow the red-green-refactor cycle: write a failing test first, make it pass, then clean up. This applies to new features and refactors, but is **mandatory** for bug fixes — always write a failing test that reproduces the bug before writing the fix. If the test doesn't fail first, we haven't proven we're testing the right thing.
+
 # Communication
 When replying to PR comments, issues, or any GitHub interaction on my behalf, always preface with "🤖 Claude here —" so it's clear the response came from Claude.
 
