@@ -142,6 +142,7 @@
     "type": "command",
     "command": "bash ~/.claude/statusline.sh"
   },
+  "includeCoAuthoredBy": false,
   "enabledPlugins": {
     "linear@claude-plugins-official": true,
     "gopls-lsp@claude-plugins-official": true,
