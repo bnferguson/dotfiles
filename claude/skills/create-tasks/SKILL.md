@@ -1,4 +1,9 @@
- Rule: Generating a Task List from User Requirements
+---
+name: create-tasks
+description: "Generating a Task List from User Requirements"
+---
+
+Rule: Generating a Task List from User Requirements
 
 ## Goal
 

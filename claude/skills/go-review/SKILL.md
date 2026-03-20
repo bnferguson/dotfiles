@@ -1,6 +1,6 @@
 ---
 name: go-review
-description: Perform a Go focused code review checking idioms, patterns, and best practices
+description: "Perform a Go focused code review checking idioms, patterns, and best practices"
 ---
 
 Perform a Go focused code review of changes on the current branch.

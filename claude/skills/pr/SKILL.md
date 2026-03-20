@@ -1,3 +1,8 @@
+---
+name: pr
+description: "Opening a Pull Request with Interview"
+---
+
 # Rule: Opening a Pull Request with Interview
 
 ## Goal
