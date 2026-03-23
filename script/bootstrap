@@ -124,7 +124,7 @@ link_file () {
 
   if [ "$skip" != "true" ]  # "false" or empty
   then
-    # Use relative symlinks so they work when rsynced to a different root (e.g. sandvault)
+    # Use relative symlinks so they work regardless of absolute path
     local dst_real_dir
     dst_real_dir="$(cd "$(dirname "$2")" && pwd -P)"
     local rel_src
@@ -134,19 +134,6 @@ link_file () {
   fi
 }
 
-# Symlink every file in a source directory into a destination directory,
-# preserving subdirectory structure. Unlike symlinking an entire directory,
-# this lets rsync replace individual file symlinks without "Directory not empty" errors.
-link_tree () {
-  local src_dir=$1 dst_dir=$2
-
-  find "$src_dir" -type f -not -name '.DS_Store' -not -path '*/__pycache__/*' | while read -r src_file; do
-    local rel="${src_file#$src_dir/}"
-    local dst_file="$dst_dir/$rel"
-    mkdir -p "$(dirname "$dst_file")"
-    link_file "$src_file" "$dst_file"
-  done
-}
 
 install_dotfiles () {
   info 'installing dotfiles'
@@ -190,16 +177,13 @@ install_larger_paths () {
   link_file "$DOTFILES_ROOT/ssh/config" "$HOME/.ssh/config"
 
   # Claude Code config — symlink individual files to preserve ~/.claude session data.
-  # Use link_tree for subdirectories so rsync can handle them as individual file
-  # symlinks instead of directory symlinks (which fail with "Directory not empty").
   link_file "$DOTFILES_ROOT/claude/settings.json" "$HOME/.claude/settings.json"
   link_file "$DOTFILES_ROOT/claude/statusline.sh" "$HOME/.claude/statusline.sh"
   link_file "$DOTFILES_ROOT/claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
   link_file "$DOTFILES_ROOT/claude/style-guide.md" "$HOME/.claude/style-guide.md"
   link_file "$DOTFILES_ROOT/claude/tropes.md" "$HOME/.claude/tropes.md"
-  link_tree "$DOTFILES_ROOT/claude/skills" "$HOME/.claude/skills"
-  link_tree "$DOTFILES_ROOT/claude/commands" "$HOME/.claude/commands"
-  link_tree "$DOTFILES_ROOT/claude/agents" "$HOME/.claude/agents"
+  link_file "$DOTFILES_ROOT/claude/skills" "$HOME/.claude/skills"
+  link_file "$DOTFILES_ROOT/claude/agents" "$HOME/.claude/agents"
 
   mkdir -p "$HOME/.config/jj"
   link_file "$DOTFILES_ROOT/jj/config.toml" "$HOME/.config/jj/config.toml"
