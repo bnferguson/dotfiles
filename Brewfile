@@ -8,6 +8,9 @@ brew "yq"           # yaml processing
 brew "fzf"          # fuzzy finder
 brew "fd"           # find alternative
 
+# Safety
+brew "macos-trash"  # move to Trash instead of rm -rf
+
 # Development
 brew "jj"           # jujutsu vcs (checkpointing safety net)
 brew "ast-grep"     # structural code search

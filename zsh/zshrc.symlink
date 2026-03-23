@@ -12,10 +12,10 @@ then
   source ~/.localrc
 fi
 
-# all of our zsh files (exclude .git, .cache, .claude, node_modules)
+# all of our zsh files (exclude .git, .cache, node_modules)
 setopt EXTENDED_GLOB
 typeset -U config_files
-config_files=($ZSH/(^(.git|.cache|.claude|node_modules))/**/*.zsh)
+config_files=($ZSH/(^(.git|.cache|node_modules))/**/*.zsh)
 
 # load the path files
 for file in ${(M)config_files:#*/path.zsh}
@@ -63,3 +63,8 @@ zle -N up-line-or-beginning-search
 zle -N down-line-or-beginning-search
 bindkey "^[[A" up-line-or-beginning-search # Up
 bindkey "^[[B" down-line-or-beginning-search # Down
+
+# Added by LM Studio CLI (lms)
+export PATH="$PATH:/Users/bnferguson/.lmstudio/bin"
+# End of LM Studio CLI section
+

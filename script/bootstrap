@@ -177,13 +177,14 @@ install_larger_paths () {
   link_file "$DOTFILES_ROOT/ssh/config" "$HOME/.ssh/config"
 
   # Claude Code config — symlink individual files to preserve ~/.claude session data.
-  link_file "$DOTFILES_ROOT/claude/settings.json" "$HOME/.claude/settings.json"
-  link_file "$DOTFILES_ROOT/claude/statusline.sh" "$HOME/.claude/statusline.sh"
-  link_file "$DOTFILES_ROOT/claude/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
-  link_file "$DOTFILES_ROOT/claude/style-guide.md" "$HOME/.claude/style-guide.md"
-  link_file "$DOTFILES_ROOT/claude/tropes.md" "$HOME/.claude/tropes.md"
-  link_file "$DOTFILES_ROOT/claude/skills" "$HOME/.claude/skills"
-  link_file "$DOTFILES_ROOT/claude/agents" "$HOME/.claude/agents"
+  link_file "$DOTFILES_ROOT/claude/config/settings.json" "$HOME/.claude/settings.json"
+  link_file "$DOTFILES_ROOT/claude/config/statusline.sh" "$HOME/.claude/statusline.sh"
+  link_file "$DOTFILES_ROOT/claude/config/CLAUDE.md" "$HOME/.claude/CLAUDE.md"
+  link_file "$DOTFILES_ROOT/claude/config/style-guide.md" "$HOME/.claude/style-guide.md"
+  link_file "$DOTFILES_ROOT/claude/config/tropes.md" "$HOME/.claude/tropes.md"
+  link_file "$DOTFILES_ROOT/claude/config/skills" "$HOME/.claude/skills"
+  link_file "$DOTFILES_ROOT/claude/config/agents" "$HOME/.claude/agents"
+  link_file "$DOTFILES_ROOT/claude/config/hooks" "$HOME/.claude/hooks"
 
   mkdir -p "$HOME/.config/jj"
   link_file "$DOTFILES_ROOT/jj/config.toml" "$HOME/.config/jj/config.toml"
