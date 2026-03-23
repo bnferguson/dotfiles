@@ -1,4 +1,8 @@
 {
+  "attribution": {
+    "commit": "",
+    "pr": ""
+  },
   "permissions": {
     "allow": [
       "Bash(jj:*)",
@@ -142,10 +146,28 @@
     "type": "command",
     "command": "bash ~/.claude/statusline.sh"
   },
-  "attribution": {
-    "commit": "",
-    "pr": ""
-  },
+  "spinnerVerbs": [
+    "Decrypting",
+    "Social engineering",
+    "Casing the joint",
+    "Rearranging the letters",
+    "Bypassing the perimeter",
+    "Calling Whistler",
+    "Checking for too many secrets",
+    "Running a black box test",
+    "Posing as a phone company rep",
+    "Breaching the firewall",
+    "Sneaking past the guard",
+    "Cracking the cipher",
+    "Driving the van closer",
+    "Counting the steps",
+    "Playing Scrabble",
+    "Listening to the beeps",
+    "Reading the braille",
+    "Avoiding the NSA",
+    "Trusting no one",
+    "Extracting the chip"
+  ],
   "enabledPlugins": {
     "linear@claude-plugins-official": true,
     "gopls-lsp@claude-plugins-official": true,
@@ -154,7 +176,8 @@
     "Notion@claude-plugins-official": true,
     "chrome-devtools-mcp@chrome-devtools-plugins": true,
     "ruby-skills@ruby-skills": true,
-    "ruby-lsp@claude-plugins-official": true
+    "ruby-lsp@claude-plugins-official": true,
+    "sentry@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "ruby-skills": {
