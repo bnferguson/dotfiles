@@ -1,4 +1,7 @@
 {
+  "env": {
+    "ENABLE_TOOL_SEARCH": "true"
+  },
   "attribution": {
     "commit": "",
     "pr": ""
@@ -138,11 +141,6 @@
     "ask": [],
     "defaultMode": "default"
   },
-  "sandbox": {
-    "filesystem": {
-      "allowRead": ["~/.config/gh"]
-    }
-  },
   "enableAllProjectMcpServers": false,
   "hooks": {
     "PreToolUse": [
@@ -214,15 +212,18 @@
     "command": "bash ~/.claude/statusline.sh"
   },
   "enabledPlugins": {
-    "linear@claude-plugins-official": true,
     "gopls-lsp@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
-    "ast-grep@ast-grep-marketplace": true,
-    "Notion@claude-plugins-official": true,
-    "chrome-devtools-mcp@chrome-devtools-plugins": true,
-    "ruby-skills@ruby-skills": true,
     "ruby-lsp@claude-plugins-official": true,
-    "sentry@claude-plugins-official": true
+    "ast-grep@ast-grep-marketplace": true,
+    "ruby-skills@ruby-skills": true,
+    "gh-cli@trailofbits": true,
+    "ask-questions-if-underspecified@trailofbits": true,
+    "differential-review@trailofbits": true,
+    "git-cleanup@trailofbits": true,
+    "property-based-testing@trailofbits": true,
+    "skill-improver@trailofbits": true,
+    "testing-handbook-skills@trailofbits": true
   },
   "extraKnownMarketplaces": {
     "ruby-skills": {
@@ -230,6 +231,19 @@
         "source": "github",
         "repo": "bnferguson/ruby-skills"
       }
+    },
+    "trailofbits": {
+      "source": {
+        "source": "github",
+        "repo": "trailofbits/skills"
+      }
+    }
+  },
+  "sandbox": {
+    "filesystem": {
+      "allowRead": [
+        "~/.config/gh"
+      ]
     }
   },
   "spinnerVerbs": {
