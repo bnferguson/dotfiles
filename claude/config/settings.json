@@ -138,6 +138,11 @@
     "ask": [],
     "defaultMode": "default"
   },
+  "sandbox": {
+    "filesystem": {
+      "allowRead": ["~/.config/gh"]
+    }
+  },
   "enableAllProjectMcpServers": false,
   "hooks": {
     "PreToolUse": [
