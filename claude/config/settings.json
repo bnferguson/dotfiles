@@ -243,6 +243,12 @@
     "filesystem": {
       "allowRead": [
         "~/.config/gh"
+      ],
+      "allowWrite": [
+        "/tmp",
+        "/private/tmp",
+        "/private/var/folders",
+        "~/.cache"
       ]
     }
   },
