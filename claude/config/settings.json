@@ -1,4 +1,7 @@
 {
+  "env": {
+    "ENABLE_TOOL_SEARCH": "true"
+  },
   "attribution": {
     "commit": "",
     "pr": ""
@@ -103,11 +106,73 @@
       "Skill(mesa-resolve)",
       "Skill(mesa-fix)"
     ],
-    "deny": [],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(rm -fr *)",
+      "Bash(sudo *)",
+      "Bash(mkfs *)",
+      "Bash(dd *)",
+      "Bash(wget *|bash*)",
+      "Bash(curl *|bash*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+      "Bash(git reset --hard*)",
+      "Bash(git clean -f*)",
+      "Bash(git checkout -- .)",
+      "Edit(~/.bashrc)",
+      "Edit(~/.zshrc)",
+      "Edit(~/.bash_profile)",
+      "Edit(~/.zprofile)",
+      "Edit(~/.ssh/**)",
+      "Read(~/.ssh/**)",
+      "Read(~/.gnupg/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.azure/**)",
+      "Read(~/.config/gh/**)",
+      "Read(~/.git-credentials)",
+      "Read(~/.docker/config.json)",
+      "Read(~/.kube/**)",
+      "Read(~/.npmrc)",
+      "Read(~/.npm/**)",
+      "Read(~/.pypirc)",
+      "Read(~/.gem/credentials)",
+      "Read(~/Library/Keychains/**)"
+    ],
     "ask": [],
     "defaultMode": "default"
   },
+  "enableAllProjectMcpServers": false,
   "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/block-rm-rf.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/block-push-to-main.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/enforce-package-manager.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/log-mutations.sh"
+          }
+        ]
+      }
+    ],
     "SessionStart": [
       {
         "matcher": "",
@@ -146,6 +211,41 @@
     "type": "command",
     "command": "bash ~/.claude/statusline.sh"
   },
+  "enabledPlugins": {
+    "gopls-lsp@claude-plugins-official": true,
+    "typescript-lsp@claude-plugins-official": true,
+    "ruby-lsp@claude-plugins-official": true,
+    "ast-grep@ast-grep-marketplace": true,
+    "ruby-skills@ruby-skills": true,
+    "gh-cli@trailofbits": true,
+    "ask-questions-if-underspecified@trailofbits": true,
+    "differential-review@trailofbits": true,
+    "git-cleanup@trailofbits": true,
+    "property-based-testing@trailofbits": true,
+    "skill-improver@trailofbits": true,
+    "testing-handbook-skills@trailofbits": true
+  },
+  "extraKnownMarketplaces": {
+    "ruby-skills": {
+      "source": {
+        "source": "github",
+        "repo": "bnferguson/ruby-skills"
+      }
+    },
+    "trailofbits": {
+      "source": {
+        "source": "github",
+        "repo": "trailofbits/skills"
+      }
+    }
+  },
+  "sandbox": {
+    "filesystem": {
+      "allowRead": [
+        "~/.config/gh"
+      ]
+    }
+  },
   "spinnerVerbs": {
     "mode": "replace",
     "verbs": [
@@ -171,23 +271,5 @@
       "Extracting the chip"
     ]
   },
-  "enabledPlugins": {
-    "linear@claude-plugins-official": true,
-    "gopls-lsp@claude-plugins-official": true,
-    "typescript-lsp@claude-plugins-official": true,
-    "ast-grep@ast-grep-marketplace": true,
-    "Notion@claude-plugins-official": true,
-    "chrome-devtools-mcp@chrome-devtools-plugins": true,
-    "ruby-skills@ruby-skills": true,
-    "ruby-lsp@claude-plugins-official": true,
-    "sentry@claude-plugins-official": true
-  },
-  "extraKnownMarketplaces": {
-    "ruby-skills": {
-      "source": {
-        "source": "github",
-        "repo": "bnferguson/ruby-skills"
-      }
-    }
-  }
+  "skipDangerousModePermissionPrompt": true
 }
