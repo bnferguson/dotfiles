@@ -74,4 +74,4 @@ WT=""
 BRANCH_STR="${CYAN}${BRANCH:-detached}${RESET}"
 
 # Build status line
-printf '%b' "${BLUE}${SHORT_CWD}${RESET} ${DIM}|${RESET} ${BRANCH_STR}${WT} ${DIM}|${RESET} ${DIM}${MODEL}${RESET}${CTX}${COST_STR}${LINES}${VIM}"
+printf '%b' "${BLUE}${SHORT_CWD}${RESET} ${DIM}|${RESET} ${BRANCH_STR}${WT}\n${DIM}${MODEL}${RESET}${CTX}${COST_STR}${LINES}${VIM}"
