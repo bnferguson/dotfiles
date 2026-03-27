@@ -69,3 +69,5 @@ For all of these we can work together on it. You can interview me and then put y
 # Prose
 - When writing prose, follow [`style-guide.md`](style-guide.md) for voice and tone
 - Consult [`tropes.md`](tropes.md) for AI writing patterns to avoid
+
+@RTK.md
