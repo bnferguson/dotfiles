@@ -25,4 +25,5 @@ cask "claude-code"  # anthropic cli
 if OS.mac?
   cask "ghostty"        # terminal
   cask "1password-cli"  # secrets
+  cask "jordanbaird-ice" # menubar manager
 end
