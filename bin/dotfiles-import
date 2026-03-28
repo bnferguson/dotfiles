@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#
+# Run all topic import scripts.
+# Each topic can provide an `import` script to restore app preferences
+# from the dotfiles repo (e.g. bettertouchtool/import, ice/import).
+
+set -e
+
+DOTFILES_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+
+found=0
+failures=0
+for importer in "$DOTFILES_ROOT"/*/import; do
+  [ -x "$importer" ] || continue
+  topic="$(basename "$(dirname "$importer")")"
+  echo "› $topic/import"
+  if "$importer"; then
+    found=$((found + 1))
+  else
+    echo "  ✗ $topic/import failed" >&2
+    failures=$((failures + 1))
+  fi
+done
+
+if [ "$found" -eq 0 ] && [ "$failures" -eq 0 ]; then
+  echo "no import scripts found"
+fi
+
+exit $((failures > 0 ? 1 : 0))

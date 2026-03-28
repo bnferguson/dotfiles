@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+#
+# Import Ice menubar manager preferences from the dotfiles repo.
+# Ice should be restarted after importing for changes to take effect.
+
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
+PLIST="$SCRIPT_DIR/com.jordanbaird.Ice.plist"
+
+if [ ! -f "$PLIST" ]; then
+  echo "error: no exported preferences found at $PLIST" >&2
+  echo "run ice/export first" >&2
+  exit 1
+fi
+
+defaults import com.jordanbaird.Ice "$PLIST"
+echo "done — imported Ice preferences"
+echo "restart Ice for changes to take effect"
