@@ -8,4 +8,5 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd -P)"
 PLIST="$SCRIPT_DIR/com.jordanbaird.Ice.plist"
 
 defaults export com.jordanbaird.Ice "$PLIST"
+plutil -convert xml1 "$PLIST"
 echo "done — exported Ice preferences to $PLIST"
