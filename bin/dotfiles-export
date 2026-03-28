@@ -1,0 +1,29 @@
+#!/usr/bin/env bash
+#
+# Run all topic export scripts.
+# Each topic can provide an `export` script to capture app preferences
+# into the dotfiles repo (e.g. bettertouchtool/export, ice/export).
+
+set -e
+
+DOTFILES_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+
+found=0
+failures=0
+for exporter in "$DOTFILES_ROOT"/*/export; do
+  [ -x "$exporter" ] || continue
+  topic="$(basename "$(dirname "$exporter")")"
+  echo "› $topic/export"
+  if "$exporter"; then
+    found=$((found + 1))
+  else
+    echo "  ✗ $topic/export failed" >&2
+    failures=$((failures + 1))
+  fi
+done
+
+if [ "$found" -eq 0 ] && [ "$failures" -eq 0 ]; then
+  echo "no export scripts found"
+fi
+
+exit $((failures > 0 ? 1 : 0))
