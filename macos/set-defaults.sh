@@ -45,3 +45,6 @@ defaults write com.apple.Safari WebKitDeveloperExtrasEnabledPreferenceKey -bool 
 defaults write com.apple.Safari "com.apple.Safari.ContentPageGroupIdentifier.WebKit2DeveloperExtrasEnabled" -bool true
 defaults write com.apple.Safari.SandboxBroker ShowDevelopMenu -bool true
 defaults write NSGlobalDomain WebKitDeveloperExtras -bool true
+
+# Set default editor for dev file types.
+"$(dirname "$0")/set-duti.sh"
