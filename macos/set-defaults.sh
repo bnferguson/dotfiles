@@ -33,15 +33,23 @@ defaults write com.apple.finder ShowRemovableMediaOnDesktop -bool true
 defaults write com.apple.dock wvous-bl-corner -int 5
 defaults write com.apple.dock wvous-bl-modifier -int 0
 
-# Hide Safari's bookmark bar.
-defaults write com.apple.Safari ShowFavoritesBar -bool false
+# Safari settings require Full Disk Access for your terminal.
+# Without FDA the sandboxed plist isn't readable and `defaults` can hang, so check the file directly.
+_safari_plist="$HOME/Library/Containers/com.apple.Safari/Data/Library/Preferences/com.apple.Safari.plist"
+if [ -r "$_safari_plist" ]; then
+  # Hide Safari's bookmark bar.
+  defaults write com.apple.Safari ShowFavoritesBar -bool false
 
-# Always show Safari's URL preview in the lower left on mouseover.
-defaults write com.apple.Safari ShowOverlayStatusBar -bool true
+  # Always show Safari's URL preview in the lower left on mouseover.
+  defaults write com.apple.Safari ShowOverlayStatusBar -bool true
 
-# Set up Safari for development.
-defaults write com.apple.Safari IncludeDevelopMenu -bool true
-defaults write com.apple.Safari WebKitDeveloperExtrasEnabledPreferenceKey -bool true
-defaults write com.apple.Safari "com.apple.Safari.ContentPageGroupIdentifier.WebKit2DeveloperExtrasEnabled" -bool true
-defaults write com.apple.Safari.SandboxBroker ShowDevelopMenu -bool true
-defaults write NSGlobalDomain WebKitDeveloperExtras -bool true
+  # Set up Safari for development.
+  defaults write com.apple.Safari IncludeDevelopMenu -bool true
+  defaults write com.apple.Safari WebKitDeveloperExtrasEnabledPreferenceKey -bool true
+  defaults write com.apple.Safari "com.apple.Safari.ContentPageGroupIdentifier.WebKit2DeveloperExtrasEnabled" -bool true
+  defaults write com.apple.Safari.SandboxBroker ShowDevelopMenu -bool true
+  defaults write NSGlobalDomain WebKitDeveloperExtras -bool true
+else
+  echo "  Skipping Safari defaults — terminal needs Full Disk Access."
+  echo "  System Settings > Privacy & Security > Full Disk Access > add your terminal"
+fi

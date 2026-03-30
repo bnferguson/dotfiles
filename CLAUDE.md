@@ -11,8 +11,8 @@ Personal dotfiles repo using the [holman/dotfiles](https://github.com/holman/dot
 ```sh
 script/bootstrap          # Full install: gitconfig, symlinks, brew, BTT presets
 script/install            # Just packages + topic installers (no symlinks/gitconfig)
-dot                       # Update homebrew + run topic installers (maintenance)
-dot -e                    # Open dotfiles in $EDITOR
+dots                      # Update homebrew + run topic installers (maintenance)
+dots -e                   # Open dotfiles in $EDITOR
 bettertouchtool/export    # Export BTT presets after changing them in BTT
 bettertouchtool/import    # Restore BTT presets on a new machine
 ```
