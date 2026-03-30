@@ -223,11 +223,15 @@ if command -v mise &>/dev/null; then
   mise trust "$DOTFILES_ROOT/mise/config.toml" 2>/dev/null || true
 fi
 
-# If we're on a Mac, let's install and setup homebrew.
+# If we're on a Mac, set up sudoers and install homebrew.
 if [ "$(uname -s)" == "Darwin" ]
 then
+  info "setting up sudoers rules"
+  source "$DOTFILES_ROOT/macos/setup-sudoers.sh"
+  success "sudoers"
+
   info "installing dependencies"
-  if source bin/dot | while read -r data; do info "$data"; done
+  if source bin/dots | while read -r data; do info "$data"; done
   then
     success "dependencies installed"
   else
