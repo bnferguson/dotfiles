@@ -10,6 +10,7 @@ brew "fd"           # find alternative
 
 # Safety
 brew "macos-trash"  # move to Trash instead of rm -rf
+brew "duti"         # set default apps for file types
 
 # Development
 brew "jj"           # jujutsu vcs (checkpointing safety net)

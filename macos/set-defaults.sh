@@ -53,3 +53,6 @@ else
   echo "  Skipping Safari defaults — terminal needs Full Disk Access."
   echo "  System Settings > Privacy & Security > Full Disk Access > add your terminal"
 fi
+
+# Set default editor for dev file types.
+"$(dirname "$0")/set-duti.sh"
