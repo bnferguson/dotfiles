@@ -9,7 +9,7 @@ Don't over comment on obvious things. Comment on non-obvious things.
 Follow the red-green-refactor cycle: write a failing test first, make it pass, then clean up. This applies to new features and refactors, but is **mandatory** for bug fixes — always write a failing test that reproduces the bug before writing the fix. If the test doesn't fail first, we haven't proven we're testing the right thing.
 
 # Communication
-When replying to PR comments, issues, or any GitHub interaction on my behalf, always preface with "🤖 Claude here —" so it's clear the response came from Claude.
+When replying to PR comments, issues, or any GitHub interaction on behalf of the user, always preface with a note identifying yourself as an AI assistant (e.g., "🤖 Claude here —") so it's clear the response didn't come from a human.
 
 # Source Control & Code Review
 Use `git` for all VCS operations.
@@ -35,19 +35,18 @@ Prefer simple, direct changes. Pull requests should be small and focused on a si
 
 The exception here is when you notice the code is getting messy or needs to be refactored (eg. code smells, adding something that two of already exist and there's a third maybe it's time to refactor). If this is the case, you can make a plan for it and ask me about the change.
 
-Prefer to open as a draft PR. This let's me add my comments to the PR description. I prefer a human touch in describing the changes.
+Prefer to open as a draft PR. This gives the author a chance to add their own comments and voice to the PR description before it goes out for review.
 
 The pull request description should follow a template:
 
 - Background - explain what the current situation is and why it needs to change. Basically anything someone who knows nothing about this needs to know to get up to speed quickly. Cross references to other PRs, Issues, Linear, Slack convos are welcome here.
-- Solution - Explain the change we made, why it addresses the above.
+- Approach - Explain the change we made, why it addresses the above.
 - Reviewer notes - Are there specific areas we want feedback on? Areas that we are proud of and want to highlight? Where should I focus my attention as a reviewer?
-- Testing Plan - How the fuck do I test what we made? How did you test it? (Later, how will we test and observe it in prod)
-- [Optional] Please post a gif on how this PR makes you feel. (Keep it PG)
+- Testing Plan - How do I test what we made? How did you test it? How will we test and observe it in production?
 
-Before creating a PR, always research the git history and related PRs to build the "Background" section. Use `git log -S`, `gh pr list --search`, and commit archaeology to trace how the current code got to this state — which PRs introduced the pattern we're changing, which PRs fixed symptoms of the same issue, and any related Linear issues or Notion docs referenced in those PRs. This context tells the story of *why* the code is the way it is and makes the case for the change.
+Before creating a PR, always research the git history and related PRs to build the "Background" section. Use `git log -S`, `gh pr list --search`, and commit archaeology to trace how the current code got to this state — which PRs introduced the pattern we're changing, which PRs fixed symptoms of the same issue, and any related Linear issues or Notion docs referenced in those PRs. This context tells the story of *why* the code is the way it is and makes the case for the change. For bug fixes, dig deeper into root cause: use `git blame` to trace how the bug was introduced and why the code ended up this way. The background should tell the story of how we got here, not just describe the symptom.
 
-For all of these we can work together on it. You can interview me and then put your thoughts after mine noting what's me and what is you.
+If the repository has a PR template (`.github/PULL_REQUEST_TEMPLATE.md`, etc.), use that structure instead of the default sections above. Apply the same interview process and research rigor to whatever sections the template defines.
 
 # Tool Guidance
 - When interacting with GitHub use `gh`
@@ -63,7 +62,7 @@ For all of these we can work together on it. You can interview me and then put y
   - YAML/XML: use `yq`
 
 # Language Specific Claude Skills
-- Ruby/Rails: always invoke the `rails-backend-guidelines` skill before writing Rails code, then run the `rails-core-code-reviewer` agent after to verify.
+- Ruby/Rails: always invoke the `rails-backend-guidelines` skill and `rails-programmer` agent before writing Rails code, then run the `rails-core-code-reviewer` agent after to verify.
 - Go: always invoke the `effective-go` and `go-concurrency-patterns` skills before writing Go code, then run the `go-core-code-reviewer` agent after to verify.
 
 # Prose
