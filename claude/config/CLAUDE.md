@@ -33,20 +33,9 @@ Hooks in `~/.claude/settings.json` run `jj status` at key moments (session start
 # Pull Requests
 Prefer simple, direct changes. Pull requests should be small and focused on a single issue. You can make a note of potential features, but avoid making unrelated changes. If the instructions are unclear, ask for clarification.
 
-The exception here is when you notice the code is getting messy or needs to be refactored (eg. code smells, adding something that two of already exist and there's a third maybe it's time to refactor). If this is the case, you can make a plan for it and ask me about the change.
+The exception here is when you notice the code is getting messy or needs to be refactored (eg. code smells, adding something that two of already exist and there's a third maybe it's time to refactor). If this is the case, you can make a plan for it and ask the user about the change.
 
-Prefer to open as a draft PR. This gives the author a chance to add their own comments and voice to the PR description before it goes out for review.
-
-The pull request description should follow a template:
-
-- Background - explain what the current situation is and why it needs to change. Basically anything someone who knows nothing about this needs to know to get up to speed quickly. Cross references to other PRs, Issues, Linear, Slack convos are welcome here.
-- Approach - Explain the change we made, why it addresses the above.
-- Reviewer notes - Are there specific areas we want feedback on? Areas that we are proud of and want to highlight? Where should I focus my attention as a reviewer?
-- Testing Plan - How do I test what we made? How did you test it? How will we test and observe it in production?
-
-Before creating a PR, always research the git history and related PRs to build the "Background" section. Use `git log -S`, `gh pr list --search`, and commit archaeology to trace how the current code got to this state — which PRs introduced the pattern we're changing, which PRs fixed symptoms of the same issue, and any related Linear issues or Notion docs referenced in those PRs. This context tells the story of *why* the code is the way it is and makes the case for the change. For bug fixes, dig deeper into root cause: use `git blame` to trace how the bug was introduced and why the code ended up this way. The background should tell the story of how we got here, not just describe the symptom.
-
-If the repository has a PR template (`.github/PULL_REQUEST_TEMPLATE.md`, etc.), use that structure instead of the default sections above. Apply the same interview process and research rigor to whatever sections the template defines.
+Use the `/pr` skill to create pull requests. It handles the full process: research, drafting, interview, and creation. Prefer draft PRs — this gives the author a chance to add their own voice before it goes out for review.
 
 # Tool Guidance
 - When interacting with GitHub use `gh`

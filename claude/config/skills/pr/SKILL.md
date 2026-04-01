@@ -72,6 +72,7 @@ For sections where the user skipped, use the normal format:
 
 ## Notes
 
+- PRs should be small and focused on a single concern. Avoid bundling unrelated changes. If you notice the code needs refactoring (code smells, emerging duplication), flag it and ask the user rather than folding it into the current PR.
 - The user's words should be kept in their voice. Don't rewrite them into formal prose. Light cleanup (typos, formatting) is fine.
 - If the user's take and your take overlap significantly, that's fine — it shows alignment. Don't try to artificially differentiate them.
 - The interview step is the important part. Don't skip it or pre-fill the user's sections. But respect the user's time — if they want to skip sections or the whole interview, let them.
