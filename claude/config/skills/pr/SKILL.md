@@ -13,6 +13,14 @@ description: "Opening a Pull Request with Interview"
 
 Create a draft pull request with an interview process that captures both the assistant's analysis and the user's own thinking. This ensures the user understands and has reflected on the changes before they go up for review.
 
+## Hard Rules
+
+- **You MUST follow every step in the Process section below, in order.** Do not skip, compress, or combine steps.
+- **The interview is mandatory.** Ask each section's question one at a time, wait for the user's response, then move to the next section. Never batch questions or pre-fill the user's answers. The user may choose to skip sections or end the interview early ("ship it", "looks good") — but that's their call, not yours.
+- **Use the correct PR structure.** The description MUST use the section format (Background, Approach, Reviewer notes, Testing plan — or the repo's PR template). Never output a flat, unstructured description.
+- **Use the dual-perspective format** for any section where the user contributed. The `<username> says` / `<assistant> says` format is not optional.
+- The only exception is step 4's trivial-PR shortcut, and even then you must propose it and get explicit confirmation before skipping.
+
 ## Process
 
 1. **Resolve identities and base branch.** Before anything else, determine:
