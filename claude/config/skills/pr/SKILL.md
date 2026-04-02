@@ -25,7 +25,7 @@ Create a draft pull request with an interview process that captures both the ass
 
 1. **Resolve identities and base branch.** Before anything else, determine:
    - The user's GitHub username: run `gh api user --jq .login` (fall back to `git config user.name` if `gh` is unavailable).
-   - The assistant's name: use whatever name you identify as (e.g., "Claude"). If unknown, use "Assistant".
+   - The assistant's name: use whatever name you identify as (e.g., "Claude"). If unknown, use "Agent".
    - The base branch: use the `base` argument if provided, otherwise detect via `gh repo view --json defaultBranchRef --jq .defaultBranchRef.name`.
 
    Use these throughout the process.
