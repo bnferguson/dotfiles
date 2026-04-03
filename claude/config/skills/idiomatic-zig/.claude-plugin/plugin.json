@@ -1,0 +1,20 @@
+{
+  "name": "idiomatic-zig",
+  "description": "Production patterns for writing idiomatic, high-performance Zig code. Derived from studying Ghostty and TigerBeetle — two of the most serious Zig codebases in production. Covers memory management, safety discipline, performance optimization, API design, testing strategies, and code organization.",
+  "version": "1.0.0",
+  "author": {
+    "name": "bnferguson"
+  },
+  "keywords": [
+    "zig",
+    "idioms",
+    "performance",
+    "style",
+    "safety",
+    "patterns",
+    "ghostty",
+    "tigerbeetle",
+    "production"
+  ],
+  "license": "MIT"
+}
