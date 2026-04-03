@@ -13,7 +13,16 @@ if command -v brew >/dev/null 2>&1; then
 elif command -v pacman >/dev/null 2>&1; then
   echo "› installing packages via pacman"
   sudo pacman -S --needed --noconfirm \
-    starship mise neovim github-cli jq yq fzf fd ast-grep uv
+    starship mise neovim github-cli jq yq fzf fd ast-grep uv zsh keyd
+
+  # keyd — system-level key remapper for Hyper key (Caps Lock → Esc/Hyper)
+  DOTFILES_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+  if [ -f "$DOTFILES_ROOT/keyd/default.conf" ]; then
+    echo "› configuring keyd"
+    sudo cp "$DOTFILES_ROOT/keyd/default.conf" /etc/keyd/default.conf
+    sudo systemctl enable keyd
+    sudo systemctl restart keyd
+  fi
 elif command -v apt-get >/dev/null 2>&1; then
   echo "› installing packages via apt"
   sudo apt-get update

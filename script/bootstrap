@@ -192,6 +192,14 @@ install_larger_paths () {
   if [ "$(uname -s)" == "Darwin" ]; then
     link_file "$DOTFILES_ROOT/karabiner" "$HOME/.config/karabiner"
   fi
+
+  if [ "$(uname -s)" == "Linux" ]; then
+    # Hyprland config overrides (bindings + input)
+    if [ -d "$HOME/.config/hypr" ]; then
+      link_file "$DOTFILES_ROOT/hyprland/bindings.conf" "$HOME/.config/hypr/bindings.conf"
+      link_file "$DOTFILES_ROOT/hyprland/input.conf" "$HOME/.config/hypr/input.conf"
+    fi
+  fi
 }
 
 setup_jjconfig () {
