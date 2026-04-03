@@ -1,12 +1,12 @@
 # Performance Patterns
 
-Deep dive into performance optimization from Ghostty and TigerBeetle.
+Performance optimization patterns from Ghostty and TigerBeetle.
 
 ## Design-Time Performance
 
 > "The lack of back-of-the-envelope performance sketches is the root of all evil."
 
-The 1000x wins come from the design phase — before you can measure or profile. Perform
+The 1000x wins come from the design phase — before measuring or profiling. Perform
 back-of-the-envelope sketches for the four resources and their two characteristics:
 
 | Resource | Bandwidth | Latency |
@@ -42,7 +42,7 @@ pub const Cell = packed struct(u64) {
 `Row` is also `packed struct(u64)`. Zero-initialization equals "empty" by design — no constructor
 needed, `@memset` to zero clears a row.
 
-**Design principle:** Make your zero value meaningful. If zero = empty/default, initialization and
+**Design principle:** Make the zero value meaningful. If zero = empty/default, initialization and
 clearing become trivial `@memset` operations.
 
 ## Row Flags for Fast-Path Skipping (Ghostty)
@@ -126,7 +126,7 @@ if (take_upper_half) {
 }
 ```
 
-This tells the CPU's branch predictor not to speculate — both paths are equally likely.
+Tells the CPU's branch predictor not to speculate — both paths are equally likely.
 
 ## Prefetching in Binary Search (TigerBeetle)
 
@@ -170,7 +170,7 @@ loser_ids: [node_count_max]u32 align(64),
 
 ## Extract Hot Loops (TigerBeetle)
 
-Remove `self` from inner-loop functions. The compiler doesn't need to prove field caching is safe
+Remove `self` from inner-loop functions. The compiler no longer needs to prove field caching is safe
 when arguments are primitives:
 
 ```zig
@@ -210,7 +210,7 @@ pub inline fn move(comptime T: type, dest: []T, source: []const T) void {
 
 ## Custom Inline Assert (Ghostty)
 
-`std.debug.assert` wasn't always optimized away in ReleaseFast. Ghostty created a custom version
+`std.debug.assert` is not always optimized away in ReleaseFast. Create a custom version
 that guarantees inlining:
 
 ```zig
@@ -224,7 +224,7 @@ pub const inlineAssert = switch (builtin.mode) {
 };
 ```
 
-15-20% overhead was observed without this in hot paths.
+Expect 15-20% overhead without this in hot paths.
 
 ## Batching (TigerBeetle)
 
@@ -240,7 +240,7 @@ Keep heavy assertions and validation on the control plane. Keep the data plane l
 
 ## Be Explicit About Compiler Optimization
 
-Don't depend on the compiler doing the right thing. Explicitly:
+Do not depend on the compiler doing the right thing. Explicitly:
 - Use `@call(.always_inline, fn, args)` for critical inner-loop functions.
 - Use `@setRuntimeSafety(constants.verify)` to disable bounds checks in hot paths during release.
 - Show division intent with `@divExact`, `@divFloor`, `div_ceil`.
@@ -251,6 +251,6 @@ Don't depend on the compiler doing the right thing. Explicitly:
 Use `u32`/`u64` for wire formats, on-disk structures, and data that must be identical across
 architectures. TigerBeetle avoids `usize` entirely for cross-architecture determinism.
 
-For general Zig code, `usize` is the stdlib convention for sizes, lengths, and indices — it's the
-type of slice `.len` and what allocator APIs accept. Use it unless you have a specific reason for
-a fixed-width type.
+For general Zig code, `usize` is the stdlib convention for sizes, lengths, and indices — the
+type of slice `.len` and what allocator APIs accept. Prefer `usize` unless there is a specific
+reason for a fixed-width type.

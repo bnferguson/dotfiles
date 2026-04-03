@@ -1,6 +1,6 @@
 # API Design Patterns
 
-Patterns for designing Zig APIs from Ghostty and TigerBeetle.
+Apply these patterns from Ghostty and TigerBeetle when designing Zig APIs.
 
 ## Options Structs for Named Arguments
 
@@ -20,14 +20,14 @@ pub fn init(alloc: Allocator, opts: Options) !Terminal { ... }
 
 ### What Goes Positional vs. Struct
 
-Dependencies (allocator, tracer, io) stay positional — they're singletons with unique types,
+Keep dependencies (allocator, tracer, io) positional — they are singletons with unique types,
 threaded through constructors from most general to most specific:
 
 ```zig
 pub fn init(gpa: Allocator, io: *IO, opts: Options) !Server { ... }
 ```
 
-Configuration goes in the options struct.
+Put configuration in the options struct.
 
 ### When to Use
 
@@ -37,7 +37,7 @@ If an argument can be `null`, name it so the meaning of `null` at the call site 
 
 ## Generic Data Structures via Type Functions
 
-The dominant pattern for reusable data structures:
+Use this dominant pattern for reusable data structures:
 
 ```zig
 pub fn TreeType(comptime Table: type, comptime Storage: type) type {
@@ -59,8 +59,8 @@ pub fn TreeType(comptime Table: type, comptime Storage: type) type {
 }
 ```
 
-**Convention:** The type function is named `FooType` (e.g., `TreeType`, `ReplicaType`,
-`CompactionType`). Inside, `const Foo = @This();` aliases the returned struct.
+**Convention:** Name the type function `FooType` (e.g., `TreeType`, `ReplicaType`,
+`CompactionType`). Inside, alias the returned struct with `const Foo = @This();`.
 
 ### Comptime Callbacks
 
@@ -104,7 +104,7 @@ fn step(self: *Replica) void {
 ```
 
 **Why over booleans:** Impossible states become unrepresentable. The compiler enforces exhaustive
-handling. Payload data is attached to the relevant state.
+handling. Attach payload data to the relevant state.
 
 ## Tagged Unions for Multi-Form Data
 
@@ -133,7 +133,7 @@ pub inline fn getRowAndCell(self: *const Page, x: usize, y: usize) struct {
 }
 ```
 
-Callers can destructure naturally:
+Destructure the result at the call site:
 
 ```zig
 const rc = page.getRowAndCell(x, y);
@@ -164,7 +164,7 @@ const MetalRenderer = Renderer(MetalAPI);
 const OpenGLRenderer = Renderer(OpenGLAPI);
 ```
 
-Each backend provides the required types and methods at comptime.
+Have each backend provide the required types and methods at comptime.
 
 ## Platform Selection at Comptime
 
@@ -197,7 +197,7 @@ fn readSectorCallback(self: *Storage) void { ... }
 
 ### Position
 
-Callbacks go last in parameter lists — mirrors control flow (invoked last):
+Place callbacks last in parameter lists — this mirrors control flow (invoked last):
 
 ```zig
 pub fn read(self: *Storage, buffer: []u8, offset: u64, callback: *const fn (*Read) void) void {
@@ -231,19 +231,19 @@ pub const default: Colors = .{
 
 ## Simpler Return Types
 
-Reduce dimensionality at the call site. Simpler return types reduce the number of branches callers
-must handle:
+Reduce dimensionality at the call site. Prefer simpler return types to minimize the number of
+branches callers must handle:
 
 - `void` trumps `bool`
 - `bool` trumps `u64`
 - `u64` trumps `?u64`
 - `?u64` trumps `!u64`
 
-This dimensionality is viral — it propagates through the call chain.
+Note that this dimensionality is viral — it propagates through the call chain.
 
 ## Struct Field Order
 
-Fields first, then types, then methods. Important things near the top:
+Order fields first, then types, then methods. Place important items near the top:
 
 ```zig
 const Tracer = struct {

@@ -13,8 +13,8 @@ trade-offs. The universally applicable ones are marked with **[universal]**; the
 
 1. **Simple, explicit control flow.** Minimum of excellent abstractions. **[universal]**
 2. **Limit everything.** All loops and queues have fixed upper bounds. **[universal]**
-3. **Explicitly-sized types** for wire formats and on-disk structures. Use `u32`/`u64` when you
-   need a specific width; use `usize` for sizes, lengths, and indices (the stdlib convention).
+3. **Explicitly-sized types** for wire formats and on-disk structures. Use `u32`/`u64` for
+   specific widths; use `usize` for sizes, lengths, and indices (the stdlib convention).
    **[domain — TigerBeetle avoids `usize` entirely for cross-architecture determinism]**
 4. **Assert everything.** Minimum two assertions per function. **[universal]**
 5. **Static memory allocation** when usage is known at startup — a performance choice that
@@ -25,8 +25,8 @@ trade-offs. The universally applicable ones are marked with **[universal]**; the
 9. **Run at your own pace.** Don't react directly to external events. **[universal]**
 
 > TigerBeetle also bans recursion (NASA Power of Ten rule 1). The Zig stdlib uses recursion in
-> `std.json`, `std.fmt`, and `std.zig.Ast`. Avoid recursion when you need provable bounds on
-> execution; use it when it's the natural expression of the algorithm.
+> `std.json`, `std.fmt`, and `std.zig.Ast`. Avoid recursion when provable bounds on execution are
+> required; use it when it is the natural expression of the algorithm.
 
 ## Assertion Density
 
@@ -51,7 +51,7 @@ fn processTransaction(txn: *const Transaction, ledger: *Ledger) !void {
 
 ## Pair Assertions
 
-For every property you enforce, find at least two different code paths to assert it:
+For every enforced property, assert it from at least two different code paths:
 
 ```zig
 // Before writing to disk:
@@ -71,7 +71,7 @@ This catches corruption at both boundaries.
 
 ## Positive AND Negative Space
 
-Assert what you expect AND what you don't:
+Assert both expected AND unexpected conditions:
 
 ```zig
 // Positive space: what we expect.

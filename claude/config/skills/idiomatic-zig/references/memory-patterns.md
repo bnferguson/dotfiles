@@ -22,7 +22,7 @@ const AllocPosix = struct {
 ```
 
 **When to use:** Hot-path allocations where the Zig allocator's overhead (small but real) is
-meaningful, and you need guaranteed zero-initialization and page alignment.
+meaningful, and guaranteed zero-initialization and page alignment are required.
 
 ## Single Contiguous Allocation with Offset Addressing (Ghostty)
 
@@ -82,7 +82,7 @@ pub fn BitmapAllocator(comptime chunk_size: comptime_int) type {
 }
 ```
 
-Using 1 for free bits makes finding free chunks faster — `@ctz` on the bitmap word gives you the
+Using 1 for free bits makes finding free chunks faster — `@ctz` on the bitmap word yields the
 first free chunk.
 
 ```zig
@@ -117,8 +117,8 @@ After startup completes, `transition_from_init_to_static()` is called. Any subse
 attempt hits an assertion failure.
 
 **Why:** Eliminates unpredictable latency from allocation and OOM in production. Forces all memory
-usage patterns to be considered upfront as part of the design. This is a performance choice — use
-it when your memory needs are knowable, not as a universal rule.
+usage patterns to be considered upfront as part of the design. This is a performance choice — apply
+it when memory needs are knowable, not as a universal rule.
 
 ## Memory Pools
 
@@ -142,7 +142,7 @@ const PagePool = std.heap.MemoryPoolAligned(
 );
 ```
 
-Pools are preheated with a reasonable minimum to avoid early allocations.
+Preheat pools with a reasonable minimum to avoid early allocations.
 
 ### IOPSType — Fixed-Capacity Operation Pool (TigerBeetle)
 
@@ -171,7 +171,7 @@ Wraps `page_allocator` and applies `MADV_HUGEPAGE` on Linux to reduce TLB pressu
 
 ## In-Place Initialization
 
-Prefer in-place initialization for any struct larger than a few cache lines:
+Use in-place initialization for any struct larger than a few cache lines:
 
 ```zig
 // Prefer — no intermediate copy:
@@ -188,7 +188,7 @@ fn main() !void {
 }
 ```
 
-In-place init is viral — if any field needs it, the container should use it too. This enables
+In-place init is viral — if any field needs it, apply it to the container as well. This enables
 pointer stability and immovable types.
 
 ## Allocator Strategy by Layer (Summary)

@@ -10,7 +10,7 @@ reading in its entirety.
 **Safety, performance, developer experience — in that order.**
 
 All three are important. Good style advances these goals simultaneously. The question is always:
-does the code make for more or less safety, performance, or developer experience?
+does the code advance or diminish safety, performance, or developer experience?
 
 ## On Simplicity
 
@@ -19,8 +19,8 @@ Simplicity is not a free pass. It's not the first attempt but the hardest revisi
 > "Simplicity and elegance are unpopular because they require hard work and discipline to achieve"
 > — Edsger Dijkstra
 
-The "super idea" that solves safety, performance, and DX simultaneously is what you're looking for.
-Multiple passes, many sketches, and you may still have to "throw one away."
+Seek the "super idea" that solves safety, performance, and DX simultaneously.
+Make multiple passes, many sketches, and be prepared to "throw one away."
 
 An hour or day of design is worth weeks or months in production.
 
@@ -31,7 +31,7 @@ to slip through. The second time may not come.
 
 > "You shall not pass!" — Gandalf
 
-What you ship is solid. You may lack crucial features, but what you have meets your design goals.
+Ship solid work. Crucial features may be missing, but what ships meets the design goals.
 This is the only way to make steady progress.
 
 ## Safety (NASA Power of Ten, Adapted)
@@ -48,7 +48,7 @@ This is the only way to make steady progress.
 
 3. **Explicitly-sized types** for wire formats, on-disk structures, and cross-architecture
    determinism. For general code, `usize` is idiomatic Zig for sizes and indices (stdlib
-   convention). Use `u32`/`u64` when you need a specific width.
+   convention). Use `u32`/`u64` when a specific width is needed.
 
 4. **Assert everything.** Minimum two per function. Pair assertions. Assert positive and negative
    space. Split compound assertions. Assert compile-time constants.
@@ -63,7 +63,7 @@ This is the only way to make steady progress.
 
 8. **All compiler warnings.** From day one, at the strictest setting.
 
-9. **Run at your own pace.** Don't react to external events directly. Batch, don't context-switch.
+9. **Run at own pace.** Avoid reacting to external events directly. Batch, don't context-switch.
 
 ## Function Splitting Rules
 

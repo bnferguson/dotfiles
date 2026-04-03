@@ -4,7 +4,7 @@ Testing patterns from Ghostty and TigerBeetle — two codebases with exceptional
 
 ## Inline Tests
 
-Tests live alongside the code they test:
+Place tests alongside the code they test:
 
 ```zig
 pub const Cell = packed struct(u64) {
@@ -40,7 +40,7 @@ test {
 
 ## refAllDecls for Compilation Coverage
 
-Ensure all declarations at least compile, even if not directly tested:
+Use `refAllDecls` to ensure all declarations at least compile, even if not directly tested:
 
 ```zig
 test {
@@ -51,7 +51,7 @@ test {
 
 ## Tripwire Error Injection (Ghostty)
 
-Inject errors at specific allocation points to test errdefer cleanup paths:
+Inject errors at specific allocation points to verify errdefer cleanup paths:
 
 ```zig
 const init_tw = tripwire.module(enum { alloc_data, alloc_nodes }, init);
@@ -93,7 +93,7 @@ VOPR (Viewstamped Operation Replicator) is TigerBeetle's deterministic simulatio
 
 ### Core Idea
 
-Stub all non-determinism:
+Stub all sources of non-determinism:
 - **Clock** — deterministic time source
 - **Network** — simulated with configurable delays, drops, reordering
 - **Disk** — simulated with configurable failures, latency
@@ -104,17 +104,17 @@ A **seed + git commit** produces perfectly reproducible results.
 
 > "One minute of VOPR time is equivalent to days of real-world testing."
 
-TigerBeetle keeps assertions on in production because VOPR has already exercised paths that would
-take years of real-world operation to hit.
+Keep assertions on in production — VOPR exercises paths that would take years of real-world
+operation to hit.
 
 ### Seed from Git Commit
 
-CI passes the current commit hash as the fuzzer seed. Any failure can be reproduced exactly from
+Pass the current commit hash as the fuzzer seed. Any failure can be reproduced exactly from
 the commit alone.
 
 ## Fuzz Every Data Structure (TigerBeetle)
 
-Every major data structure has a dedicated fuzzer:
+Give every major data structure a dedicated fuzzer:
 
 ```zig
 const Fuzzers = .{
@@ -128,12 +128,12 @@ const Fuzzers = .{
 };
 ```
 
-Fuzzers test the data structure against a simple reference implementation. If the optimized
+Test the data structure against a simple reference implementation. If the optimized
 implementation diverges from the reference, the fuzzer catches it.
 
 ## Swarm Testing (TigerBeetle)
 
-Randomly disable some enum variants and skew probabilities for better coverage:
+Randomly disable enum variants and skew probabilities for better coverage:
 
 ```zig
 pub fn random_enum_weights(prng: *stdx.PRNG, comptime Enum: type) ... {
@@ -149,7 +149,7 @@ This explores the state space more effectively than uniform random testing.
 
 ## Coverage Marks (TigerBeetle)
 
-Trace from test to production code, proving your test exercises the expected path:
+Trace from test to production code, proving the test exercises the expected path:
 
 ```zig
 // In production code:
@@ -171,12 +171,12 @@ test "process handles even numbers" {
 ```
 
 **Why this matters:** Traditional tests only verify output. Coverage marks verify that the test
-actually exercised the specific code path you intended to test. Without marks, you might pass the
-test via an unintended path.
+actually exercised the specific code path intended. Without marks, a test might pass
+via an unintended path.
 
 ## Integrity Verification (Ghostty)
 
-Complex data structures have a comprehensive `verifyIntegrity()` function:
+Give complex data structures a comprehensive `verifyIntegrity()` function:
 
 ```zig
 pub const IntegrityError = error{
@@ -207,7 +207,7 @@ pub fn verifyIntegrity(self: *const Page) IntegrityError!void {
 }
 ```
 
-Called via `assertIntegrity()` which is a no-op in release:
+Call via `assertIntegrity()` which is a no-op in release:
 
 ```zig
 pub inline fn assertIntegrity(self: *const Page) void {
@@ -223,13 +223,13 @@ pub inline fn assertIntegrity(self: *const Page) void {
 `zig build test -- tidy`. Checks things that `zig fmt` doesn't: naming conventions, import
 ordering, file organization.
 
-**Pattern:** Write your linter in Zig. It runs with the build, has type safety, and is
+**Pattern:** Write the linter in Zig. It runs with the build, has type safety, and is
 cross-platform. No shell scripts or external tools needed.
 
 ## Continuous Fuzzing
 
-TigerBeetle runs a dedicated cluster of machines (CFO — Continuous Fuzzing Orchestrator) that
-runs fuzzers 24/7. When a failure is found, the seed is captured for reproduction.
+Run fuzzers continuously (TigerBeetle uses a dedicated cluster — CFO, Continuous Fuzzing
+Orchestrator — running 24/7). Capture the seed on failure for reproduction.
 
 ## Test Description Pattern
 
@@ -252,8 +252,8 @@ test "page compaction preserves grapheme integrity under concurrent modification
 
 ## Exhaustive Testing
 
-Tests must test exhaustively — not only valid data but also invalid data, and the transition from
-valid to invalid:
+Test exhaustively — not only valid data but also invalid data, and the transition from valid
+to invalid:
 
 ```zig
 test "reject invalid codepoints" {
