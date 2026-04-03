@@ -36,17 +36,25 @@ This is the only way to make steady progress.
 
 ## Safety (NASA Power of Ten, Adapted)
 
-1. **Simple, explicit control flow.** No recursion. Minimum of excellent abstractions. Abstractions
-   are [never zero cost](https://isaacfreund.com/blog/2022-05/).
+> Note: These rules come from safety-critical infrastructure. Most are universally good practice,
+> but rules 1, 3, and 5 are domain-specific choices that diverge from general Zig practice. See
+> `safety-and-assertions.md` for detailed guidance on when each applies.
+
+1. **Simple, explicit control flow.** Minimum of excellent abstractions. Abstractions
+   are [never zero cost](https://isaacfreund.com/blog/2022-05/). TigerBeetle also bans recursion;
+   general Zig code can use recursion when it's the natural fit (the stdlib does).
 
 2. **Limit everything.** All loops and queues have fixed upper bounds. Fail-fast on violations.
 
-3. **Explicitly-sized types.** `u32` over `usize`.
+3. **Explicitly-sized types** for wire formats, on-disk structures, and cross-architecture
+   determinism. For general code, `usize` is idiomatic Zig for sizes and indices (stdlib
+   convention). Use `u32`/`u64` when you need a specific width.
 
 4. **Assert everything.** Minimum two per function. Pair assertions. Assert positive and negative
    space. Split compound assertions. Assert compile-time constants.
 
-5. **Static memory.** All memory allocated at startup. No dynamic allocation after init.
+5. **Static memory** when usage is known at startup — eliminates OOM and latency spikes. A
+   performance choice, not a universal rule. Dynamic allocation is fine when appropriate.
 
 6. **Smallest possible scope.** Minimize variables in scope.
 

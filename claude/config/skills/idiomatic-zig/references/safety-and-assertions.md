@@ -6,17 +6,27 @@ integrity verification patterns.
 ## NASA's Power of Ten for Zig
 
 TigerBeetle's safety model is adapted from [NASA's Power of Ten — Rules for Developing Safety
-Critical Code](https://spinroot.com/gerard/pdf/P10.pdf):
+Critical Code](https://spinroot.com/gerard/pdf/P10.pdf). These rules were designed for
+safety-critical infrastructure. Some are universally good practice; others are domain-specific
+trade-offs. The universally applicable ones are marked with **[universal]**; the rest are marked
+**[domain]** — valuable when correctness is paramount, but not idiomatic general-purpose Zig.
 
-1. **Simple, explicit control flow.** No recursion. Minimum of excellent abstractions.
-2. **Limit everything.** All loops and queues have fixed upper bounds.
-3. **Explicitly-sized types.** `u32` over `usize`.
-4. **Assert everything.** Minimum two assertions per function.
-5. **Static memory allocation.** No dynamic allocation after init.
-6. **Smallest possible scope.** Minimize variables in scope.
-7. **70-line function limit.** Hard limit. Art is born of constraints.
-8. **All compiler warnings at strictest.** From day one.
-9. **Run at your own pace.** Don't react directly to external events.
+1. **Simple, explicit control flow.** Minimum of excellent abstractions. **[universal]**
+2. **Limit everything.** All loops and queues have fixed upper bounds. **[universal]**
+3. **Explicitly-sized types** for wire formats and on-disk structures. Use `u32`/`u64` when you
+   need a specific width; use `usize` for sizes, lengths, and indices (the stdlib convention).
+   **[domain — TigerBeetle avoids `usize` entirely for cross-architecture determinism]**
+4. **Assert everything.** Minimum two assertions per function. **[universal]**
+5. **Static memory allocation** when usage is known at startup — a performance choice that
+   eliminates OOM and latency spikes. **[domain — great when it fits, not a universal rule]**
+6. **Smallest possible scope.** Minimize variables in scope. **[universal]**
+7. **70-line function limit.** Hard limit. Art is born of constraints. **[universal]**
+8. **All compiler warnings at strictest.** From day one. **[universal]**
+9. **Run at your own pace.** Don't react directly to external events. **[universal]**
+
+> TigerBeetle also bans recursion (NASA Power of Ten rule 1). The Zig stdlib uses recursion in
+> `std.json`, `std.fmt`, and `std.zig.Ast`. Avoid recursion when you need provable bounds on
+> execution; use it when it's the natural expression of the algorithm.
 
 ## Assertion Density
 

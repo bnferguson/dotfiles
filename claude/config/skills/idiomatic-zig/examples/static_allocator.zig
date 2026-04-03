@@ -1,13 +1,13 @@
-// Static allocation after init — TigerBeetle pattern.
+// Static allocation after init — a performance optimization from TigerBeetle.
 //
-// All memory is allocated at startup. After initialization completes,
-// the allocator transitions to "static" mode where any allocation
-// attempt is an assertion failure. This eliminates:
-// - Use-after-free (no free after init).
+// When memory usage is known or knowable at startup, allocating everything
+// upfront and forbidding further allocation eliminates:
 // - Unpredictable latency from allocation.
 // - OOM in production.
 //
-// Forces all memory usage to be considered upfront as part of design.
+// This is a performance choice, not a universal rule. Use it when your
+// memory needs are knowable at init time (databases, servers with fixed
+// connection pools, embedded systems).
 
 const std = @import("std");
 const assert = std.debug.assert;

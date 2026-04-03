@@ -99,9 +99,11 @@ const page_uri: Offset(u8).Slice = uri: {
 };
 ```
 
-## Static Allocation After Init (TigerBeetle)
+## Static Allocation After Init (Performance Optimization)
 
-TigerBeetle's `StaticAllocator` enforces a three-phase lifetime:
+When memory usage is known or knowable at startup, allocating everything upfront eliminates
+unpredictable latency and OOM in production. TigerBeetle's `StaticAllocator` enforces a
+three-phase lifetime:
 
 ```zig
 const State = enum {
@@ -114,8 +116,9 @@ const State = enum {
 After startup completes, `transition_from_init_to_static()` is called. Any subsequent allocation
 attempt hits an assertion failure.
 
-**Why:** Eliminates use-after-free, unpredictable latency from allocation, and OOM in production.
-Forces all memory usage patterns to be considered upfront as part of the design.
+**Why:** Eliminates unpredictable latency from allocation and OOM in production. Forces all memory
+usage patterns to be considered upfront as part of the design. This is a performance choice — use
+it when your memory needs are knowable, not as a universal rule.
 
 ## Memory Pools
 
@@ -193,7 +196,7 @@ pointer stability and immovable types.
 ```
 Application startup
   └── GeneralPurposeAllocator (debug) / c_allocator (release)
-       ├── StaticAllocator wrapper (TigerBeetle: no alloc after init)
+       ├── StaticAllocator wrapper (when memory needs are known at startup)
        ├── MemoryPool for fixed-size objects
        ├── ArenaAllocator for temporary work
        └── Direct OS allocation for hot paths (Ghostty)

@@ -246,7 +246,11 @@ Don't depend on the compiler doing the right thing. Explicitly:
 - Show division intent with `@divExact`, `@divFloor`, `div_ceil`.
 - Pass full options to builtins like `@prefetch`.
 
-## Explicitly-Sized Types (TigerBeetle)
+## Explicitly-Sized Types
 
-Use `u32`, `u64`, not `usize`. Architecture-specific sizes create portability bugs and make
-reasoning about limits harder.
+Use `u32`/`u64` for wire formats, on-disk structures, and data that must be identical across
+architectures. TigerBeetle avoids `usize` entirely for cross-architecture determinism.
+
+For general Zig code, `usize` is the stdlib convention for sizes, lengths, and indices — it's the
+type of slice `.len` and what allocator APIs accept. Use it unless you have a specific reason for
+a fixed-width type.

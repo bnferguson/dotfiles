@@ -64,11 +64,11 @@ Production Zig codebases use different allocators at different layers:
 | Sub-page structures | Bitmap allocators with offset addressing | Ghostty grapheme storage |
 | Fixed-size objects | `MemoryPool` / custom pool with bitset | Both: node pools |
 | Temporary work | `ArenaAllocator` | Integrity checks, temp buffers |
-| Infrastructure | Static allocation at startup, no runtime alloc | TigerBeetle (all of it) |
+| Known-size infrastructure | Static allocation at startup | TigerBeetle (all of it) |
 
-### Static Allocation After Init (TigerBeetle Pattern)
+### Static Allocation After Init (Performance Optimization)
 
-Allocate all memory at startup. Transition to a "static" state where no further allocation is permitted. This eliminates use-after-free, unpredictable latency, and OOM in production:
+When your memory usage is known or knowable at startup, allocating everything upfront and forbidding further allocation eliminates unpredictable latency and OOM in production. This is a performance choice, not a universal rule — use it when it fits your domain:
 
 ```zig
 const State = enum { init, static, deinit };
