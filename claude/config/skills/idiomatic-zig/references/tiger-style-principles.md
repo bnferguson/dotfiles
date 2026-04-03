@@ -84,15 +84,19 @@ Inverse hourglass.
 
 ## Naming
 
+> Note: TigerBeetle's style deviates from the Zig stdlib on function naming (`snake_case` vs
+> `camelCase`), file naming (all `snake_case` vs `TitleCase.zig` for struct files), and acronym
+> casing (`VSRState` vs `VsrState`). Where they diverge, **follow the Zig stdlib** — see the
+> Naming section in SKILL.md. The principles below about name *quality* are universally applicable.
+
 - **Get nouns and verbs just right.** Great names capture what a thing is or does.
-- **snake_case** for functions, variables, files. Not CamelCase.zig.
 - **No abbreviations** (except `i`, `j` in sort/matrix code).
 - **Units/qualifiers last**, sorted by descending significance: `latency_ms_max`.
 - **Same-length related names**: `source`/`target` over `src`/`dest`.
-- **Proper acronym capitalization**: `VSRState` not `VsrState`.
+- **Acronyms are regular words** (Zig stdlib convention): `VsrState`, `TcpServer`, `Io`.
 - **Infuse meaning**: `gpa: Allocator` and `arena: Allocator` over `allocator: Allocator`.
 - **Nouns over adjectives**: `replica.pipeline` not `replica.preparing`.
-- **Helper prefix**: `read_sector()` and `read_sector_callback()`.
+- **Helper prefix**: `readSector()` and `readSectorCallback()`.
 
 ## Code Organization
 

@@ -169,10 +169,11 @@ Each backend provides the required types and methods at comptime.
 ## Platform Selection at Comptime
 
 ```zig
-pub const IO = switch (builtin.target.os.tag) {
-    .linux => IO_Linux,
-    .macos, .ios => IO_Darwin,
-    .windows => IO_Windows,
+// Acronyms are regular words per the Zig style guide (Io, not IO).
+pub const Io = switch (builtin.target.os.tag) {
+    .linux => IoLinux,
+    .macos, .ios => IoDarwin,
+    .windows => IoWindows,
     else => @compileError("unsupported platform"),
 };
 
@@ -190,8 +191,8 @@ pub const Face = switch (options.backend) {
 Prefix callbacks with the calling function name:
 
 ```zig
-fn read_sector(self: *Storage, offset: u64) void { ... }
-fn read_sector_callback(self: *Storage) void { ... }
+fn readSector(self: *Storage, offset: u64) void { ... }
+fn readSectorCallback(self: *Storage) void { ... }
 ```
 
 ### Position

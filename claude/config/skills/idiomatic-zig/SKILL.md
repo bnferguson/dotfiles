@@ -395,10 +395,10 @@ pub fn set(self: *ModeState, mode: Mode, value: bool) void {
 ### Platform Selection at Comptime
 
 ```zig
-pub const IO = switch (builtin.target.os.tag) {
-    .linux => IO_Linux,
-    .macos, .ios => IO_Darwin,
-    .windows => IO_Windows,
+pub const Io = switch (builtin.target.os.tag) {
+    .linux => IoLinux,
+    .macos, .ios => IoDarwin,
+    .windows => IoWindows,
     else => @compileError("unsupported platform"),
 };
 ```
@@ -479,9 +479,42 @@ Keep `build.zig` thin. Delegate to file-structs in `src/build/`:
 
 ## Naming & Style
 
-### snake_case for Everything
+Follow the [Zig style guide](https://ziglang.org/documentation/master/#Style-Guide). Where Ghostty
+and TigerBeetle disagree, the Zig stdlib is the tiebreaker.
 
-Functions, variables, file names — all `snake_case`. TigerBeetle explicitly rejects Zig's `CamelCase.zig` convention for struct files. Ghostty uses PascalCase for file-as-struct files but `camelCase` for functions (standard Zig).
+### Naming Rules (from Zig Style Guide)
+
+- **Types**: `TitleCase` — `ArrayList`, `Allocator`, `SemanticVersion`
+- **Functions/methods**: `camelCase` — `insertSlice`, `appendAssumeCapacity`
+- **Functions returning `type`**: `TitleCase` — `fn ArrayList(comptime T: type) type`
+- **Variables and constants**: `snake_case` — `max_connections`, `default_timeout_ms`
+- **File names**: `TitleCase.zig` for file-as-struct (files with top-level fields), `snake_case.zig` for namespace modules
+
+```
+TitleCase files:   Thread.zig, Allocator.zig, Terminal.zig  (struct with fields)
+snake_case files:  hash_map.zig, mem.zig, config.zig        (namespace, no fields)
+```
+
+### Acronyms Are Regular Words
+
+The Zig style guide is explicit: acronyms follow the same casing rules as any other word. Even
+two-letter acronyms:
+
+```zig
+// Correct (stdlib convention):
+const XmlParser = struct { ... };
+const TcpServer = struct { ... };
+const Io = @import("Io.zig");
+fn readU32Be() u32 {}
+
+// Wrong:
+const XMLParser = struct { ... };  // Acronym not title-cased.
+const TCPServer = struct { ... };  // Same.
+const IO = @import("IO.zig");     // Same.
+```
+
+> Note: TigerBeetle uses `VSRState` and Ghostty uses `IO` — both deviate from the stdlib here.
+> The stdlib uses `Io`, `Uri`, `Tcp`, `Tls`. Follow the stdlib.
 
 ### Units and Qualifiers Last, by Descending Significance
 
@@ -583,7 +616,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
 
 ### Callbacks Go Last
 
-Mirror control flow — callbacks are invoked last, so they appear last in parameter lists. Name them with the calling function as prefix: `read_sector()` and `read_sector_callback()`.
+Mirror control flow — callbacks are invoked last, so they appear last in parameter lists. Name them with the calling function as prefix: `readSector()` and `readSectorCallback()`.
 
 ## Testing
 
