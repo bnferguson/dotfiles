@@ -58,6 +58,14 @@ if [ "$(uname -s)" = "Darwin" ]; then
 	fi
 fi
 
+# Linux-specific updates
+if [ "$(uname -s)" = "Linux" ]; then
+	if command -v pacman >/dev/null 2>&1; then
+		echo "› pacman -Syu"
+		sudo pacman -Syu
+	fi
+fi
+
 # Run topic installers
 echo "› $ZSH/script/install"
 $ZSH/script/install
