@@ -168,7 +168,7 @@ func main() {
 }
 ```
 
-### Pattern 2: Fan-Out/Fan-In Pipeline
+### Pattern 2: Work Distribution with Fan-In
 
 ```go
 package main
@@ -248,7 +248,7 @@ func main() {
     // Generate input
     in := generate(ctx, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
 
-    // Fan out to multiple squarers
+    // Distribute work across multiple squarers (competing consumers on shared channel)
     c1 := square(ctx, in)
     c2 := square(ctx, in)
     c3 := square(ctx, in)
@@ -431,8 +431,10 @@ package main
 import (
     "context"
     "fmt"
-    "golang.org/x/sync/errgroup"
     "net/http"
+    "sync"
+
+    "golang.org/x/sync/errgroup"
 )
 
 func fetchAllURLs(ctx context.Context, urls []string) ([]string, error) {

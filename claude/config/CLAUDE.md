@@ -51,7 +51,7 @@ Use the `/pr` skill to create pull requests. It handles the full process: resear
   - YAML/XML: use `yq`
 
 # Language Specific Claude Skills
-- Ruby/Rails: always invoke the `rails-backend-guidelines` skill and `rails-programmer` agent before writing Rails code, then run the `rails-core-code-reviewer` agent after to verify.
+- Ruby/Rails: always invoke the `rails-programmer` skill before writing Rails code, then run the `rails-core-code-reviewer` agent after to verify.
 - Go: always invoke the `effective-go` and `go-concurrency-patterns` skills before writing Go code, then run the `go-core-code-reviewer` agent after to verify.
 
 # Prose
