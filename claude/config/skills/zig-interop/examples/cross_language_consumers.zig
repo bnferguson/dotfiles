@@ -69,9 +69,15 @@ fn resolve_foreign_type(comptime lang: Language, comptime T: type) []const u8 {
 
 const Language = enum { c, go, rust };
 
+/// Extract the short name from a fully-qualified @typeName (e.g., "mod.Foo" -> "Foo").
+fn shortName(comptime full: [:0]const u8) [:0]const u8 {
+    const idx = comptime std.mem.lastIndexOfScalar(u8, full, '.') orelse return full;
+    return full[idx + 1 ..];
+}
+
 /// Emit a foreign struct definition by walking @typeInfo fields.
 fn emit_struct(comptime lang: Language, comptime T: type, writer: anytype) !void {
-    const name = @typeName(T);
+    const name = comptime shortName(@typeName(T));
     switch (lang) {
         .c => {
             try writer.print("typedef struct {s} {{\n", .{name});
@@ -103,7 +109,7 @@ fn emit_struct(comptime lang: Language, comptime T: type, writer: anytype) !void
 /// Emit a foreign enum definition by walking @typeInfo enum fields.
 fn emit_enum(comptime lang: Language, comptime T: type, writer: anytype) !void {
     const info = @typeInfo(T).@"enum";
-    const name = @typeName(T);
+    const name = comptime shortName(@typeName(T));
     const backing = resolve_foreign_type(lang, info.tag_type);
 
     switch (lang) {
@@ -134,19 +140,30 @@ fn emit_enum(comptime lang: Language, comptime T: type, writer: anytype) !void {
     }
 }
 
-fn generate(comptime lang: Language) []const u8 {
+fn generateLen(comptime lang: Language) usize {
     comptime {
         var buf: [4096]u8 = undefined;
         var stream = std.io.fixedBufferStream(&buf);
         const writer = stream.writer();
         emit_enum(lang, Status, writer) catch unreachable;
         emit_struct(lang, Account, writer) catch unreachable;
-        const written = stream.getWritten();
-        // Copy to a comptime-persistent slice.
-        var result: [written.len]u8 = undefined;
-        @memcpy(&result, written);
-        return &result;
+        return stream.getWritten().len;
     }
+}
+
+fn generate(comptime lang: Language) *const [generateLen(lang)]u8 {
+    const len = comptime generateLen(lang);
+    // Two-pass: first pass computes length, second copies by value via `.*`
+    // to avoid returning a reference to comptime-local memory.
+    const result = comptime blk: {
+        var buf: [4096]u8 = undefined;
+        var stream = std.io.fixedBufferStream(&buf);
+        const writer = stream.writer();
+        emit_enum(lang, Status, writer) catch unreachable;
+        emit_struct(lang, Account, writer) catch unreachable;
+        break :blk stream.getWritten()[0..len].*;
+    };
+    return &result;
 }
 
 test "rust bindings contain repr(C) struct" {

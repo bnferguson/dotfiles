@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const CallingConvention = std.builtin.CallingConvention;
 
 // --- Pattern 1: Function type synthesis (zig-objc's msgSend) ----------------
 pub fn ObjcSendFn(comptime Return: type, comptime ArgTypes: []const type) type {
@@ -17,7 +18,7 @@ pub fn ObjcSendFn(comptime Return: type, comptime ArgTypes: []const type) type {
         params[i + 2] = .{ .is_generic = false, .is_noalias = false, .type = T };
     }
     return @Type(.{ .@"fn" = .{
-        .calling_convention = .c,
+        .calling_convention = CallingConvention.c,
         .is_generic = false,
         .is_var_args = false,
         .return_type = Return,
@@ -62,14 +63,20 @@ pub fn LuaState(comptime version: LuaVersion) type {
 
         // lua_isinteger: 5.3+, not LuaJIT
         pub const isInteger = switch (version) {
-            .lua53, .lua54 => struct { pub fn call(_: @This(), _: i32) bool { return true; } }.call,
-            .luajit => struct { pub fn call(_: @This(), _: i32) bool { return false; } }.call,
+            .lua53, .lua54 => struct {
+                pub fn call(_: @This(), _: i32) bool { return true; }
+            }.call,
+            .luajit => struct {
+                pub fn call(_: @This(), _: i32) bool { return false; }
+            }.call,
         };
 
-        // lua_warning: 5.4+ only
-        pub usingnamespace if (version == .lua54) struct {
-            pub fn warning(_: @This(), _: [:0]const u8) void {}
-        } else struct {};
+        // lua_warning: 5.4+ only.
+        // usingnamespace was removed in 0.14+; use a comptime bool flag instead.
+        pub const has_warning = version == .lua54;
+        pub fn warning(_: @This(), _: [:0]const u8) void {
+            comptime std.debug.assert(version == .lua54);
+        }
     };
 }
 
@@ -103,7 +110,7 @@ const Widget = struct { width: u32, height: u32, visible: bool };
 test "ObjcSendFn synthesizes correct signature" {
     const info = @typeInfo(ObjcSendFn(void, &.{ u32, bool })).@"fn";
     try std.testing.expectEqual(@as(usize, 4), info.params.len);
-    try std.testing.expect(info.calling_convention == .c);
+    try std.testing.expectEqual(CallingConvention.c, info.calling_convention);
 }
 
 test "msgSendVariant selects base for void return" {
@@ -118,8 +125,8 @@ test "FieldMeta walks struct fields" {
 }
 
 test "LuaVersion dispatch selects correct API" {
-    try std.testing.expect(@hasDecl(LuaState(.lua54), "warning"));
-    try std.testing.expect(!@hasDecl(LuaState(.luajit), "warning"));
+    try std.testing.expect(LuaState(.lua54).has_warning);
+    try std.testing.expect(LuaState(.luajit).has_warning == false);
 }
 
 test "JsBridge reflects struct properties" {

@@ -10,7 +10,8 @@ const std = @import("std");
 
 // --- Pattern 1: Tagged string (ZigString / ghostty_string_s) ----------------
 
-pub const StringTag = enum(u2) { borrowed = 0, owned = 1, static = 2 };
+// Tag backing type must be extern-compatible (min 8-bit); u2 is not.
+pub const StringTag = enum(u8) { borrowed = 0, owned = 1, static_str = 2 };
 
 pub const TaggedString = extern struct {
     _unsafe_ptr_do_not_use: [*]const u8,
@@ -40,7 +41,8 @@ pub fn setGlobalAllocator(a: std.mem.Allocator) void { ffi_allocator = a; }
 
 // In real code these are `export fn` so the C library resolves them.
 fn cryptoMalloc(size: usize) callconv(.c) ?*anyopaque {
-    const buf = ffi_allocator.alignedAlloc(u8, 16, size) catch return null;
+    // In 0.15+, alignment is ?std.mem.Alignment (a log2 enum), not a raw integer.
+    const buf = ffi_allocator.alignedAlloc(u8, .@"4", size) catch return null; // .@"4" = 2^4 = 16
     return @ptrCast(buf.ptr);
 }
 

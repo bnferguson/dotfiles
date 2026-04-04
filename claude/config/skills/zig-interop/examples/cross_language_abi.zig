@@ -7,6 +7,7 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const CallingConvention = std.builtin.CallingConvention;
 
 // --- Pattern 1: Options extern struct (Ghostty's apprt config) --------------
 
@@ -56,7 +57,7 @@ pub fn MsgSendFn(comptime Return: type, comptime Args: []const type) type {
         params[i + 2] = .{ .is_generic = false, .is_noalias = false, .type = A };
     }
     return @Type(.{ .@"fn" = .{
-        .calling_convention = .c,
+        .calling_convention = CallingConvention.c,
         .is_generic = false,
         .is_var_args = false,
         .return_type = Return,
@@ -102,7 +103,7 @@ test "MsgSendFn synthesizes correct param count" {
     const Fn = MsgSendFn(void, &.{u32});
     const info = @typeInfo(Fn).@"fn";
     try std.testing.expectEqual(@as(usize, 3), info.params.len);
-    try std.testing.expect(info.calling_convention == .c);
+    try std.testing.expectEqual(CallingConvention.c, info.calling_convention);
 }
 
 test "NativeView platform tag is valid" {
