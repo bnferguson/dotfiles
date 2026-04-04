@@ -166,6 +166,9 @@ const OpenGLRenderer = Renderer(OpenGLAPI);
 
 Have each backend provide the required types and methods at comptime.
 
+> Note: Ghostty uses `Renderer` rather than `RendererType`. The `FooType` suffix is a TigerBeetle
+> convention. Both are common in practice — pick one and be consistent within a codebase.
+
 ## Platform Selection at Comptime
 
 ```zig

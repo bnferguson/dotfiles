@@ -37,7 +37,7 @@ This is the only way to make steady progress.
 ## Safety (NASA Power of Ten, Adapted)
 
 > Note: These rules come from safety-critical infrastructure. Most are universally good practice,
-> but rules 1, 3, and 5 are domain-specific choices that diverge from general Zig practice. See
+> but rules 3 and 5 are domain-specific choices that diverge from general Zig practice. See
 > `safety-and-assertions.md` for detailed guidance on when each applies.
 
 1. **Simple, explicit control flow.** Minimum of excellent abstractions. Abstractions

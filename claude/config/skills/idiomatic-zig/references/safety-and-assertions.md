@@ -30,9 +30,9 @@ trade-offs. The universally applicable ones are marked with **[universal]**; the
 
 ## Assertion Density
 
-Target a minimum of **two assertions per function**. Assertions are a force multiplier for fuzzing —
-they downgrade catastrophic correctness bugs into liveness bugs (crashes instead of silent
-corruption).
+Target a minimum of **two assertions per function** in production logic. Trivial helpers, wrappers,
+and simple delegating functions are exempt. Assertions are a force multiplier for fuzzing — they
+downgrade catastrophic correctness bugs into liveness bugs (crashes instead of silent corruption).
 
 ```zig
 fn processTransaction(txn: *const Transaction, ledger: *Ledger) !void {

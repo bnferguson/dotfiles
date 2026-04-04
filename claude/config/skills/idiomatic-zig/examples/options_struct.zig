@@ -8,10 +8,10 @@ const Allocator = std.mem.Allocator;
 
 pub const Server = struct {
     allocator: Allocator,
-    config: Config,
+    config: Options,
     listener: ?std.posix.socket_t = null,
 
-    pub const Config = struct {
+    pub const Options = struct {
         host: []const u8 = "127.0.0.1",
         port: u16 = 8080,
         max_connections: u32 = 1024,
@@ -21,8 +21,8 @@ pub const Server = struct {
     };
 
     /// Dependencies are positional (unique types, can't be mixed up).
-    /// Configuration uses a struct (multiple integers that could be swapped).
-    pub fn init(allocator: Allocator, config: Config) !Server {
+    /// Configuration uses an options struct (multiple integers that could be swapped).
+    pub fn init(allocator: Allocator, config: Options) !Server {
         return .{
             .allocator = allocator,
             .config = config,
