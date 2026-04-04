@@ -6,7 +6,7 @@ description: >
   as C, bridging Zig with Rust/Swift/ObjC/Go/Ruby, configuring build.zig
   for C compilation, or using comptime for FFI metaprogramming. Patterns
   are extracted from production codebases (Bun, Ghostty, libxev,
-  TigerBeetle, Lightpanda). Targets Zig 0.14+. Complements
+  TigerBeetle, Lightpanda). Targets Zig 0.15+. Complements
   zig-programming (language fundamentals) and idiomatic-zig (style).
 ---
 
