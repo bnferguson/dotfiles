@@ -15,7 +15,7 @@ Patterns distilled from two flagship Zig projects:
 - **Ghostty** — GPU-accelerated terminal emulator. SIMD optimization, cache-friendly packed structs, offset-based memory addressing, cross-platform abstraction.
 - **TigerBeetle** — Distributed financial database. Static allocation discipline, assertion-driven safety, deterministic simulation testing, io_uring integration. Their [TIGER_STYLE.md](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md) is one of the best coding style guides ever written.
 
-**Target version:** Zig 0.14+. When using the `zig-programming` skill alongside this one, defer to its version detection for API specifics. Some builtins referenced here (e.g., `@branchHint`) are recent additions.
+**Target version:** Zig 0.15+. When using the `zig-programming` skill alongside this one, defer to its version detection for API specifics. Some builtins referenced here (e.g., `@branchHint`) are recent additions.
 
 ## How to Use This Skill
 
@@ -85,7 +85,7 @@ Key patterns:
 
 Key rules:
 
-- **Two assertions per function minimum.** Assertions are a force multiplier for fuzzing.
+- **Two assertions per function minimum** in production logic. Assertions are a force multiplier for fuzzing. Trivial helpers and wrappers are exempt.
 - **Pair assertions** — Assert the same property in two different code paths (e.g., before write AND after read).
 - **Assert positive AND negative space** — `assert(index < length)` AND `assert(value != sentinel)`.
 - **Split compound assertions** — `assert(a); assert(b);` over `assert(a and b)` for precise diagnostics.
@@ -142,7 +142,7 @@ Follow the [Zig style guide](https://ziglang.org/documentation/master/#Style-Gui
 - **Types**: `TitleCase` — `ArrayList`, `Allocator`
 - **Functions/methods**: `camelCase` — `insertSlice`, `appendAssumeCapacity`
 - **Functions returning `type`**: `TitleCase` — `fn ArrayList(comptime T: type) type`
-- **Variables and constants**: `snake_case` — `max_connections`, `default_timeout_ms`
+- **Variables and constants**: `snake_case` — `max_connections`, `timeout_ms_default`
 - **File names**: `TitleCase.zig` for file-as-struct, `snake_case.zig` for namespace modules
 
 ### Acronyms Are Regular Words
@@ -181,7 +181,7 @@ const IO = @import("IO.zig");
 
 > Full examples in `references/api-design-patterns.md`.
 
-- **Options structs** — When arguments can be mixed up (especially multiple integers), use a config struct. Dependencies stay positional, configuration goes in the struct.
+- **Options structs** — When arguments can be mixed up (especially multiple integers), use an options struct. Dependencies stay positional, configuration goes in the struct.
 - **Tagged unions for state machines** — Express multi-state logic as `union(enum)`, not boolean flags.
 - **Return struct for multiple values** — `struct { row: *Row, cell: *Cell }`.
 - **Callbacks go last** — Mirror control flow. Name with calling function as prefix: `readSector()` / `readSectorCallback()`.
