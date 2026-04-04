@@ -19,7 +19,7 @@ pub const Cell = packed struct(u64) {
     wide: Wide = .narrow,
     protected: bool = false,
     hyperlink: bool = false,
-    _padding: u18 = 0,
+    _padding: u21 = 0,
 
     const ContentTag = enum(u2) { codepoint, run };
     const Wide = enum(u2) { narrow, wide, spacer_head, spacer_tail };
