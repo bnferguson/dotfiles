@@ -1,12 +1,13 @@
 ---
 name: zig-interop
 description: >
-  Zig FFI and cross-language interoperability patterns extracted from
-  production codebases (Bun, Ghostty, libxev, Lightpanda). Covers
-  @cImport binding, C++ shim layers, exporting Zig as C, cross-language
-  ABI, build system C integration, and comptime FFI metaprogramming.
-  Targets Zig 0.14+. Complements zig-programming (language fundamentals)
-  and idiomatic-zig (style and idioms).
+  This skill should be used when working on Zig FFI or cross-language
+  interoperability — wrapping C libraries, binding C++, exporting Zig
+  as C, bridging Zig with Rust/Swift/ObjC/Go/Ruby, configuring build.zig
+  for C compilation, or using comptime for FFI metaprogramming. Patterns
+  are extracted from production codebases (Bun, Ghostty, libxev,
+  TigerBeetle, Lightpanda). Targets Zig 0.14+. Complements
+  zig-programming (language fundamentals) and idiomatic-zig (style).
 ---
 
 # Zig Interop Skill
@@ -50,9 +51,9 @@ Load on demand when working on a specific interop pattern:
 | `references/cimport-and-type-mapping.md` | @cImport mechanics, Ghostty's c.zig pattern, Bun's pre-translation approach, opaque vs handle wrapping | `@cImport`, `translate-c` |
 | `references/cpp-shim-patterns.md` | Bun's codegen pipeline, `[[ZIG_EXPORT]]` annotations, ExternTraits, Errorable(T), flat C API alternatives | `C++ shim`, `extern "C"` |
 | `references/exporting-zig-as-c.md` | libxev's fixed-size byte arrays, Ghostty's CAPI struct, @fieldParentPtr smuggling, module.modulemap | `export fn`, `callconv` |
-| `references/cross-language-abi.md` | C ABI as lingua franca, Zig-Rust, Zig-Swift, Zig-ObjC | `ABI`, `Rust FFI` |
-| `references/build-system-c-integration.md` | `addCSourceFiles`, linking, pkg-config, cross-compilation | `addCSourceFiles`, `linkSystemLibrary` |
-| `references/comptime-ffi-metaprogramming.md` | Comptime wrappers, code generation, GObject/Lua bindings | `comptime`, `@typeInfo` |
+| `references/cross-language-abi.md` | Zig-ObjC (zig-objc), Zig-Swift (module.modulemap), Zig-Rust, Zig-Go (cgo/runtime.Pinner), Zig-Ruby (zig.rb/RubyAllocator) | `ABI`, `Rust FFI`, `cgo`, `Ruby` |
+| `references/build-system-c-integration.md` | `addCSourceFiles`, `addTranslateC`, framework linking, allyourcodebase vendoring patterns, cross-compilation | `addCSourceFiles`, `linkSystemLibrary`, `addTranslateC` |
+| `references/comptime-ffi-metaprogramming.md` | zig-objc @Type synthesis, ziglua field walking, TigerBeetle foreign code gen, zig-gobject GIR pipeline | `comptime`, `@typeInfo`, `@Type` |
 
 ### Examples
 
