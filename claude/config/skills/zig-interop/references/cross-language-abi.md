@@ -146,6 +146,74 @@ This eliminates the need for a shared allocator or cross-language free functions
 
 ---
 
+### Zig and Go via cgo
+
+TigerBeetle's Go client links a pre-built Zig static library through cgo. The architecture: Zig core compiles to a platform-specific `.a` file, and the Go client imports it with `#cgo LDFLAGS`.
+
+#### GC Safety with runtime.Pinner
+
+Go's garbage collector can relocate objects. Any Go object whose address is visible to Zig (e.g., passed as a callback context or written into a shared buffer) must be pinned:
+
+```go
+var pinner runtime.Pinner
+pinner.Pin(&request)
+defer pinner.Unpin()
+// Now safe to pass &request through cgo into Zig
+```
+
+Without pinning, the GC may move the object while Zig holds a pointer to it, causing silent corruption.
+
+#### Async Bridge: Zig Event Loop to Go Channel
+
+TigerBeetle's Zig core runs its own event loop. Completions flow back to Go through a C callback that writes to a buffered Go channel:
+
+1. Go submits a request through cgo, passing a completion context
+2. Zig event loop processes the request asynchronously
+3. Zig fires a C completion callback with the result
+4. The C callback writes to a Go `chan` — unblocking the waiting goroutine
+
+This bridges Zig's async model to Go's channel-based concurrency without either side adopting the other's primitives.
+
+#### Comptime-Generated Layout-Compatible Structs
+
+TigerBeetle's `go_bindings.zig` uses Zig comptime to emit Go struct definitions that are byte-for-byte compatible with the C structs. The Go client deserializes responses with zero copying — the raw bytes from Zig map directly onto Go struct fields.
+
+#### Performance
+
+The Go client achieves 94% of native Zig throughput. The overhead comes from cgo call cost and channel synchronization, not from data copying.
+
+#### Memory Model
+
+Each side uses its own allocator. Zig uses `std.heap.c_allocator`; Go uses its runtime allocator with `runtime.Pinner` for any objects that cross the boundary. No cross-language allocator coordination.
+
+---
+
+### Zig and Ruby
+
+#### zig.rb: RubyAllocator
+
+zig.rb implements `std.mem.Allocator` backed by Ruby's memory functions (`xmalloc`, `xrealloc`, `xfree`). Zig allocations made through this allocator are visible to Ruby's GC for memory pressure tracking:
+
+```zig
+// Conceptual — zig.rb provides this as a ready-made allocator
+const ruby_allocator = RubyAllocator.init();
+var list = std.ArrayList(u8).init(ruby_allocator);
+```
+
+#### Comptime Method Binding
+
+zig.rb validates method signatures at comptime and generates per-arity C trampolines (0 through 15 arguments). This avoids Ruby's varargs API entirely — each arity gets a dedicated `extern "C"` function with the exact parameter count Ruby expects.
+
+#### TypedDataClass
+
+`TypedDataClass` wraps a Zig struct as a Ruby typed data object with GC marking support. Ruby's GC can mark, sweep, and compact the wrapper while the Zig struct's memory is managed through the RubyAllocator.
+
+#### Alternative: Direct C Extension (katafrakt/zig-ruby)
+
+For simpler cases, katafrakt/zig-ruby uses `@cVaStart`/`@cVaArg` to work directly with Ruby's varargs C extension API. Build integration: `extconf.rb` generates a Makefile that invokes `zig build` with `RUBY_HDRDIR` and `RUBY_LIBDIR` environment variables pointing to the Ruby installation's headers and libraries.
+
+---
+
 ### extern struct: Layout Guarantees
 
 Use `extern struct` when a struct crosses a language boundary. Zig's default struct layout is undefined — the compiler reorders fields. An `extern struct` guarantees C-compatible layout: fields in declaration order with platform-standard alignment and padding.
@@ -212,6 +280,10 @@ Each language manages its own heap. Data crosses the boundary through callbacks 
 
 One side allocates, the other side receives a struct with the data and a free function. Ghostty's `ghostty_string_s` + `ghostty_string_free` ensures Swift always calls the correct deallocator.
 
+#### GC-Aware Patterns (Go and Ruby)
+
+When the other language has a garbage collector, additional coordination is required. Go's `runtime.Pinner` pins objects that Zig holds pointers to, preventing the GC from relocating them. Ruby's zig.rb takes the opposite approach: a custom `std.mem.Allocator` backed by `xmalloc`/`xfree` ensures all Zig allocations are visible to Ruby's GC for memory pressure tracking.
+
 #### Caller-Provided Buffers
 
 The safest default — caller allocates, callee fills:
@@ -229,4 +301,4 @@ No ambiguity about who frees what. Prefer this when buffer sizes are predictable
 
 ---
 
-See also: `references/build-system-c-integration.md` for linking multi-language artifacts, `references/comptime-ffi-metaprogramming.md` for zig-objc's comptime type synthesis.
+See also: `references/exporting-zig-as-c.md` for multi-language export patterns, `references/build-system-c-integration.md` for linking multi-language artifacts, `references/comptime-ffi-metaprogramming.md` for zig-objc's comptime type synthesis.

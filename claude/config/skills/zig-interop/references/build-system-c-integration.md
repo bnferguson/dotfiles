@@ -247,4 +247,63 @@ Bun routes BoringSSL's memory through mimalloc by exporting custom `OPENSSL_memo
 
 ---
 
+### Build-From-Source Packages (allyourcodebase)
+
+The [allyourcodebase](https://github.com/allyourcodebase) organization maintains ~115 community packages, each wrapping a single C library with a `build.zig`. These packages demonstrate the minimal viable pattern for making C libraries available to the Zig ecosystem.
+
+**Two vendoring strategies** coexist across the repos:
+
+1. **Tarball dependency** — `build.zig.zon` declares a URL to the upstream release tarball. The Zig package manager fetches it at build time.
+2. **Committed sources** — the C source tree is checked into the repository directly, typically under a `vendor/` or `upstream/` directory.
+
+**None of these packages use `@cImport` internally.** They compile the C library from source using `addCSourceFiles` and produce a linkable artifact with installed headers. Downstream consumers link the library and `@cImport` the installed headers — the package itself does not bridge the C/Zig boundary.
+
+```zig
+// Downstream consumer pattern
+const zlib_dep = b.dependency("zlib", .{ .target = target, .optimize = optimize });
+exe.linkLibrary(zlib_dep.artifact("z"));
+exe.addIncludePath(zlib_dep.path("include"));
+```
+
+**Platform dispatch** uses `target.result.os.tag` switches rather than pkg-config. Since the libraries are built from source, there is no need to probe the host system for installed packages:
+
+```zig
+const os = target.result.os.tag;
+if (os == .linux) {
+    lib.addCSourceFile(.{ .file = b.path("src/platform_linux.c"), .flags = &.{} });
+} else if (os == .macos) {
+    lib.addCSourceFile(.{ .file = b.path("src/platform_darwin.c"), .flags = &.{} });
+} else if (os == .windows) {
+    lib.addCSourceFile(.{ .file = b.path("src/platform_win32.c"), .flags = &.{} });
+}
+```
+
+**Config headers** replace autoconf-style `config.h` generation. `b.addConfigHeader()` produces a header with `#define` values computed from the build configuration:
+
+```zig
+const config = b.addConfigHeader(.{
+    .style = .{ .autoconf = b.path("config.h.in") },
+});
+config.addValues(.{
+    .HAVE_UNISTD_H = target.result.os.tag != .windows,
+    .HAVE_STDINT_H = true,
+    .SIZEOF_LONG = @as(u64, target.result.ptrBitWidth() / 8),
+});
+lib.addConfigHeader(config);
+```
+
+The SDL package is the most complex example (~50KB `build.zig`), while zlib is among the simplest (54 lines). SDL also demonstrates **Zig version compatibility**: it checks `@hasDecl` for build API changes between Zig versions, allowing the same `build.zig` to work across multiple Zig releases:
+
+```zig
+// Zig version compat shim pattern from SDL
+const root_module = if (@hasDecl(std.Build, "createModule"))
+    lib.root_module
+else
+    lib.root_module_ptr.*;
+```
+
+The allyourcodebase pattern is complementary to Ghostty's `pkg/<name>/build.zig` approach. Ghostty vendors libraries inside its own repo with system-integration fallback; allyourcodebase publishes each library as a standalone Zig package. Both avoid pkg-config and build everything from source for cross-compilation.
+
+---
+
 See also: `references/cross-language-abi.md` for struct layout and linking across languages, `references/comptime-ffi-metaprogramming.md` for build-time vs comptime code generation tradeoffs.

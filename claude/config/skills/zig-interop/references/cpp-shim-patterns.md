@@ -243,4 +243,53 @@ The shim creates a clear ownership boundary:
 
 ---
 
+### C++ STL Type Bridging (zpp)
+
+zpp wraps C++ STL types (primarily `std::string`) behind opaque `intptr_t` handles, providing Zig with safe access to C++ containers without exposing any C++ types across the boundary.
+
+#### Opaque Handle Pattern
+
+The C++ side allocates STL objects with `new` and returns the pointer as an `intptr_t`. Zig never sees the `std::string` layout — only the handle and accessor functions:
+
+```cpp
+// C++ side — extern "C" functions for std::string lifecycle
+extern "C" intptr_t stdstring_create(const char* data, uint32_t len) {
+    return reinterpret_cast<intptr_t>(new std::string(data, len));
+}
+
+extern "C" void stdstring_destroy(intptr_t handle) {
+    delete reinterpret_cast<std::string*>(handle);
+}
+
+extern "C" const char* stdstring_data(intptr_t handle) {
+    return reinterpret_cast<std::string*>(handle)->data();
+}
+
+extern "C" uint32_t stdstring_len(intptr_t handle) {
+    return reinterpret_cast<std::string*>(handle)->size();
+}
+```
+
+#### Three Ownership Modes
+
+zpp provides three wrapper types with different write semantics:
+
+- **StdString** -- Read-only access. Zig caches the data pointer and length after the first FFI call, avoiding repeated border crossings for subsequent reads.
+- **FixedStdString** -- Fixed-capacity write. Zig writes into a pre-allocated buffer; the C++ `std::string` does not reallocate.
+- **FlexStdString** -- Growable write. Zig can append data; the C++ side may reallocate, so the cached pointer is invalidated after writes.
+
+#### Read-Path Optimization
+
+Zig caches the data pointer and length returned by the accessor functions. Reads after the first call are pure Zig memory access with no FFI overhead. The cache is invalidated on any write operation.
+
+#### Bidirectional Data Flow
+
+C++ can call back into Zig through function pointers. zpp uses this for C++ code that needs to read from a Zig `ArrayList` — the Zig side exports accessor functions, and C++ calls them through stored function pointers.
+
+#### Build Requirements
+
+Compile the C++ shim with `-fno-exceptions -fno-rtti`. Exceptions cannot propagate across the `extern "C"` boundary, and RTTI is unnecessary when all types are opaque handles. These flags also reduce binary size.
+
+---
+
 See also: `references/cimport-and-type-mapping.md` for type mapping rules when importing the shim header, `references/exporting-zig-as-c.md` for the reverse direction.

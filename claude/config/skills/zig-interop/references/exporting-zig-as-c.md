@@ -45,7 +45,7 @@ This avoids heap allocation on the C side entirely. The consumer declares `xev_l
 
 #### Size Validation Tests
 
-libxev uses compile-time and runtime tests to prevent the byte array sizes from dting behind the real struct:
+libxev uses compile-time and runtime tests to prevent the byte array sizes from drifting behind the real struct:
 
 ```zig
 test "opaque type sizes" {
@@ -234,6 +234,37 @@ Ghostty also generates an XCFramework bundle for multi-architecture support (mac
 
 ---
 
+### Multi-Language Client Pattern (TigerBeetle)
+
+TigerBeetle compiles one Zig core into platform-specific static libraries, then each language client (Go, Rust, Python, Java, .NET, Node.js) links the `.a` and calls through the C ABI. This is the most ambitious production example of "Zig as a polyglot library engine."
+
+#### Architecture
+
+1. **Zig core** compiles to a static `.a` library per platform/architecture
+2. **Comptime binding generators** (`rust_bindings.zig`, `go_bindings.zig`, etc.) emit idiomatic type definitions in each target language — `#[repr(C)]` Rust structs, layout-compatible Go structs, etc.
+3. **Each language client** links the static lib and imports the generated types
+4. **Zero-deserialization** — generated structs are byte-for-byte compatible with the C structs, so responses from Zig map directly onto client-language structs without copying or parsing
+
+#### u128 ABI Workaround
+
+TigerBeetle passes `u128` values as `[16]u8` across the C boundary. The `u128` type is "prone to ABI issues" (per TigerBeetle's own comments) — different compilers disagree on register allocation and alignment for 128-bit integers passed by value. Encoding as a byte array sidesteps all of it.
+
+#### String Passing
+
+Strings cross the boundary as `*const c_char` + `u32` length. No null-terminator dependency — the length field is authoritative. This avoids the ambiguity of whether the receiver should scan for a terminator.
+
+#### Build Integration
+
+- **Rust:** `build.rs` links the pre-built static lib with `cargo:rustc-link-lib=static=tigerbeetle`
+- **Go:** cgo links with `#cgo LDFLAGS: -L... -ltigerbeetle`
+- **Other clients:** similar pre-built `.a` linking; no client compiles Zig source
+
+#### Error Passing
+
+Status codes are `enum(c_int)` on the Zig side. Each language client converts them to idiomatic error types — Rust `enum`, Go `error`, Python exception, etc.
+
+---
+
 ### export fn Mechanics
 
 Mark a function with `export` for C linkage (implies `callconv(.c)`). Prefix all exported symbols with a library name to avoid collisions in C's global namespace. For function pointers in structs or callbacks, annotate with `callconv(.c)` explicitly.
@@ -247,6 +278,8 @@ For every allocation the library makes that the consumer receives, provide a cor
 - **Library-allocated, caller-frees** -- Provide a `_free` function
 - **Caller-allocated, caller-frees** -- Library writes into a caller-provided buffer
 - **Library-allocated, library-frees** -- Arena-based; document when memory becomes invalid
+
+TigerBeetle takes a fourth approach: use `std.heap.c_allocator` on the Zig side so both Zig and the client language allocate through the same C runtime allocator. This eliminates cross-language allocator coordination — there is only one allocator. The tradeoff is losing Zig's safety-checked allocators (GeneralPurposeAllocator, etc.) at the boundary.
 
 Thread safety: decide and document the model. libxev uses per-loop thread safety -- each loop instance is bound to one thread, no locks needed internally.
 

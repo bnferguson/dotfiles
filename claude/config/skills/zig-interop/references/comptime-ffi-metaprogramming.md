@@ -195,6 +195,69 @@ Each Zig struct produces a unique `Builder` instantiation. The generated V8 temp
 
 ---
 
+### Comptime Code Generation Into Foreign Languages (TigerBeetle)
+
+TigerBeetle uses Zig comptime to walk its own type definitions and emit source code for other languages — Rust and Go — eliminating dual maintenance of shared types across language boundaries.
+
+`rust_bindings.zig` uses `resolve_rust_type()` to map Zig types to Rust equivalents, then `emit_struct()` and `emit_enum()` generate `#[repr(C)] #[derive(Debug, Copy, Clone)]` Rust structs, type aliases, and `extern "C"` blocks. `go_bindings.zig` follows the same pattern, emitting Go structs that match the C memory layout. The generated code lands in `src/tb_client.rs` and `bindings.go`.
+
+The conceptual pattern:
+
+```zig
+fn resolve_rust_type(comptime T: type) []const u8 {
+    if (T == u128) return "[u8; 16]"; // ABI workaround
+    if (T == u64) return "u64";
+    if (T == u32) return "u32";
+    if (T == u16) return "u16";
+    if (T == u8) return "u8";
+    if (T == i64) return "i64";
+    if (@typeInfo(T) == .@"enum") return @typeName(T);
+    @compileError("unmapped type: " ++ @typeName(T));
+}
+
+fn emit_struct(comptime T: type, writer: anytype) !void {
+    try writer.print("#[repr(C)]\n#[derive(Debug, Copy, Clone)]\npub struct {s} {{\n", .{@typeName(T)});
+    inline for (@typeInfo(T).@"struct".fields) |field| {
+        try writer.print("    pub {s}: {s},\n", .{ field.name, resolve_rust_type(field.type) });
+    }
+    try writer.print("}}\n\n", .{});
+}
+```
+
+The tradeoff: changing a Zig type requires re-running the Zig build step to regenerate foreign bindings. But this is far safer than manually keeping type definitions synchronized across three languages — the Zig types are the single source of truth, and the build fails if any type is unmapped.
+
+---
+
+### Build-Time Type Hierarchy Generation (zig-gobject)
+
+zig-gobject transforms GObject Introspection (GIR) XML into a complete Zig package through a multi-stage build pipeline: GIR XML → XSLT fixes (for upstream annotation errors) → `translate.zig` → Zig source. This is similar to vulkan-zig's XML-to-Zig pipeline, but the source is GIR introspection data rather than a graphics API spec, and the output includes an object-oriented type hierarchy.
+
+Generated `extern fn` declarations are aliased to `pub const` — zero-cost wrappers with better types than `@cImport` would produce:
+
+```zig
+// Generated: extern fn aliased to pub const for zero-cost better typing
+pub const setTitle = @extern(*const fn (*Self, [*:0]const u8) void, .{
+    .name = "gtk_window_set_title",
+});
+```
+
+The generator produces comptime type hierarchy functions from the GIR parent chain and interface data:
+
+- `isAssignableFrom()` walks the Parent chain and Implements list at compile time, enabling safe casting checks without runtime overhead
+- `as()` performs compile-time safe upcasts (child → parent), guaranteed valid by the type hierarchy
+- `cast()` performs runtime downcasts (parent → child), returning `?*T` to handle failure
+
+Signal, property, and virtual method definitions are also generated from introspection data:
+
+- `defineSignal()` — comptime signal definition with typed callback signatures
+- `defineProperty()` — comptime property definition with automatic ref/unref management
+- `defineClass()` — lazy type registration using `glib.Once` for thread safety (`initEnter`/`initLeave` pattern)
+- Virtual method vtable access: `gobject.ext.as(TypeName.Class, p_class).f_method_name`
+
+The contrast with vulkan-zig is instructive: both parse XML specs during the build step, but zig-gobject must also model an inheritance hierarchy and generate safe casting logic — a problem that does not exist in Vulkan's flat function-pointer model.
+
+---
+
 ### When to Use Comptime vs Build-Step Generation
 
 #### Comptime (inline in source)
@@ -206,6 +269,15 @@ Use when:
 
 Examples: zig-objc (function type synthesis), ziglua (type marshaling), Lightpanda (V8 template generation)
 
+#### Comptime Foreign Code Generation
+
+Use when:
+- The canonical type definitions live in Zig and must be projected to other languages
+- The generated output is source code in a foreign language (Rust, Go, C), not Zig
+- Type mappings are simple enough to express as comptime functions
+
+Example: TigerBeetle walks Zig struct/enum definitions at comptime and emits Rust and Go source files. The Zig types are the single source of truth — foreign bindings are derived, never hand-written.
+
 #### Build-Step Generation (in build.zig)
 
 Use when:
@@ -213,7 +285,7 @@ Use when:
 - Parsing requires complex logic that would exhaust the comptime evaluation budget
 - The generated output should be inspectable as a file on disk
 
-Example: vulkan-zig parses the ~2MB Vulkan XML registry with a generator executable during the build step. The output is a complete `vk.zig` file with dispatch tables and type definitions.
+Examples: vulkan-zig parses the ~2MB Vulkan XML registry with a generator executable during the build step. zig-gobject processes GIR XML through XSLT and a translator to produce a typed Zig package with inheritance hierarchies.
 
 ```zig
 const generate_step = b.addRunArtifact(generator);
