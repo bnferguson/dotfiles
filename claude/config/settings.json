@@ -215,6 +215,7 @@
     "gopls-lsp@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
     "ruby-lsp@claude-plugins-official": true,
+    "zls-lsp@zig-skills": true,
     "ast-grep@ast-grep-marketplace": true,
     "ruby-skills@ruby-skills": true,
     "gh-cli@trailofbits": true,
@@ -236,6 +237,12 @@
       "source": {
         "source": "github",
         "repo": "trailofbits/skills"
+      }
+    },
+    "zig-skills": {
+      "source": {
+        "source": "github",
+        "repo": "bnferguson/zig-skills"
       }
     }
   },
