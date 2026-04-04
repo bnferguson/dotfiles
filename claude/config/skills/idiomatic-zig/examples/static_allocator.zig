@@ -12,6 +12,7 @@
 const std = @import("std");
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
+const Alignment = std.mem.Alignment;
 
 pub const StaticAllocator = struct {
     state: State = .init,
@@ -46,25 +47,31 @@ pub const StaticAllocator = struct {
     const vtable = Allocator.VTable{
         .alloc = alloc,
         .resize = resize,
+        .remap = noRemap,
         .free = free,
     };
 
-    fn alloc(ctx: *anyopaque, len: usize, ptr_align: u8, ret_addr: usize) ?[*]u8 {
+    fn alloc(ctx: *anyopaque, len: usize, alignment: Alignment, ret_addr: usize) ?[*]u8 {
         const self: *StaticAllocator = @ptrCast(@alignCast(ctx));
         assert(self.state == .init); // Allocation only during init.
-        return self.backing.rawAlloc(len, ptr_align, ret_addr);
+        return self.backing.rawAlloc(len, alignment, ret_addr);
     }
 
-    fn resize(ctx: *anyopaque, buf: []u8, buf_align: u8, new_len: usize, ret_addr: usize) bool {
+    fn resize(ctx: *anyopaque, memory: []u8, alignment: Alignment, new_len: usize, ret_addr: usize) bool {
         const self: *StaticAllocator = @ptrCast(@alignCast(ctx));
         assert(self.state == .init); // Resize only during init.
-        return self.backing.rawResize(buf, buf_align, new_len, ret_addr);
+        return self.backing.rawResize(memory, alignment, new_len, ret_addr);
     }
 
-    fn free(ctx: *anyopaque, buf: []u8, buf_align: u8, ret_addr: usize) void {
+    // Remap not supported — we don't allow relocation.
+    fn noRemap(_: *anyopaque, _: []u8, _: Alignment, _: usize, _: usize) ?[*]u8 {
+        return null;
+    }
+
+    fn free(ctx: *anyopaque, memory: []u8, alignment: Alignment, ret_addr: usize) void {
         const self: *StaticAllocator = @ptrCast(@alignCast(ctx));
         assert(self.state != .static); // No free during production.
-        self.backing.rawFree(buf, buf_align, ret_addr);
+        self.backing.rawFree(memory, alignment, ret_addr);
     }
 };
 

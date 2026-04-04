@@ -15,7 +15,7 @@ Patterns distilled from two flagship Zig projects:
 - **Ghostty** — GPU-accelerated terminal emulator. SIMD optimization, cache-friendly packed structs, offset-based memory addressing, cross-platform abstraction.
 - **TigerBeetle** — Distributed financial database. Static allocation discipline, assertion-driven safety, deterministic simulation testing, io_uring integration. Their [TIGER_STYLE.md](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md) is one of the best coding style guides ever written.
 
-**Target version:** Zig 0.14+. When using the `zig-programming` skill alongside this one, defer to its version detection for API specifics. Some builtins referenced here (e.g., `@branchHint`) are recent additions.
+**Target version:** Zig 0.15+. When using the `zig-programming` skill alongside this one, defer to its version detection for API specifics. Some builtins referenced here (e.g., `@branchHint`) are recent additions.
 
 ## How to Use This Skill
 
