@@ -35,7 +35,7 @@ Prefer simple, direct changes. Pull requests should be small and focused on a si
 
 The exception here is when you notice the code is getting messy or needs to be refactored (eg. code smells, adding something that two of already exist and there's a third maybe it's time to refactor). If this is the case, you can make a plan for it and ask the user about the change.
 
-Use the `/pr` skill to create pull requests. It handles the full process: research, drafting, interview, and creation. Follow the skill's process exactly — the interview and structured sections are mandatory, not suggestions. Prefer draft PRs — this gives the author a chance to add their own voice before it goes out for review.
+**ALWAYS use the `/pr` skill to create pull requests — never use `gh pr create` directly.** The skill handles the full process: research, drafting, interview, and creation. Follow the skill's process exactly — the interview and structured sections are mandatory, not suggestions. Prefer draft PRs — this gives the author a chance to add their own voice before it goes out for review.
 
 # Tool Guidance
 - When interacting with GitHub use `gh`
@@ -53,7 +53,7 @@ Use the `/pr` skill to create pull requests. It handles the full process: resear
 # Language Specific Claude Skills
 - Ruby/Rails: always invoke the `rails-programmer` skill before writing Rails code, then run the `rails-core-code-reviewer` agent after to verify.
 - Go: always invoke the `effective-go` and `go-concurrency-patterns` skills before writing Go code, then run the `go-core-code-reviewer` agent after to verify.
-- Zig: always invoke the `idiomatic-zig` and `zig-programming` skills before writing Zig code, then run the `zig-core-code-reviewer` agent after to verify.
+- Zig: always invoke the `idiomatic-zig` and `zig-programming` skills before writing Zig code, then run the `zig-core-code-reviewer` agent after to verify. Additionally, invoke `zig-interop` when working on C interop (e.g., libc bindings, `@cImport`, linking C libraries).
 
 # Prose
 - When writing prose, follow [`style-guide.md`](style-guide.md) for voice and tone
