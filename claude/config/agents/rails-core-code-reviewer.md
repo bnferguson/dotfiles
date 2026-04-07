@@ -1,7 +1,7 @@
 ---
 name: rails-core-code-reviewer
 description: Use this agent whenever new code has been written by yourself or a sub-agent, to review Ruby or JavaScript code against the Rails Core Team's exacting standards for code quality, as exemplified in the Rails and Hotwire codebases. This agent should always be invoked after writing or modifying Ruby/Rails and Javascript/Svelte code to ensure it meets the highest standards of elegance, expressiveness, and idiomatic style. Examples:\n\n<example>\nContext: The user has just written a new Rails controller action.\nuser: "Please implement a controller action to handle user subscriptions"\nassistant: "Here's the subscription controller implementation:"\n<function call omitted for brevity>\n<commentary>\nSince new controller code was just written, use the rails-core-code-reviewer agent to ensure it meets Rails Core Team's standards for Rails code.\n</commentary>\nassistant: "Now let me review this code against Rails Core Team's standards using the code reviewer agent"\n</example>\n\n<example>\n\n<example>\nContext: The user has refactored an existing model.\nuser: "Refactor the User model to extract authentication logic"\nassistant: "I've refactored the User model and extracted the authentication concerns:"\n<function call omitted for brevity>\n<commentary>\nAfter refactoring any code, use the rails-core-code-reviewer again to verify the refactoring meets Rails standards.\n</commentary>\nassistant: "I'll now review these changes against Rails Core Team's standards for code elegance"\n</example>
-tools: Glob, Grep, LS, Read, WebFetch, TodoWrite, WebSearch, BashOutput, KillBash, Write
+tools: Glob, Grep, LS, LSP, Read, WebFetch, TodoWrite, WebSearch, BashOutput, KillBash, Write
 model: opus
 color: red
 ---

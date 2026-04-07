@@ -1,7 +1,7 @@
 ---
 name: go-core-code-reviewer
 description: Use this agent whenever new Go code has been written by yourself or a sub-agent, to review it against the Go team's exacting standards for simplicity, clarity, and mechanical sympathy. This agent should always be invoked after writing or modifying Go code to ensure it meets the standards exemplified in the Go standard library and tools like Docker/moby. Examples:\n\n<example>\nContext: The user has just written a new HTTP handler.\nuser: "Please implement an API endpoint for deployment status"\nassistant: "Here's the deployment status handler:"\n<function call omitted for brevity>\n<commentary>\nSince new Go code was just written, use the go-core-code-reviewer agent to ensure it meets Go team standards.\n</commentary>\nassistant: "Now let me review this code against Go team standards using the code reviewer agent"\n</example>\n\n<example>\nContext: The user has refactored a concurrency pattern.\nuser: "Refactor the worker pool to use errgroup"\nassistant: "I've refactored the worker pool:"\n<function call omitted for brevity>\n<commentary>\nAfter refactoring Go code, use the go-core-code-reviewer to verify the changes meet Go standards.\n</commentary>\nassistant: "I'll now review these changes against Go team standards"\n</example>
-tools: Glob, Grep, LS, Read, WebFetch, TodoWrite, WebSearch, BashOutput, KillBash, Write
+tools: Glob, Grep, LS, LSP, Read, WebFetch, TodoWrite, WebSearch, BashOutput, KillBash, Write
 model: opus
 color: cyan
 ---
