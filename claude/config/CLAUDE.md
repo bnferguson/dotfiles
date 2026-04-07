@@ -42,7 +42,14 @@ The exception here is when you notice the code is getting messy or needs to be r
 - Use `git` for source control
 - I use `mise` to manage my shell environment for projects
 - I use `brew` to install tools that aren't specified in `mise`
-- When dealing with code structure use `ast-grep` an LSP for the given language when available
+- When dealing with code structure use `ast-grep` and LSP for the given language when available
+- **Prefer the LSP tool over grep/glob for code navigation.** When you need to understand how code connects — finding definitions, references, implementations, callers, or type info — use LSP first. It's faster and more accurate than text search for these tasks. Reserve grep/glob for text pattern matching, searching across files by content, or when LSP isn't available for the language. Specific guidance:
+  - **Go to definition / type:** Use `LSP goToDefinition` instead of grepping for `func FooBar` or `class FooBar`
+  - **Find all usages:** Use `LSP findReferences` instead of grepping for a symbol name
+  - **Understand a symbol:** Use `LSP hover` to get type info and docs
+  - **Map a file's structure:** Use `LSP documentSymbol` instead of grepping for `def ` or `func `
+  - **Find implementations:** Use `LSP goToImplementation` for interfaces/abstract methods
+  - **Trace call chains:** Use `LSP incomingCalls`/`outgoingCalls` to understand call graphs
 - When dealing with terraform use the Terraform MCP
 - When working with Rails use the `rails` command for migrations and generators
 
