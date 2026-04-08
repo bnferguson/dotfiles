@@ -1,7 +1,7 @@
 ---
 name: test-writer
 description: Use for writing automated tests. Invoke with specific test type: Rails integration tests, model/service/API tests, Svelte unit tests, or Playwright component tests. Invoke whenever new functionality is built and needs testing, or when existing functionality is changed. Pass in the context of the changes that have been made and need testing, and the test type to write.
-tools: Read, Grep, Glob, Write, MultiEdit, Bash, WebFetch
+tools: Read, Grep, Glob, LSP, Write, MultiEdit, Bash, WebFetch
 model: opus
 color: green
 ---
@@ -28,6 +28,7 @@ When invoked, you must follow these steps:
 
 3. **Analyze the component to test**: 
    - Read the implementation code thoroughly
+   - Use the LSP tool to trace dependencies (`goToDefinition`, `findReferences`, `incomingCalls`) rather than grepping for symbol names — this gives precise, compiler-accurate results
    - Understand all dependencies and interactions
    - Map out the critical paths that need testing
 
