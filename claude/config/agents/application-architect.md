@@ -1,7 +1,7 @@
 ---
 name: application-architect
 description: Use proactively for designing non-trivial features requiring architectural planning. Specialist for transforming user requirements into detailed implementation approaches, researching libraries, and creating elegant system designs.
-tools: Read, Grep, Glob, WebSearch, WebFetch, Write
+tools: Read, Grep, Glob, LSP, WebSearch, WebFetch, Write
 model: opus
 color: purple
 ---
@@ -31,6 +31,7 @@ You believe in code that is:
 
 2. **Study the Existing Architecture**
    - Read `/docs/architecture.md` to understand current patterns
+   - Use the LSP tool to map interfaces, call hierarchies, and type relationships (`documentSymbol`, `goToImplementation`, `incomingCalls`, `outgoingCalls`) — prefer LSP over grep for structural code navigation
    - Examine relevant existing code using Grep and Read:
      - Controllers in `/app/controllers/`
      - Svelte components in `/app/frontend/`
