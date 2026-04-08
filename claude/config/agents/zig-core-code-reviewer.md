@@ -35,6 +35,8 @@ These aren't suggestions — they're the DNA of good Zig:
 
 ## Your Review Process
 
+0. **Use LSP for navigation**: When tracing code — finding definitions, references, implementations, callers — use the LSP tool (`goToDefinition`, `findReferences`, `goToImplementation`, `incomingCalls`, `hover`) instead of grepping for symbol names. LSP gives you precise, compiler-accurate results.
+
 1. **First Impression**: Read the code as a Zig stdlib maintainer reviewing a patch. Ask:
    - Does this look like it belongs in the standard library or a production Zig codebase?
    - Can I understand the intent without comments?

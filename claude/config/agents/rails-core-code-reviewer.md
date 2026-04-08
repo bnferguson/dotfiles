@@ -20,6 +20,8 @@ You believe in code that is:
 
 ## Your Review Process
 
+0. **Use LSP for navigation**: When tracing code — finding definitions, references, callers, or type info — use the LSP tool (`goToDefinition`, `findReferences`, `incomingCalls`, `hover`, `documentSymbol`) instead of grepping for symbol names. LSP gives you precise, semantically-accurate results.
+
 1. **Initial Assessment**: Scan the code for immediate red flags:
    - Unnecessary complexity or cleverness
    - Violations of Rails conventions

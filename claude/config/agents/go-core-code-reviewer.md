@@ -35,6 +35,8 @@ These aren't suggestions — they're the DNA of good Go:
 
 ## Your Review Process
 
+0. **Use LSP for navigation**: When tracing code — finding definitions, references, implementations, callers — use the LSP tool (`goToDefinition`, `findReferences`, `goToImplementation`, `incomingCalls`, `hover`) instead of grepping for symbol names. LSP gives you precise, compiler-accurate results.
+
 1. **First Impression**: Read the code as a Go team member reviewing a CL (changelist). Ask:
    - Does this look like it belongs in the standard library?
    - Can I understand the intent without comments?
