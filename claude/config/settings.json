@@ -46,6 +46,7 @@
       "Bash(bin/rubocop:*)",
       "Bash(bin/brakeman:*)",
       "Bash(ruby:*)",
+      "Bash(mise:*)",
       "Bash(pnpm:*)",
       "Bash(node:*)",
       "Bash(ls:*)",
@@ -266,6 +267,12 @@
     }
   },
   "sandbox": {
+    "excludedCommands": [
+      "gh *",
+      "git push *",
+      "git fetch *",
+      "mise *"
+    ],
     "filesystem": {
       "allowWrite": [
         "/tmp",
