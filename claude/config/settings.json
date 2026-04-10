@@ -278,7 +278,8 @@
         "/tmp",
         "/private/tmp",
         "/private/var/folders",
-        "~/.cache"
+        "~/.cache",
+        "~/.claude/audit"
       ],
       "allowRead": [
         "~/.config/gh"
