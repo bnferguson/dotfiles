@@ -19,9 +19,6 @@ brew "actionlint"   # github actions linter
 brew "uv"           # python package manager
 brew "rtk"          # llm token-saving proxy
 
-# AI
-cask "claude-code"  # anthropic cli
-
 # macOS casks
 if OS.mac?
   cask "ghostty"        # terminal
