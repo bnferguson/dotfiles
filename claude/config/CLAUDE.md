@@ -63,8 +63,9 @@ The exception here is when you notice the code is getting messy or needs to be r
 - Zig: always invoke the `idiomatic-zig` and `zig-programming` skills before writing Zig code, then run the `zig-core-code-reviewer` agent after to verify. Additionally, invoke `zig-interop` when working on C interop (e.g., libc bindings, `@cImport`, linking C libraries).
 
 # Prose
-- When writing prose, follow [`style-guide.md`](style-guide.md) for voice and tone
-- Consult [`tropes.md`](tropes.md) for AI writing patterns to avoid
+- Follow [`style-guide.md`](style-guide.md) for voice and tone, and consult [`tropes.md`](tropes.md) for AI writing patterns to avoid
+- **This applies to all prose output**, not just long-form writing. PR descriptions, PR review comments, issue comments, Slack messages, commit messages, and any other text written on Brandon's behalf should follow the style guide and avoid the tropes
+- When drafting PR descriptions specifically: write in Brandon's voice, be direct and specific about what changed and why, skip the filler transitions and false profundity
 
 ## Code Search
 
