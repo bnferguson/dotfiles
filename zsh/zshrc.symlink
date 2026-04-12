@@ -67,4 +67,3 @@ bindkey "^[[B" down-line-or-beginning-search # Down
 # Added by LM Studio CLI (lms)
 export PATH="$PATH:/Users/bnferguson/.lmstudio/bin"
 # End of LM Studio CLI section
-
