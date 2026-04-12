@@ -42,7 +42,7 @@ Create a draft pull request with an interview process that captures both the ass
 
 4. **Gauge the scope.** Look at what changed. If the PR is trivial (typo fix, version bump, single-line config change, etc.), propose skipping the interview: "This looks straightforward — here's what I'd put up. Want to go through the full interview, or is this good to go?" Let the user decide. For anything non-trivial, proceed with the interview.
 
-5. **Draft a PR title and all sections.** The title should be short (under 72 chars), imperative mood, and scoped to what changed (e.g., "Fix race condition in worker pool shutdown", "Add duti for default editor file associations"). Prepare drafts for each section from the template (or the defaults).
+5. **Draft a PR title and all sections.** The title should be short (under 72 chars), imperative mood, and scoped to what changed (e.g., "Fix race condition in worker pool shutdown", "Add duti for default editor file associations"). Prepare drafts for each section from the template (or the defaults). Follow the prose rules from `style-guide.md` and `tropes.md` — write in the user's voice, be direct and specific, avoid AI writing patterns.
 
 6. **Interview section by section.** For each section, present your draft and then ask the user for their take. Go through them one at a time. Default interview prompts (adapt to match template section names):
 
