@@ -79,5 +79,3 @@ Use Vera before opening many files or running broad text search when you need to
 - Narrow results with `--lang`, `--path`, `--type`, or `--scope docs`
 - `vera watch .` to auto-update the index, or `vera update .` after edits (`vera index .` if `.vera/` is missing)
 - For detailed usage, query patterns, and troubleshooting, read the Vera skill file installed by `vera agent install`
-
-@RTK.md

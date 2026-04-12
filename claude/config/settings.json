@@ -161,15 +161,6 @@
           }
         ]
       },
-      {
-        "matcher": "Bash",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/Users/bnferguson/.claude/hooks/rtk-rewrite.sh"
-          }
-        ]
-      }
     ],
     "PostToolUse": [
       {
