@@ -160,7 +160,7 @@
             "command": "bash ~/.claude/hooks/enforce-package-manager.sh"
           }
         ]
-      },
+      }
     ],
     "PostToolUse": [
       {
