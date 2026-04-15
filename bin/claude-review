@@ -135,7 +135,7 @@ case "$1" in
     fi
 
     cd "$WT_PATH"
-    claude "$@"
+    claude --dangerously-skip-permissions "$@"
 
     # Offer cleanup when claude exits
     echo ""
