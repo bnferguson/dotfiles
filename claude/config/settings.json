@@ -235,7 +235,8 @@
     "testing-handbook-skills@trailofbits": true,
     "slack@claude-plugins-official": true,
     "zls-lsp@zig-skills": true,
-    "clangd-lsp@claude-plugins-official": true
+    "clangd-lsp@claude-plugins-official": true,
+    "skills-janitor@skills-janitor": true
   },
   "extraKnownMarketplaces": {
     "ruby-skills": {
@@ -255,15 +256,15 @@
         "source": "github",
         "repo": "bnferguson/zig-skills"
       }
+    },
+    "skills-janitor": {
+      "source": {
+        "source": "github",
+        "repo": "khendzel/skills-janitor"
+      }
     }
   },
   "sandbox": {
-    "excludedCommands": [
-      "gh *",
-      "git push *",
-      "git fetch *",
-      "mise *"
-    ],
     "filesystem": {
       "allowWrite": [
         "/tmp",
@@ -275,7 +276,13 @@
       "allowRead": [
         "~/.config/gh"
       ]
-    }
+    },
+    "excludedCommands": [
+      "gh *",
+      "git push *",
+      "git fetch *",
+      "mise *"
+    ]
   },
   "spinnerVerbs": {
     "mode": "replace",
