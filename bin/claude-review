@@ -1,6 +1,6 @@
 #!/bin/sh
 #
-# Start a Claude session to review a PR in an isolated worktree.
+# Start a Claude session in an isolated worktree for a PR or branch.
 #
 # Usage:
 #
@@ -135,15 +135,7 @@ case "$1" in
     fi
 
     cd "$WT_PATH"
-    echo "Starting Claude in $WT_PATH"
-
-    if [ "$IS_PR" = true ]; then
-      echo "Review PR #$TARGET"
-      claude --prompt "Review PR #$TARGET. Start by running \`gh pr view $TARGET\` and \`gh pr diff $TARGET\` to understand the changes, then do a thorough code review." "$@"
-    else
-      echo "Review branch $TARGET"
-      claude --prompt "Review the branch '$TARGET'. Start by examining the commits and diff against the base branch to understand the changes, then do a thorough code review." "$@"
-    fi
+    claude "$@"
 
     # Offer cleanup when claude exits
     echo ""
