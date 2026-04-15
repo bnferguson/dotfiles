@@ -1,6 +1,6 @@
 ---
 name: pr
-description: "Opening a Pull Request with Interview"
+description: "Open a Pull Request with an interview process. Use when the user wants to create a PR, open a pull request, or ship changes to a branch."
 ---
 
 # Rule: Opening a Pull Request with Interview

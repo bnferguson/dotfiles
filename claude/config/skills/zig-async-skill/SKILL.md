@@ -1,9 +1,6 @@
 ---
-name: zig-async-io
-description: >
-  Zig 0.16.0 async I/O programming with the new std.Io interface. Covers async/concurrent
-  primitives, Future handling, cancellation patterns, and I/O implementation strategies.
-  Use when working with Zig 0.16.0+ async code, event loops, concurrent tasks, or non-blocking I/O.
+name: zig-async-skill
+description: "Zig 0.16.0 async I/O programming with the new std.Io interface. Use when working with Zig 0.16.0+ async code, event loops, concurrent tasks, or non-blocking I/O."
 ---
 
 # Zig Async I/O Skill (0.16.0+)

@@ -1,13 +1,6 @@
 ---
 name: zig-interop
-description: >
-  This skill should be used when working on Zig FFI or cross-language
-  interoperability — wrapping C libraries, binding C++, exporting Zig
-  as C, bridging Zig with Rust/Swift/ObjC/Go/Ruby, configuring build.zig
-  for C compilation, or using comptime for FFI metaprogramming. Patterns
-  are extracted from production codebases (Bun, Ghostty, libxev,
-  TigerBeetle, Lightpanda). Targets Zig 0.15+. Complements
-  zig-programming (language fundamentals) and idiomatic-zig (style).
+description: "Zig FFI and cross-language interop from Bun, Ghostty, and TigerBeetle. Use when wrapping C libraries, binding C++, exporting Zig as C, or configuring build.zig for C compilation."
 ---
 
 # Zig Interop Skill

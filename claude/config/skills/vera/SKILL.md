@@ -1,6 +1,6 @@
 ---
 name: vera
-description: Semantic code search, regex pattern search, and symbol lookup across a local repository. Returns ranked markdown codeblocks with file path, line range, content, and optional symbol info. Use `vera search` for conceptual/behavioral queries (how a feature works, where logic lives, exploring unfamiliar code). Use `vera grep` for exact strings, regex patterns, imports, and TODOs. Use `vera references` to trace callers/callees. Use rg only for bulk find-and-replace or files outside the index.
+description: "Semantic code search, regex pattern search, and symbol lookup across a repository. Use when searching for code by behavior, tracing callers/callees, or exploring unfamiliar code."
 ---
 
 # Vera
