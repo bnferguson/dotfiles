@@ -1,6 +1,6 @@
 ---
 name: create-tasks
-description: "Generating a Task List from User Requirements"
+description: "Generate a task list from requirements. Use when the user wants to break down a feature into implementation steps or create a development plan."
 ---
 
 Rule: Generating a Task List from User Requirements

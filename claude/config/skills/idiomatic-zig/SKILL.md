@@ -1,11 +1,6 @@
 ---
 name: idiomatic-zig
-description: >
-  Production patterns for writing idiomatic, high-performance Zig. Derived from Ghostty
-  (terminal emulator) and TigerBeetle (distributed database) — two of the most serious Zig
-  codebases in production. Use this skill when writing Zig code that needs to be fast, safe,
-  and maintainable. Complements the zig-programming skill (which covers language syntax and API
-  reference) with battle-tested idioms for real-world systems.
+description: "Production patterns for idiomatic, high-performance Zig from Ghostty and TigerBeetle. Use when writing Zig code that needs to be fast, safe, and maintainable."
 ---
 
 # Idiomatic Zig: Production Patterns from Ghostty & TigerBeetle

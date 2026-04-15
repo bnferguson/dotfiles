@@ -1,6 +1,6 @@
 ---
 name: connascence
-description: Assess coupling in code using the connascence taxonomy. Use when reviewing code for coupling issues, planning refactors, evaluating design decisions, or when the user mentions "connascence", "coupling", or asks about dependencies between components. Focused on Ruby, Go, Zig, and TypeScript but applicable to any language.
+description: "Assess coupling using the connascence taxonomy. Use when reviewing code for coupling issues, planning refactors, or when the user mentions 'connascence' or 'coupling'."
 ---
 
 # Connascence Analysis

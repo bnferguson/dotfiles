@@ -1,6 +1,6 @@
 ---
 name: create-prd
-description: "Generating a Product Requirements Document (PRD)"
+description: "Generate a Product Requirements Document. Use when the user wants to create a PRD, define feature requirements, or plan a new feature."
 ---
 
 # Rule: Generating a Product Requirements Document (PRD)
