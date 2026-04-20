@@ -53,4 +53,5 @@ Bootstrap uses **relative symlinks** (via perl `File::Spec->abs2rel`) so they wo
 - `zsh/zshrc.symlink` has an LM Studio PATH append at the bottom that was added outside the dotfiles pattern — don't duplicate this kind of thing
 - The `.cache/` directory holds generated files (like kubectl completions) — these are gitignored
 - BTT presets are not auto-synced; manual export/import is required after changes
+- BTT preset arrow-key bindings store an implicit Fn modifier (`BTTShortcutModifierKeys: 10354688` = Hyper+Fn) because Apple keyboards attach Fn to arrow keys at the hardware level. When documenting those shortcuts, write them as `Hyper+Up` etc. — not `Fn+Hyper+Up`.
 - `nvim/lazy-lock.json` tracks neovim plugin versions — changes here are from plugin updates
