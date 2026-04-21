@@ -1,0 +1,150 @@
+#!/bin/sh
+#
+# Start a Claude session in an isolated worktree for a PR or branch.
+#
+# Usage:
+#
+#   claude-review 123                    # review PR #123
+#   claude-review feature-branch         # review a branch by name
+#   claude-review 123 --hierarchical     # pass extra args to claude
+#   claude-review list                   # show active review worktrees
+#   claude-review clean 123             # remove worktree for PR #123
+#   claude-review clean feature-branch  # remove worktree for a branch
+#   claude-review clean                 # remove all review worktrees
+#
+# The worktree is created at <repo>/.claude/worktrees/<name>.
+# When claude exits, you're prompted to clean up the worktree.
+
+set -e
+
+usage() {
+  echo "claude-review — PR review in an isolated worktree"
+  echo ""
+  echo "Usage:"
+  echo "  claude-review <pr-number|branch> [claude args...]"
+  echo "  claude-review list"
+  echo "  claude-review clean [pr-number|branch]"
+  echo ""
+  echo "Examples:"
+  echo "  claude-review 42"
+  echo "  claude-review feature-branch"
+  echo "  claude-review clean 42"
+  exit 1
+}
+
+if [ $# -eq 0 ]; then
+  usage
+fi
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "Not in a git repository." >&2
+  exit 1
+}
+WORKTREE_DIR="$REPO_ROOT/.claude/worktrees"
+
+# Sanitize a ref for use as a directory name (slashes become dashes)
+sanitize_name() {
+  echo "$1" | sed 's|/|-|g'
+}
+
+case "$1" in
+  list)
+    if [ ! -d "$WORKTREE_DIR" ] || [ -z "$(ls -A "$WORKTREE_DIR" 2>/dev/null)" ]; then
+      echo "No active review worktrees."
+      exit 0
+    fi
+    echo "Active review worktrees:"
+    for d in "$WORKTREE_DIR"/*/; do
+      [ -d "$d" ] || continue
+      name=$(basename "$d")
+      branch=$(git -C "$d" branch --show-current 2>/dev/null || echo "detached")
+      echo "  $name ($branch)"
+    done
+    exit 0
+    ;;
+
+  clean)
+    if [ -n "$2" ]; then
+      # Try both the raw name and pr- prefixed name for numbers
+      target=$(sanitize_name "$2")
+      wt="$WORKTREE_DIR/$target"
+      if [ ! -d "$wt" ]; then
+        wt="$WORKTREE_DIR/pr-$target"
+      fi
+      if [ -d "$wt" ]; then
+        git worktree remove "$wt"
+        echo "Removed worktree $(basename "$wt")."
+      else
+        echo "No worktree found for '$2'." >&2
+        exit 1
+      fi
+    else
+      found=0
+      for d in "$WORKTREE_DIR"/*/; do
+        [ -d "$d" ] || continue
+        git worktree remove "$d"
+        found=1
+        echo "Removed $(basename "$d")"
+      done
+      if [ "$found" -eq 0 ]; then
+        echo "No review worktrees to clean up."
+      fi
+      rmdir "$WORKTREE_DIR" 2>/dev/null || true
+    fi
+    exit 0
+    ;;
+
+  -h|--help|help)
+    usage
+    ;;
+
+  *)
+    TARGET="$1"
+    shift
+
+    # Determine if this is a PR number or a branch name
+    case "$TARGET" in
+      *[!0-9]*)
+        # Branch name
+        IS_PR=false
+        WT_NAME=$(sanitize_name "$TARGET")
+        WT_PATH="$WORKTREE_DIR/$WT_NAME"
+        ;;
+      *)
+        # PR number
+        IS_PR=true
+        WT_NAME="pr-$TARGET"
+        WT_PATH="$WORKTREE_DIR/$WT_NAME"
+        ;;
+    esac
+
+    if [ -d "$WT_PATH" ]; then
+      echo "Worktree already exists at $WT_PATH"
+      echo "Resuming review..."
+    else
+      mkdir -p "$WORKTREE_DIR"
+
+      if [ "$IS_PR" = true ]; then
+        DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||') || DEFAULT_BRANCH="main"
+        git worktree add "$WT_PATH" "$DEFAULT_BRANCH" --detach
+        gh -C "$WT_PATH" pr checkout "$TARGET"
+      else
+        git fetch origin "$TARGET" 2>/dev/null || true
+        git worktree add "$WT_PATH" "origin/$TARGET"
+      fi
+    fi
+
+    cd "$WT_PATH"
+    claude --dangerously-skip-permissions "$@"
+
+    # Offer cleanup when claude exits
+    echo ""
+    printf "Remove review worktree? [Y/n] "
+    read -r answer
+    case "$answer" in
+      [nN]*) echo "Worktree kept at $WT_PATH. Run 'claude-review clean $WT_NAME' later." ;;
+      *) git worktree remove "$WT_PATH"
+         echo "Worktree removed." ;;
+    esac
+    ;;
+esac
