@@ -53,16 +53,10 @@ return {
         },
       })
 
-      -- Quakefile: filetype detection + language server. Not managed
-      -- by Mason; the binary ships from ~/dev/quake.
-      vim.filetype.add({
-        filename = { Quakefile = "quakefile" },
-        pattern = {
-          [".*%.quake"] = "quakefile",
-          [".*_Quakefile"] = "quakefile",
-        },
-      })
-
+      -- Quakefile LSP. Filetype detection comes from the repo's
+      -- ftdetect/ (picked up via the rtp prepend in init.lua); the
+      -- binary ships from ~/dev/quake, so this isn't managed by
+      -- Mason.
       vim.lsp.config("quake_lsp", {
         cmd = { vim.fn.expand("~/dev/quake/quake"), "lsp" },
         filetypes = { "quakefile" },
