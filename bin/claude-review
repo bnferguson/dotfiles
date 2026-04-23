@@ -130,7 +130,13 @@ case "$1" in
         gh -C "$WT_PATH" pr checkout "$TARGET"
       else
         git fetch origin "$TARGET" 2>/dev/null || true
-        git worktree add "$WT_PATH" "origin/$TARGET"
+        # Attach to a local branch so Claude's branch/PR tooling works.
+        # Reuse an existing local branch if present; otherwise create one tracking origin.
+        if git show-ref --verify --quiet "refs/heads/$TARGET"; then
+          git worktree add "$WT_PATH" "$TARGET"
+        else
+          git worktree add -b "$TARGET" "$WT_PATH" "origin/$TARGET"
+        fi
       fi
     fi
 
