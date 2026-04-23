@@ -53,7 +53,23 @@ return {
         },
       })
 
-      vim.lsp.enable({ "lua_ls", "ruby_lsp", "gopls", "terraformls", "zls" })
+      -- Quakefile: filetype detection + language server. Not managed
+      -- by Mason; the binary ships from ~/dev/quake.
+      vim.filetype.add({
+        filename = { Quakefile = "quakefile" },
+        pattern = {
+          [".*%.quake"] = "quakefile",
+          [".*_Quakefile"] = "quakefile",
+        },
+      })
+
+      vim.lsp.config("quake_lsp", {
+        cmd = { vim.fn.expand("~/dev/quake/quake"), "lsp" },
+        filetypes = { "quakefile" },
+        root_markers = { "Quakefile", ".git" },
+      })
+
+      vim.lsp.enable({ "lua_ls", "ruby_lsp", "gopls", "terraformls", "zls", "quake_lsp" })
 
       -- Keymaps on LSP attach
       vim.api.nvim_create_autocmd("LspAttach", {
