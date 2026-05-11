@@ -1,0 +1,146 @@
+#!/bin/sh
+#
+# Start a Claude session in a fresh worktree on a new branch off the default branch.
+#
+# Usage:
+#
+#   claude-work feature-x                   # new branch off origin's default branch
+#   claude-work feature-x --hierarchical    # pass extra args to claude
+#   claude-work list                        # show active work worktrees
+#   claude-work clean feature-x             # remove worktree (refuses if dirty)
+#   claude-work clean                       # remove all clean work worktrees
+#
+# The worktree is created at <repo>/.claude/worktrees/<name>.
+# Unlike claude-review, the worktree is left in place when claude exits —
+# new work usually has uncommitted changes worth keeping. Clean up explicitly.
+
+set -e
+
+usage() {
+  echo "claude-work — start new work in an isolated worktree"
+  echo ""
+  echo "Usage:"
+  echo "  claude-work <branch-name> [claude args...]"
+  echo "  claude-work list"
+  echo "  claude-work clean [branch-name]"
+  echo ""
+  echo "Examples:"
+  echo "  claude-work feature-x"
+  echo "  claude-work feature-x --resume"
+  echo "  claude-work clean feature-x"
+  exit 1
+}
+
+if [ $# -eq 0 ]; then
+  usage
+fi
+
+REPO_ROOT=$(git rev-parse --show-toplevel 2>/dev/null) || {
+  echo "Not in a git repository." >&2
+  exit 1
+}
+WORKTREE_DIR="$REPO_ROOT/.claude/worktrees"
+
+sanitize_name() {
+  echo "$1" | sed 's|/|-|g'
+}
+
+worktree_is_dirty() {
+  wt="$1"
+  [ -n "$(git -C "$wt" status --porcelain 2>/dev/null)" ]
+}
+
+case "$1" in
+  list)
+    if [ ! -d "$WORKTREE_DIR" ] || [ -z "$(ls -A "$WORKTREE_DIR" 2>/dev/null)" ]; then
+      echo "No active work worktrees."
+      exit 0
+    fi
+    echo "Active worktrees:"
+    for d in "$WORKTREE_DIR"/*/; do
+      [ -d "$d" ] || continue
+      name=$(basename "$d")
+      branch=$(git -C "$d" branch --show-current 2>/dev/null || echo "detached")
+      if worktree_is_dirty "$d"; then
+        dirty=" [dirty]"
+      else
+        dirty=""
+      fi
+      echo "  $name ($branch)$dirty"
+    done
+    exit 0
+    ;;
+
+  clean)
+    if [ -n "$2" ]; then
+      target=$(sanitize_name "$2")
+      wt="$WORKTREE_DIR/$target"
+      if [ ! -d "$wt" ]; then
+        echo "No worktree found for '$2'." >&2
+        exit 1
+      fi
+      if worktree_is_dirty "$wt"; then
+        echo "Worktree $target has uncommitted changes — refusing to remove." >&2
+        echo "Commit/stash first, or run: git worktree remove --force $wt" >&2
+        exit 1
+      fi
+      git worktree remove "$wt"
+      echo "Removed worktree $target."
+    else
+      found=0
+      skipped=0
+      for d in "$WORKTREE_DIR"/*/; do
+        [ -d "$d" ] || continue
+        name=$(basename "$d")
+        if worktree_is_dirty "$d"; then
+          echo "Skipping $name (dirty)"
+          skipped=1
+          continue
+        fi
+        git worktree remove "$d"
+        found=1
+        echo "Removed $name"
+      done
+      if [ "$found" -eq 0 ] && [ "$skipped" -eq 0 ]; then
+        echo "No work worktrees to clean up."
+      fi
+      rmdir "$WORKTREE_DIR" 2>/dev/null || true
+    fi
+    exit 0
+    ;;
+
+  -h|--help|help)
+    usage
+    ;;
+
+  *)
+    BRANCH="$1"
+    shift
+
+    WT_NAME=$(sanitize_name "$BRANCH")
+    WT_PATH="$WORKTREE_DIR/$WT_NAME"
+
+    if [ -d "$WT_PATH" ]; then
+      echo "Worktree already exists at $WT_PATH"
+      echo "Resuming..."
+    else
+      if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
+        echo "Branch '$BRANCH' already exists. Use claude-review to attach to it." >&2
+        exit 1
+      fi
+
+      mkdir -p "$WORKTREE_DIR"
+
+      DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||') || DEFAULT_BRANCH="main"
+      git fetch origin "$DEFAULT_BRANCH" 2>/dev/null || true
+      git worktree add -b "$BRANCH" "$WT_PATH" "origin/$DEFAULT_BRANCH"
+    fi
+
+    cd "$WT_PATH"
+    claude --dangerously-skip-permissions "$@"
+
+    echo ""
+    echo "Worktree kept at $WT_PATH."
+    echo "Clean up with: claude-work clean $WT_NAME"
+    ;;
+esac
