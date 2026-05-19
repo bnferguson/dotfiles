@@ -236,7 +236,8 @@
     "slack@claude-plugins-official": true,
     "zls-lsp@zig-skills": true,
     "clangd-lsp@claude-plugins-official": true,
-    "skills-janitor@skills-janitor": true
+    "skills-janitor@skills-janitor": true,
+    "rust-analyzer-lsp@claude-plugins-official": true
   },
   "extraKnownMarketplaces": {
     "ruby-skills": {
