@@ -26,7 +26,7 @@
 # # The config file consists of simple key-value pairs,
 # # separated by equals signs.
 
-font-size = 16
+font-size = 13
 font-thicken = true
 font-family = BlexMono Nerd Font Mono
 #theme = light:Gruvbox Light Hard,dark:Gruvbox Dark Hard
