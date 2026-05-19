@@ -35,22 +35,27 @@ elif command -v apt-get >/dev/null 2>&1; then
   echo "  Note: starship, mise, and gh need manual install on Ubuntu — see README"
 fi
 
-# Switch default shell to zsh if it isn't already
-if command -v zsh >/dev/null 2>&1; then
-  zsh_path="$(command -v zsh)"
-  if command -v getent >/dev/null 2>&1; then
-    current_shell="$(getent passwd "$USER" | cut -d: -f7)"
-  elif command -v dscl >/dev/null 2>&1; then
-    current_shell="$(dscl . -read "/Users/$USER" UserShell 2>/dev/null | awk '{print $2}')"
-  else
-    current_shell="$SHELL"
-  fi
-  if [ "$(basename "$current_shell")" != "zsh" ]; then
-    echo "› changing default shell to zsh ($zsh_path)"
-    if ! grep -qx "$zsh_path" /etc/shells; then
-      echo "$zsh_path" | sudo tee -a /etc/shells >/dev/null
+# Switch default shell to whatever shell.env declares, if it isn't already.
+# shell.env is the single source of truth for the shell path.
+if [ -f shell.env ]; then
+  desired_shell="$(. ./shell.env && echo "$SHELL")"
+  if [ -x "$desired_shell" ]; then
+    if command -v getent >/dev/null 2>&1; then
+      current_shell="$(getent passwd "$USER" | cut -d: -f7)"
+    elif command -v dscl >/dev/null 2>&1; then
+      current_shell="$(dscl . -read "/Users/$USER" UserShell 2>/dev/null | awk '{print $2}')"
+    else
+      current_shell="$SHELL"
     fi
-    chsh -s "$zsh_path"
+    if [ "$current_shell" != "$desired_shell" ]; then
+      echo "› changing default shell to $desired_shell"
+      if ! grep -qx "$desired_shell" /etc/shells; then
+        echo "$desired_shell" | sudo tee -a /etc/shells >/dev/null
+      fi
+      chsh -s "$desired_shell"
+    fi
+  else
+    echo "  Note: shell.env points to $desired_shell but it isn't executable; skipping chsh"
   fi
 fi
 
