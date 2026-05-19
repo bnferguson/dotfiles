@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+#
+# Pop a picker of recent mako notifications. Closest thing to mac's
+# Notification Center pane — pick an entry to invoke its default action.
+
+set -euo pipefail
+
+selected=$(makoctl history -j |
+  jq -r '.[] | "\(.id)\t\(.summary // "")  —  \(.body // "")"' |
+  walker -d -p "Notifications") || exit 0
+
+[[ -z "$selected" ]] && exit 0
+
+id="${selected%%$'\t'*}"
+[[ -n "$id" ]] && makoctl invoke "$id" 2>/dev/null || true
