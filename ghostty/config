@@ -56,3 +56,9 @@ theme = Gruvbox Dark Hard
 # # Just for example:
 # resize-overlay-duration = 4s 200ms
 keybind = shift+enter=text:\x1b\r
+
+# Per-OS overrides. The ? prefix makes each optional — bootstrap only
+# symlinks the matching file into ~/.config/ghostty/, so the other one
+# silently no-ops.
+config-file = ?config.linux
+config-file = ?config.macos

@@ -171,6 +171,12 @@ install_larger_paths () {
 
   mkdir -p "$HOME/.config/ghostty"
   link_file "$DOTFILES_ROOT/ghostty/config" "$HOME/.config/ghostty/config"
+  if [ "$(uname -s)" == "Darwin" ]; then
+    link_file "$DOTFILES_ROOT/ghostty/config.macos" "$HOME/.config/ghostty/config.macos"
+  fi
+  if [ "$(uname -s)" == "Linux" ]; then
+    link_file "$DOTFILES_ROOT/ghostty/config.linux" "$HOME/.config/ghostty/config.linux"
+  fi
 
   mkdir -p "$HOME/.ssh"
   chmod 700 "$HOME/.ssh"
