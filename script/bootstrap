@@ -205,6 +205,10 @@ install_larger_paths () {
       link_file "$DOTFILES_ROOT/hyprland/bindings.conf" "$HOME/.config/hypr/bindings.conf"
       link_file "$DOTFILES_ROOT/hyprland/input.conf" "$HOME/.config/hypr/input.conf"
     fi
+
+    # systemd-user environment overrides
+    mkdir -p "$HOME/.config/environment.d"
+    link_file "$DOTFILES_ROOT/environment.d/shell.conf" "$HOME/.config/environment.d/shell.conf"
   fi
 }
 
