@@ -53,7 +53,17 @@ return {
         },
       })
 
-      vim.lsp.enable({ "lua_ls", "ruby_lsp", "gopls", "terraformls", "zls" })
+      -- Quakefile LSP. Filetype detection comes from the repo's
+      -- ftdetect/ (picked up via the rtp prepend in init.lua); the
+      -- binary ships from ~/dev/quake, so this isn't managed by
+      -- Mason.
+      vim.lsp.config("quake_lsp", {
+        cmd = { vim.fn.expand("~/dev/quake/quake"), "lsp" },
+        filetypes = { "quakefile" },
+        root_markers = { "Quakefile", ".git" },
+      })
+
+      vim.lsp.enable({ "lua_ls", "ruby_lsp", "gopls", "terraformls", "zls", "quake_lsp" })
 
       -- Keymaps on LSP attach
       vim.api.nvim_create_autocmd("LspAttach", {

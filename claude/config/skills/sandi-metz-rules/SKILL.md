@@ -1,6 +1,6 @@
 ---
 name: sandi-metz-rules
-description: This skill should be used when users request code review, refactoring, or code quality improvements for Ruby codebases. Apply Sandi Metz's four rules for writing maintainable object-oriented code - classes under 100 lines, methods under 5 lines, no more than 4 parameters, and controllers instantiate only one object. Use when users mention "Sandi Metz", "code quality", "refactoring", or when reviewing Ruby code for maintainability.
+description: "Apply Sandi Metz's four rules for maintainable Ruby code. Use when reviewing or refactoring Ruby code, or when the user mentions 'Sandi Metz', 'code quality', or 'refactoring'."
 ---
 
 # Sandi Metz Rules

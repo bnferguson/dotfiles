@@ -1,6 +1,6 @@
 ---
 name: deep-research
-description: This skill should be used when users request comprehensive, in-depth research on a topic that requires detailed analysis similar to an academic journal or whitepaper. The skill conducts multi-phase research using web search and content analysis, employing high parallelism with multiple subagents, and produces a detailed markdown report with citations.
+description: "Multi-phase research producing detailed reports with citations. Use when the user requests comprehensive, in-depth research on a topic requiring analysis similar to a whitepaper."
 license: MIT
 ---
 

@@ -7,7 +7,8 @@ Personal dotfiles, originally forked from [holman/dotfiles](https://github.com/h
 | Topic | What it does |
 |-------|-------------|
 | `bettertouchtool/` | BTT preset export/import scripts — run `export` and `import` manually |
-| `bin/` | Scripts added to `$PATH` — `tree-me`, `git-sync`, `git-promote`, etc. |
+| `bin/` | Scripts added to `$PATH` — `git-tree`, `git-sync`, `git-promote`, etc. |
+| `bun/` | Bun JS runtime completion + path setup |
 | `claude/` | Claude Code config — settings, skills, commands, agents |
 | `gh/` | GitHub CLI config |
 | `ghostty/` | Ghostty terminal config |
@@ -21,6 +22,7 @@ Personal dotfiles, originally forked from [holman/dotfiles](https://github.com/h
 | `ssh/` | SSH config |
 | `starship/` | Starship prompt config |
 | `system/` | PATH, EDITOR, ls aliases, keybindings |
+| `vera/` | Vera code-search tool installer |
 | `zed/` | Zed editor settings |
 | `zsh/` | Shell config, completion, prompt |
 
@@ -45,7 +47,7 @@ script/bootstrap
 
 ### dependencies
 
-Install these before running bootstrap, or let `dot` handle it on macOS:
+Install these before running bootstrap, or let `dots` handle it on macOS:
 
 - [starship](https://starship.rs) — `brew install starship` or `curl -sS https://starship.rs/install.sh | sh`
 - [mise](https://mise.jdx.dev) — `brew install mise` or `curl https://mise.run | sh`
@@ -57,7 +59,7 @@ Install these before running bootstrap, or let `dot` handle it on macOS:
 
 ## maintenance
 
-Run `dot` periodically to update homebrew and run installers. Use `dot -e` to open the dotfiles in your editor.
+Run `dots` periodically to update homebrew and run installers. Use `dots -e` to open the dotfiles in your editor.
 
 ## keyboard setup
 
@@ -102,10 +104,10 @@ The active BTT preset (`bttsettings_70697`) uses the Hyper key from Karabiner to
 
 | Shortcut | Action |
 |----------|--------|
-| Fn+Hyper+Up | Maximize window |
-| Fn+Hyper+Down | Restore previous window size |
-| Fn+Hyper+Left | Left half |
-| Fn+Hyper+Right | Right half |
+| Hyper+Up | Maximize window |
+| Hyper+Down | Restore previous window size |
+| Hyper+Left | Left half |
+| Hyper+Right | Right half |
 
 **Other:**
 

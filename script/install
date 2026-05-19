@@ -13,7 +13,7 @@ if command -v brew >/dev/null 2>&1; then
 elif command -v pacman >/dev/null 2>&1; then
   echo "› installing packages via pacman"
   sudo pacman -S --needed --noconfirm \
-    starship mise neovim github-cli jq yq fzf fd ast-grep uv zsh keyd
+    zsh starship mise neovim github-cli jq yq fzf fd ast-grep uv jujutsu keyd
 
   # keyd — system-level key remapper for Hyper key (Caps Lock → Esc/Hyper)
   DOTFILES_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
@@ -26,12 +26,25 @@ elif command -v pacman >/dev/null 2>&1; then
 elif command -v apt-get >/dev/null 2>&1; then
   echo "› installing packages via apt"
   sudo apt-get update
-  sudo apt-get install -y neovim jq fzf fd-find
+  sudo apt-get install -y zsh neovim jq fzf fd-find
   # These need separate install methods on Ubuntu:
   # starship: curl -sS https://starship.rs/install.sh | sh
   # mise:     curl https://mise.run | sh
   # gh:       https://github.com/cli/cli/blob/trunk/docs/install_linux.md
   echo "  Note: starship, mise, and gh need manual install on Ubuntu — see README"
+fi
+
+# Switch default shell to zsh if it isn't already
+if command -v zsh >/dev/null 2>&1; then
+  zsh_path="$(command -v zsh)"
+  current_shell="$(getent passwd "$USER" | cut -d: -f7)"
+  if [ "$current_shell" != "$zsh_path" ]; then
+    echo "› changing default shell to zsh ($zsh_path)"
+    if ! grep -qx "$zsh_path" /etc/shells; then
+      echo "$zsh_path" | sudo tee -a /etc/shells >/dev/null
+    fi
+    chsh -s "$zsh_path"
+  fi
 fi
 
 # Run topic installers

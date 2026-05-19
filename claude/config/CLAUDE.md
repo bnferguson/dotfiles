@@ -35,14 +35,21 @@ Prefer simple, direct changes. Pull requests should be small and focused on a si
 
 The exception here is when you notice the code is getting messy or needs to be refactored (eg. code smells, adding something that two of already exist and there's a third maybe it's time to refactor). If this is the case, you can make a plan for it and ask the user about the change.
 
-Use the `/pr` skill to create pull requests. It handles the full process: research, drafting, interview, and creation. Follow the skill's process exactly — the interview and structured sections are mandatory, not suggestions. Prefer draft PRs — this gives the author a chance to add their own voice before it goes out for review.
+**ALWAYS use the `/pr` skill to create pull requests — never use `gh pr create` directly.** The skill handles the full process: research, drafting, interview, and creation. Follow the skill's process exactly — the interview and structured sections are mandatory, not suggestions. Prefer draft PRs — this gives the author a chance to add their own voice before it goes out for review.
 
 # Tool Guidance
 - When interacting with GitHub use `gh`
 - Use `git` for source control
 - I use `mise` to manage my shell environment for projects
 - I use `brew` to install tools that aren't specified in `mise`
-- When dealing with code structure use `ast-grep` an LSP for the given language when available
+- When dealing with code structure use `ast-grep` and LSP for the given language when available
+- **Prefer the LSP tool over grep/glob for code navigation.** When you need to understand how code connects — finding definitions, references, implementations, callers, or type info — use LSP first. It's faster and more accurate than text search for these tasks. Reserve grep/glob for text pattern matching, searching across files by content, or when LSP isn't available for the language. Specific guidance:
+  - **Go to definition / type:** Use `LSP goToDefinition` instead of grepping for `func FooBar` or `class FooBar`
+  - **Find all usages:** Use `LSP findReferences` instead of grepping for a symbol name
+  - **Understand a symbol:** Use `LSP hover` to get type info and docs
+  - **Map a file's structure:** Use `LSP documentSymbol` instead of grepping for `def ` or `func `
+  - **Find implementations:** Use `LSP goToImplementation` for interfaces/abstract methods
+  - **Trace call chains:** Use `LSP incomingCalls`/`outgoingCalls` to understand call graphs
 - When dealing with terraform use the Terraform MCP
 - When working with Rails use the `rails` command for migrations and generators
 
@@ -51,11 +58,24 @@ Use the `/pr` skill to create pull requests. It handles the full process: resear
   - YAML/XML: use `yq`
 
 # Language Specific Claude Skills
-- Ruby/Rails: always invoke the `rails-backend-guidelines` skill and `rails-programmer` agent before writing Rails code, then run the `rails-core-code-reviewer` agent after to verify.
+- Ruby/Rails: always invoke the `rails-programmer` skill before writing Rails code, then run the `rails-core-code-reviewer` agent after to verify.
 - Go: always invoke the `effective-go` and `go-concurrency-patterns` skills before writing Go code, then run the `go-core-code-reviewer` agent after to verify.
+- Zig: always invoke the `idiomatic-zig` and `zig-programming` skills before writing Zig code, then run the `zig-core-code-reviewer` agent after to verify. Additionally, invoke `zig-interop` when working on C interop (e.g., libc bindings, `@cImport`, linking C libraries).
 
 # Prose
-- When writing prose, follow [`style-guide.md`](style-guide.md) for voice and tone
-- Consult [`tropes.md`](tropes.md) for AI writing patterns to avoid
+- Follow [`style-guide.md`](style-guide.md) for voice and tone, and consult [`tropes.md`](tropes.md) for AI writing patterns to avoid
+- **This applies to all prose output**, not just long-form writing. PR descriptions, PR review comments, issue comments, Slack messages, commit messages, and any other text written on Brandon's behalf should follow the style guide and avoid the tropes
+- When drafting PR descriptions specifically: write in Brandon's voice, be direct and specific about what changed and why, skip the filler transitions and false profundity
 
-@RTK.md
+## Code Search
+
+Use Vera before opening many files or running broad text search when you need to find where logic lives or how a feature works.
+
+- `vera search "query"` for semantic code search. Describe behavior: "JWT validation", not "auth".
+- `vera grep "pattern"` for exact text or regex
+- `vera references <symbol>` for callers and callees
+- `vera overview` for a project summary (languages, entry points, hotspots)
+- `vera search --deep "query"` for RAG-fusion query expansion + merged ranking
+- Narrow results with `--lang`, `--path`, `--type`, or `--scope docs`
+- `vera watch .` to auto-update the index, or `vera update .` after edits (`vera index .` if `.vera/` is missing)
+- For detailed usage, query patterns, and troubleshooting, read the Vera skill file installed by `vera agent install`

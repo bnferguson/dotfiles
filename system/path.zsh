@@ -1,4 +1,4 @@
-export PATH="./bin:$ZSH/bin:$PATH"
+export PATH="$HOME/bin:./bin:$ZSH/bin:$PATH"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/local/sbin:$PATH"

@@ -13,14 +13,12 @@ brew "macos-trash"  # move to Trash instead of rm -rf
 brew "duti"         # set default apps for file types
 
 # Development
+tap "oven-sh/bun"
+brew "oven-sh/bun/bun" # javascript runtime (vera dependency)
 brew "jj"           # jujutsu vcs (checkpointing safety net)
 brew "ast-grep"     # structural code search
 brew "actionlint"   # github actions linter
 brew "uv"           # python package manager
-brew "rtk"          # llm token-saving proxy
-
-# AI
-cask "claude-code"  # anthropic cli
 
 # macOS casks
 if OS.mac?

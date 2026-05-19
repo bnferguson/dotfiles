@@ -46,6 +46,7 @@
       "Bash(bin/rubocop:*)",
       "Bash(bin/brakeman:*)",
       "Bash(ruby:*)",
+      "Bash(mise:*)",
       "Bash(pnpm:*)",
       "Bash(node:*)",
       "Bash(ls:*)",
@@ -102,7 +103,6 @@
       "mcp__plugin_playwright_playwright__browser_network_requests",
       "mcp__plugin_playwright_playwright__browser_evaluate",
       "mcp__plugin_playwright_playwright__browser_wait_for",
-      "Skill(rails-backend-guidelines)",
       "Skill(mesa-resolve)",
       "Skill(mesa-fix)"
     ],
@@ -171,6 +171,15 @@
             "command": "bash ~/.claude/hooks/log-mutations.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/log-sandbox-bypass.sh"
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -223,7 +232,11 @@
     "git-cleanup@trailofbits": true,
     "property-based-testing@trailofbits": true,
     "skill-improver@trailofbits": true,
-    "testing-handbook-skills@trailofbits": true
+    "testing-handbook-skills@trailofbits": true,
+    "slack@claude-plugins-official": true,
+    "zls-lsp@zig-skills": true,
+    "clangd-lsp@claude-plugins-official": true,
+    "skills-janitor@skills-janitor": true
   },
   "extraKnownMarketplaces": {
     "ruby-skills": {
@@ -237,20 +250,39 @@
         "source": "github",
         "repo": "trailofbits/skills"
       }
+    },
+    "zig-skills": {
+      "source": {
+        "source": "github",
+        "repo": "bnferguson/zig-skills"
+      }
+    },
+    "skills-janitor": {
+      "source": {
+        "source": "github",
+        "repo": "khendzel/skills-janitor"
+      }
     }
   },
   "sandbox": {
     "filesystem": {
-      "allowRead": [
-        "~/.config/gh"
-      ],
       "allowWrite": [
         "/tmp",
         "/private/tmp",
         "/private/var/folders",
-        "~/.cache"
+        "~/.cache",
+        "~/.claude/audit"
+      ],
+      "allowRead": [
+        "~/.config/gh"
       ]
-    }
+    },
+    "excludedCommands": [
+      "gh *",
+      "git push *",
+      "git fetch *",
+      "mise *"
+    ]
   },
   "spinnerVerbs": {
     "mode": "replace",
@@ -281,5 +313,6 @@
       "Thundering in your heart"
     ]
   },
-  "skipDangerousModePermissionPrompt": true
+  "skipDangerousModePermissionPrompt": true,
+  "agentPushNotifEnabled": true
 }
