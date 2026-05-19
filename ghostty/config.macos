@@ -1,0 +1,4 @@
+# macOS-only Ghostty overrides.
+#
+# Ghostty's macOS defaults already use Cmd for tabs/windows/splits, so most
+# things work out of the box. Add mac-specific tweaks here as they come up.
