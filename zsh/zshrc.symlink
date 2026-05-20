@@ -12,10 +12,15 @@ then
   source ~/.localrc
 fi
 
-# all of our zsh files (exclude .git, .cache, node_modules)
+# all of our zsh files (exclude .git, .cache, node_modules, and the wrong OS bucket)
 setopt EXTENDED_GLOB
 typeset -U config_files
-config_files=($ZSH/(^(.git|.cache|node_modules))/**/*.zsh)
+if [[ "$(uname -s)" == "Darwin" ]]; then
+  other_os="linux"
+else
+  other_os="macos"
+fi
+config_files=($ZSH/(^(.git|.cache|node_modules|$other_os))/**/*.zsh)
 
 # load the path files
 for file in ${(M)config_files:#*/path.zsh}

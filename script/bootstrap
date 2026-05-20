@@ -196,19 +196,19 @@ install_larger_paths () {
   link_file "$DOTFILES_ROOT/jj/config.toml" "$HOME/.config/jj/config.toml"
 
   if [ "$(uname -s)" == "Darwin" ]; then
-    link_file "$DOTFILES_ROOT/karabiner" "$HOME/.config/karabiner"
+    link_file "$DOTFILES_ROOT/macos/karabiner" "$HOME/.config/karabiner"
   fi
 
   if [ "$(uname -s)" == "Linux" ]; then
     # Hyprland config overrides (bindings + input)
     if [ -d "$HOME/.config/hypr" ]; then
-      link_file "$DOTFILES_ROOT/hyprland/bindings.conf" "$HOME/.config/hypr/bindings.conf"
-      link_file "$DOTFILES_ROOT/hyprland/input.conf" "$HOME/.config/hypr/input.conf"
+      link_file "$DOTFILES_ROOT/linux/hyprland/bindings.conf" "$HOME/.config/hypr/bindings.conf"
+      link_file "$DOTFILES_ROOT/linux/hyprland/input.conf" "$HOME/.config/hypr/input.conf"
     fi
 
     # systemd-user environment overrides
     mkdir -p "$HOME/.config/environment.d"
-    link_file "$DOTFILES_ROOT/environment.d/shell.conf" "$HOME/.config/environment.d/shell.conf"
+    link_file "$DOTFILES_ROOT/linux/environment.d/shell.conf" "$HOME/.config/environment.d/shell.conf"
   fi
 }
 
@@ -245,7 +245,7 @@ fi
 if [ "$(uname -s)" == "Darwin" ]
 then
   info "setting up sudoers rules"
-  source "$DOTFILES_ROOT/macos/setup-sudoers.sh"
+  source "$DOTFILES_ROOT/macos/scripts/setup-sudoers.sh"
   success "sudoers"
 
   info "installing dependencies"
@@ -262,11 +262,11 @@ if [ "$(uname -s)" == "Darwin" ]; then
   BTTCLI="/Applications/BetterTouchTool.app/Contents/SharedSupport/bin/bttcli"
   if [ -x "$BTTCLI" ] && "$BTTCLI" get_preset_details > /dev/null 2>&1; then
     info "importing BetterTouchTool presets"
-    "$DOTFILES_ROOT/bettertouchtool/import"
+    "$DOTFILES_ROOT/macos/bettertouchtool/import"
     success "BetterTouchTool presets imported"
   else
     info "BetterTouchTool: skipped preset import (BTT not running or Socket Server not enabled)"
-    info "  To import later: bettertouchtool/import"
+    info "  To import later: macos/bettertouchtool/import"
     info "  Enable Socket Server: BTT → Settings → Scripting → Command Line"
   fi
 fi
