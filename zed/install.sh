@@ -22,3 +22,30 @@ fi
 mkdir -p "$HOME/.local/bin"
 ln -sf /usr/bin/zeditor "$HOME/.local/bin/zed"
 echo "  linked ~/.local/bin/zed → /usr/bin/zeditor"
+
+# Set Zed as default for editor MIME types, mirroring macos/scripts/set-duti.sh.
+# Intentionally excluded:
+#   text/html — leave to browser
+#   text/x-c, text/x-c++ — leave to IDE-style editors
+if command -v xdg-mime >/dev/null 2>&1; then
+  mimes="
+    text/markdown
+    application/json
+    application/xml
+    text/xml
+    application/x-yaml
+    text/yaml
+    application/x-shellscript
+    text/x-python
+    text/x-ruby
+    text/x-perl
+    text/css
+    text/plain
+    application/javascript
+  "
+  echo "$mimes" | while read -r mime; do
+    [ -z "$mime" ] && continue
+    xdg-mime default dev.zed.Zed.desktop "$mime"
+  done
+  echo "  set Zed as default for editor MIMEs"
+fi
