@@ -12,6 +12,9 @@ brew "fd"           # find alternative
 brew "macos-trash"  # move to Trash instead of rm -rf
 brew "duti"         # set default apps for file types
 
+# Sync
+brew "syncthing"    # peer-to-peer file sync
+
 # Development
 tap "oven-sh/bun"
 brew "oven-sh/bun/bun" # javascript runtime (vera dependency)
