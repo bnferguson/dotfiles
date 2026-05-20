@@ -15,7 +15,7 @@ elif command -v pacman >/dev/null 2>&1; then
   sudo pacman -S --needed --noconfirm \
     zsh starship mise neovim github-cli jq yq fzf fd ast-grep uv jujutsu keyd \
     ttf-ibmplex-mono-nerd \
-    firefox telegram-desktop signal-desktop
+    firefox telegram-desktop signal-desktop zed
 
   # AUR packages — yay is the assumed helper (ships with Omarchy)
   if command -v yay >/dev/null 2>&1; then
