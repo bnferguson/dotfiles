@@ -4,17 +4,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-Personal dotfiles repo using the [holman/dotfiles](https://github.com/holman/dotfiles) topic-centric architecture. Each top-level directory is a "topic" with automatic loading conventions.
+Personal dotfiles repo using the [holman/dotfiles](https://github.com/holman/dotfiles) topic-centric architecture. Cross-platform topics live at the repo root; OS-specific topics live under `linux/` or `macos/`.
 
 ## Setup & Maintenance Commands
 
 ```sh
-script/bootstrap          # Full install: gitconfig, symlinks, brew, BTT presets
-script/install            # Just packages + topic installers (no symlinks/gitconfig)
-dots                      # Update homebrew + run topic installers (maintenance)
-dots -e                   # Open dotfiles in $EDITOR
-bettertouchtool/export    # Export BTT presets after changing them in BTT
-bettertouchtool/import    # Restore BTT presets on a new machine
+script/bootstrap              # Full install: gitconfig, symlinks, brew, BTT presets
+script/install                # Just packages + topic installers (no symlinks/gitconfig)
+dots                          # Update homebrew + run topic installers (maintenance)
+dots -e                       # Open dotfiles in $EDITOR
+macos/bettertouchtool/export  # Export BTT presets after changing them in BTT
+macos/bettertouchtool/import  # Restore BTT presets on a new machine
 ```
 
 There are no tests or linting. Changes are validated by running `script/bootstrap` or sourcing the shell.
@@ -25,15 +25,17 @@ The shell (`zsh/zshrc.symlink`) loads files in this order:
 
 1. `~/.localrc` — machine-specific env vars (not committed)
 2. `*/path.zsh` — `$PATH` setup, loaded first
-3. `*/*.zsh` (excluding `path.zsh` and `completion.zsh`) — general config, aliases, env
+3. `*/**/*.zsh` (recursive, excluding `path.zsh` and `completion.zsh`) — general config, aliases, env
 4. `compinit` runs
 5. `*/completion.zsh` — completion definitions, loaded last
+
+The autoloader recursively walks every topic. It excludes `.git`, `.cache`, `node_modules`, and the wrong-OS bucket (`linux/` on macOS, `macos/` on Linux), so `linux/vpn/aliases.zsh` only loads on Linux.
 
 Other conventions:
 - `*.symlink` files → symlinked to `$HOME` as dotfiles (e.g., `git/gitconfig.symlink` → `~/.gitconfig`)
 - `bin/` → added to `$PATH`, contains git extensions and utilities
 - `functions/` → autoloaded zsh functions (files starting with `_` are completion functions)
-- Deeper paths (nvim, starship, gh, ghostty, ssh, jj, claude, karabiner, zed) are symlinked into `~/.config/` or `~/.claude/` by `install_larger_paths` in bootstrap
+- Deeper paths (nvim, starship, gh, ghostty, ssh, jj, claude, zed at root; `linux/hyprland`, `linux/environment.d`, `macos/karabiner` under OS buckets) are symlinked into `~/.config/` or `~/.claude/` by `install_larger_paths` in bootstrap
 
 ## Key Architecture Details
 
