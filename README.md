@@ -4,19 +4,20 @@ Personal dotfiles, originally forked from [holman/dotfiles](https://github.com/h
 
 ## what's inside
 
+Cross-platform topics live at the repo root. OS-specific topics live under `linux/` or `macos/` and only load on that OS.
+
+**Shared:**
+
 | Topic | What it does |
 |-------|-------------|
-| `bettertouchtool/` | BTT preset export/import scripts — run `export` and `import` manually |
 | `bin/` | Scripts added to `$PATH` — `git-tree`, `git-sync`, `git-promote`, etc. |
 | `bun/` | Bun JS runtime completion + path setup |
 | `claude/` | Claude Code config — settings, skills, commands, agents |
 | `gh/` | GitHub CLI config |
-| `ghostty/` | Ghostty terminal config |
+| `ghostty/` | Ghostty terminal config (`config.linux` and `config.macos` siblings handle OS-specific bindings) |
 | `git/` | Git aliases, global gitconfig, gitignore |
 | `jj/` | Jujutsu VCS config — aliases, completion, config |
-| `karabiner/` | Karabiner-Elements config (macOS only) |
 | `kubernetes/` | kubectl completion (cached for speed) |
-| `macos/` | macOS defaults and install scripts |
 | `mise/` | Global mise tool versions |
 | `nvim/` | Neovim config |
 | `ssh/` | SSH config |
@@ -25,6 +26,24 @@ Personal dotfiles, originally forked from [holman/dotfiles](https://github.com/h
 | `vera/` | Vera code-search tool installer |
 | `zed/` | Zed editor settings |
 | `zsh/` | Shell config, completion, prompt |
+| `shell.env` | Single source of truth for `$SHELL` — read by `script/install` and (via symlink) by `linux/environment.d/shell.conf` |
+
+**Linux-only (`linux/`):**
+
+| Topic | What it does |
+|-------|-------------|
+| `linux/environment.d/` | systemd-user env (currently the `$SHELL` override; symlinks to root-level `shell.env`) |
+| `linux/hyprland/` | Hyprland WM overrides — bindings + input |
+| `linux/keyd/` | keyd keyboard remapper config (Caps → Hyper) |
+| `linux/vpn/` | OpenVPN systemd-unit aliases |
+
+**macOS-only (`macos/`):**
+
+| Topic | What it does |
+|-------|-------------|
+| `macos/bettertouchtool/` | BTT preset export/import scripts |
+| `macos/karabiner/` | Karabiner-Elements config |
+| `macos/scripts/` | macOS defaults, duti file associations, hostname, sudoers, MAS install |
 
 ## how it works
 
@@ -115,7 +134,7 @@ The active BTT preset (`bttsettings_70697`) uses the Hyper key from Karabiner to
 |----------|--------|
 | Hyper+Esc | Sleep display |
 
-BTT presets are not auto-synced. Run `bettertouchtool/export` after making changes in BTT, and `bettertouchtool/import` to restore on a new machine. Bootstrap will import automatically if BTT is running with its Socket Server enabled.
+BTT presets are not auto-synced. Run `macos/bettertouchtool/export` after making changes in BTT, and `macos/bettertouchtool/import` to restore on a new machine. Bootstrap will import automatically if BTT is running with its Socket Server enabled.
 
 ## origins
 
