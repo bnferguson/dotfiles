@@ -57,6 +57,9 @@ theme = Gruvbox Dark Hard
 # resize-overlay-duration = 4s 200ms
 keybind = shift+enter=text:\x1b\r
 
+# Don't prompt when closing a surface with a running process.
+confirm-close-surface = false
+
 # Per-OS overrides. The ? prefix makes each optional — bootstrap only
 # symlinks the matching file into ~/.config/ghostty/, so the other one
 # silently no-ops.
