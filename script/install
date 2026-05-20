@@ -17,6 +17,14 @@ elif command -v pacman >/dev/null 2>&1; then
     ttf-ibmplex-mono-nerd \
     firefox telegram-desktop signal-desktop zed
 
+  # Default browser — only set if not already Firefox so we don't fight
+  # a user override on subsequent `dots` runs.
+  if command -v xdg-settings >/dev/null 2>&1 \
+    && [ "$(xdg-settings get default-web-browser 2>/dev/null)" != "firefox.desktop" ]; then
+    echo "› setting Firefox as default browser"
+    xdg-settings set default-web-browser firefox.desktop
+  fi
+
   # AUR packages — yay is the assumed helper (ships with Omarchy)
   if command -v yay >/dev/null 2>&1; then
     echo "› installing AUR packages via yay"
