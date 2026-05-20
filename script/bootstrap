@@ -140,7 +140,15 @@ install_dotfiles () {
 
   local overwrite_all=false backup_all=false skip_all=false
 
-  for src in $(find -H "$DOTFILES_ROOT" -maxdepth 2 -name '*.symlink' -not -path '*.git*')
+  # Skip *.symlink files in the wrong-OS bucket so e.g. linux/bashrc.symlink
+  # doesn't get linked on macOS (and vice versa).
+  if [ "$(uname -s)" == "Darwin" ]; then
+    local other_os="linux"
+  else
+    local other_os="macos"
+  fi
+
+  for src in $(find -H "$DOTFILES_ROOT" -maxdepth 2 -name '*.symlink' -not -path '*.git*' -not -path "*/$other_os/*")
   do
     dst="$HOME/.$(basename "${src%.*}")"
     link_file "$src" "$dst"

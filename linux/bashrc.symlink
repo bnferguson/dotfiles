@@ -1,0 +1,8 @@
+# Interactive shell is zsh (see linux/environment.d/shell.conf).
+#
+# This file exists to suppress the distro default that Omarchy drops
+# into ~/.bashrc — it sources ~/.local/share/omarchy/default/bash/rc,
+# whose aliases (e.g. `c=opencode`) shadow our zsh setup. Bash sessions
+# still work, they just don't carry omarchy's bundle.
+
+[[ $- != *i* ]] && return
