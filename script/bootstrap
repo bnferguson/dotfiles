@@ -217,6 +217,10 @@ install_larger_paths () {
     # systemd-user environment overrides
     mkdir -p "$HOME/.config/environment.d"
     link_file "$DOTFILES_ROOT/linux/environment.d/shell.conf" "$HOME/.config/environment.d/shell.conf"
+
+    # gammastep — blue light filter, manual location set in the config
+    mkdir -p "$HOME/.config/gammastep"
+    link_file "$DOTFILES_ROOT/linux/gammastep/config.ini" "$HOME/.config/gammastep/config.ini"
   fi
 }
 
