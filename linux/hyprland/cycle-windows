@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+#
+# Cycle focus through a chain of windows. Each argument is one chain
+# entry of the form "<window-pattern>|<launch-command>". Focus moves to
+# the next entry on each invocation (wrapping); if the active window
+# isn't in the chain, focus jumps to the first entry.
+#
+# The pattern is passed to omarchy-launch-or-focus, which wraps it in
+# \b...\b for a case-insensitive regex against the window's class and
+# title — so it must hit a word boundary. The runtime class often
+# differs from StartupWMClass in the .desktop file (e.g. Telegram
+# reports `org.telegram.desktop`, not `TelegramDesktop`), so verify
+# with `hyprctl clients` when adding a new entry.
+#
+# For our own focus-detection step we lowercase the pattern and do a
+# substring match, so the same pattern works for both.
+
+set -e
+
+if (($# < 2)); then
+  echo "Usage: $(basename "$0") <pattern|cmd> <pattern|cmd> [...]" >&2
+  exit 1
+fi
+
+chain=("$@")
+
+focused=$(hyprctl activewindow -j \
+  | jq -r '((.class // "") + " " + (.title // "")) | ascii_downcase')
+
+current_idx=-1
+for i in "${!chain[@]}"; do
+  pattern="${chain[$i]%%|*}"
+  if [[ $focused == *"${pattern,,}"* ]]; then
+    current_idx=$i
+    break
+  fi
+done
+
+if (( current_idx < 0 )); then
+  next_idx=0
+else
+  next_idx=$(( (current_idx + 1) % ${#chain[@]} ))
+fi
+
+next_entry="${chain[$next_idx]}"
+pattern="${next_entry%%|*}"
+launch="${next_entry#*|}"
+
+exec omarchy-launch-or-focus "$pattern" "$launch"

@@ -14,7 +14,16 @@ elif command -v pacman >/dev/null 2>&1; then
   echo "› installing packages via pacman"
   sudo pacman -S --needed --noconfirm \
     zsh starship mise neovim github-cli jq yq fzf fd ast-grep uv jujutsu keyd \
-    ttf-ibmplex-mono-nerd
+    ttf-ibmplex-mono-nerd \
+    firefox telegram-desktop signal-desktop zed
+
+  # AUR packages — yay is the assumed helper (ships with Omarchy)
+  if command -v yay >/dev/null 2>&1; then
+    echo "› installing AUR packages via yay"
+    yay -S --needed --noconfirm slack-desktop
+  else
+    echo "  Note: yay not found; skipping AUR packages (slack-desktop)"
+  fi
 
   # keyd — system-level key remapper for Hyper key (Caps Lock → Esc/Hyper)
   DOTFILES_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
