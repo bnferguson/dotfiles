@@ -214,6 +214,11 @@ install_larger_paths () {
       link_file "$DOTFILES_ROOT/linux/hyprland/input.conf" "$HOME/.config/hypr/input.conf"
     fi
 
+    # Waybar config override (clock format + module layout)
+    if [ -d "$HOME/.config/waybar" ]; then
+      link_file "$DOTFILES_ROOT/linux/waybar/config.jsonc" "$HOME/.config/waybar/config.jsonc"
+    fi
+
     # systemd-user environment overrides
     mkdir -p "$HOME/.config/environment.d"
     link_file "$DOTFILES_ROOT/linux/environment.d/shell.conf" "$HOME/.config/environment.d/shell.conf"
