@@ -14,7 +14,7 @@ elif command -v pacman >/dev/null 2>&1; then
   echo "› installing packages via pacman"
   sudo pacman -S --needed --noconfirm \
     zsh starship mise neovim github-cli jq yq fzf fd ast-grep uv jujutsu keyd \
-    bun actionlint syncthing gammastep \
+    actionlint syncthing gammastep \
     ttf-ibmplex-mono-nerd \
     firefox telegram-desktop signal-desktop zed
 
