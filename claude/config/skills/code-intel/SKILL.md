@@ -30,7 +30,7 @@ Index when a repo is **large, polyglot, long-lived, or already has a `.codegraph
 
 | You need to… | Use | How |
 |---|---|---|
-| Orient in an unfamiliar repo; map architecture and how code + docs + schema connect | **graphify** | `graphify .` then read `graphify-out/GRAPH_REPORT.md`, or `graphify query "<question>"` |
+| Orient in an unfamiliar repo; map architecture and how code + docs + schema connect | **graphify** | `/graphify .` (in-agent) then read `graphify-out/GRAPH_REPORT.md`, or `graphify query "<question>"` |
 | Find where behavior lives without knowing the name | **vera** | `vera search "validates JWT expiry"` |
 | Exact string, regex, import, or TODO | **vera** (or `rg`) | `vera grep "pattern"` |
 | Trace who calls a symbol / what it calls | **codegraph** | MCP `codegraph_callers` / `codegraph_callees` (CLI: `codegraph callers <sym>`) |
@@ -43,7 +43,7 @@ When codegraph's MCP tools are available, prefer them over re-deriving structure
 
 - **vera** — see the `vera` skill for full `search` / `grep` / `references` / `overview` flags. Index with `vera index .`, refresh with `vera update .`, or `vera watch .` for a session.
 - **codegraph** — MCP tools: `codegraph_context`, `codegraph_search`, `codegraph_callers`, `codegraph_callees`, `codegraph_impact`, `codegraph_node`, `codegraph_files`, `codegraph_status`. Same verbs exist as CLI subcommands. Index with `codegraph init` + `codegraph index`; the file watcher auto-syncs while `serve --mcp` runs. 19+ languages (no shell/zsh).
-- **graphify** — `graphify .` builds `graphify-out/` (graph.html, GRAPH_REPORT.md, graph.json). Query with `graphify query "…"`, `graphify path "A" "B"`, `graphify explain "Symbol"`. Building the graph needs a model backend (the IDE session provides one; headless needs an API key). The `/graphify` slash command wraps the same thing.
+- **graphify** — the full graph is built **in-agent** with `/graphify .` (the session supplies the LLM for semantic extraction); the CLI's `graphify update .` does a code-only AST graph with **no LLM**. Both write `graphify-out/` (graph.json, GRAPH_REPORT.md; HTML viz only under ~5k nodes). Query with `graphify query "…"`, `graphify path "A" "B"`, `graphify explain "Symbol"`.
 
 ## Overlap — which wins
 
@@ -61,6 +61,6 @@ code-intel refresh    # update them after edits
 code-intel status     # show index state per tool
 ```
 
-Or per tool: `vera index .` / `vera update .` (or `vera watch .` for live freshness); `codegraph init` + `codegraph index` / `codegraph sync` (auto-syncs while its MCP server runs); `graphify .` / `graphify . --update` (`graphify hook install` rebuilds on each commit).
+Or per tool: `vera index .` / `vera update .` (or `vera watch .` for live freshness); `codegraph init` + `codegraph index` / `codegraph sync` (auto-syncs while its MCP server runs); `/graphify .` in-agent for the full graph or `graphify update .` for a code-only CLI build (`graphify hook install` rebuilds on each commit).
 
 `.vera/`, `.codegraph/`, and `graphify-out/` are gitignored globally. Install/upgrade the tools with the `code-intel` topic (`code-intel/install.sh`).

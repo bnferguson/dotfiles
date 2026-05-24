@@ -27,9 +27,10 @@ ci_init() {
   fi
 
   if have graphify; then
-    step "graphify — knowledge graph"
-    graphify . || note "graphify build skipped — needs a model backend (API key, or run inside the agent)"
+    step "graphify — knowledge graph (code structure)"
+    graphify update . || note "graphify extraction skipped"
     graphify hook install || true
+    note "for the full LLM-enriched graph (docs + the 'why'), run /graphify . inside an agent session"
   else
     skip graphify
   fi
@@ -39,8 +40,8 @@ ci_refresh() {
   if have vera; then step "vera — update"; vera update .; else skip vera; fi
   if have codegraph; then step "codegraph — sync"; codegraph sync; else skip codegraph; fi
   if have graphify; then
-    step "graphify — update changed files"
-    graphify . --update || note "graphify update skipped — needs a model backend"
+    step "graphify — re-extract code"
+    graphify update . || note "graphify update skipped"
   else
     skip graphify
   fi
