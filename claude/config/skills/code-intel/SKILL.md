@@ -1,6 +1,6 @@
 ---
 name: code-intel
-description: Router for the three code-intelligence tools — vera (semantic search), codegraph (structural graph/call graphs over MCP), and graphify (whole-project knowledge graph spanning code + docs + schemas). Use when finding where logic lives, tracing callers/callees/impact, or getting oriented in an unfamiliar codebase. Picks the right layer (comprehend / locate / traverse) and defers to each tool's own skill, MCP server, or CLI for detailed usage.
+description: Router for the three code-intelligence tools — vera (semantic search), codegraph (structural graph/call graphs over MCP), and graphify (whole-project knowledge graph spanning code + docs + schemas). Use when finding where logic lives, tracing callers/callees/impact, or navigating a large or polyglot codebase — whether unfamiliar or one worked in daily. Picks the right layer (comprehend / locate / traverse) and defers to each tool's own skill, MCP server, or CLI for detailed usage.
 ---
 
 # Code Intelligence
@@ -13,9 +13,18 @@ Three tools, three zoom levels. They are complementary, not competing — pick t
 | **Locate** | vera | "Where's the code about X?" when you don't know the symbol name | Embedding semantic search |
 | **Traverse** | codegraph | "Who calls this? What does it call? Blast radius of a change?" | Structural call graph, live over MCP |
 
-## When to reach for this at all
+## When to reach for this
 
-The stack earns its keep on **large, unfamiliar, or long-lived** codebases. On small or familiar code, LSP + grep are faster — don't index a 20-file repo. Default order on a big new repo: **comprehend once → locate → traverse** as you work.
+The disqualifier is **size, not familiarity**: if the repo is small enough to just read the relevant files, skip the indexes — LSP + grep are faster. Otherwise it pays off, and a repo *you* know cold still qualifies, because I start every session cold even when you don't.
+
+Index when a repo is **large, polyglot, long-lived, or already has a `.codegraph/` or `.vera/` index**. Skip a 20-file utility.
+
+**Default to the index when one exists** — don't wait to be asked. If the repo has a `.codegraph/`, reach for codegraph's MCP tools over grep/Read for navigation; if it has a `.vera/`, prefer `vera search` over broad text search.
+
+### Two modes
+
+- **Exploring an unfamiliar repo** — work the layers in order: `graphify` to comprehend, `vera` to locate, `codegraph` to traverse.
+- **Daily work in a repo you own** — codegraph runs ambiently (its watcher keeps the graph fresh while the session is open); lead with it for navigation and impact checks. Reach for `vera` when you cross into code you didn't write, and `graphify` only for architecture questions or a refactor. This is the default when the index is present — no special prompt needed.
 
 ## Routing
 
