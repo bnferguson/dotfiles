@@ -11,7 +11,6 @@ Cross-platform topics live at the repo root. OS-specific topics live under `linu
 | Topic | What it does |
 |-------|-------------|
 | `bin/` | Scripts added to `$PATH` — `git-tree`, `git-sync`, `git-promote`, etc. |
-| `bun/` | Bun JS runtime completion + path setup |
 | `claude/` | Claude Code config — settings, skills, commands, agents |
 | `gh/` | GitHub CLI config |
 | `ghostty/` | Ghostty terminal config (`config.linux` and `config.macos` siblings handle OS-specific bindings) |
@@ -23,7 +22,6 @@ Cross-platform topics live at the repo root. OS-specific topics live under `linu
 | `ssh/` | SSH config |
 | `starship/` | Starship prompt config |
 | `system/` | PATH, EDITOR, ls aliases, keybindings |
-| `vera/` | Vera code-search tool installer |
 | `zed/` | Zed editor settings |
 | `zsh/` | Shell config, completion, prompt |
 | `shell.env` | Single source of truth for `$SHELL` — read by `script/install` and (via symlink) by `linux/environment.d/shell.conf` |
