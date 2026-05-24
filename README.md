@@ -10,7 +10,7 @@ Cross-platform topics live at the repo root. OS-specific topics live under `linu
 
 | Topic | What it does |
 |-------|-------------|
-| `bin/` | Scripts added to `$PATH` — `git-tree`, `git-sync`, `git-promote`, etc. |
+| `bin/` | Scripts added to `$PATH` — `git-tree`, `git-sync`, `code-intel`, etc. |
 | `claude/` | Claude Code config — settings, skills, commands, agents |
 | `code-intel/` | Installs the code-intelligence stack — vera, codegraph, graphify |
 | `gh/` | GitHub CLI config |

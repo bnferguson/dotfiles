@@ -33,7 +33,7 @@ When codegraph's MCP tools are available, prefer them over re-deriving structure
 ## Per-tool detail
 
 - **vera** — see the `vera` skill for full `search` / `grep` / `references` / `overview` flags. Index with `vera index .`, refresh with `vera update .`, or `vera watch .` for a session.
-- **codegraph** — MCP tools: `codegraph_context`, `codegraph_search`, `codegraph_callers`, `codegraph_callees`, `codegraph_impact`, `codegraph_node`, `codegraph_files`, `codegraph_status`. Same verbs exist as CLI subcommands. Index with `codegraph init`; a file watcher auto-syncs. 19+ languages (no shell/zsh).
+- **codegraph** — MCP tools: `codegraph_context`, `codegraph_search`, `codegraph_callers`, `codegraph_callees`, `codegraph_impact`, `codegraph_node`, `codegraph_files`, `codegraph_status`. Same verbs exist as CLI subcommands. Index with `codegraph init` + `codegraph index`; the file watcher auto-syncs while `serve --mcp` runs. 19+ languages (no shell/zsh).
 - **graphify** — `graphify .` builds `graphify-out/` (graph.html, GRAPH_REPORT.md, graph.json). Query with `graphify query "…"`, `graphify path "A" "B"`, `graphify explain "Symbol"`. Building the graph needs a model backend (the IDE session provides one; headless needs an API key). The `/graphify` slash command wraps the same thing.
 
 ## Overlap — which wins
@@ -44,12 +44,14 @@ When codegraph's MCP tools are available, prefer them over re-deriving structure
 
 ## Setup per project
 
-Indexes are built on demand, not at install. On entering a sizable repo:
+Indexes are built on demand, not at install. The `code-intel` helper drives all three at once:
 
 ```sh
-vera index .          # or: vera watch .   (semantic index)
-codegraph init        # builds .codegraph/; watcher keeps it fresh
-graphify .            # one-time map → graphify-out/  (optional, needs a model backend)
+code-intel init       # build all three indexes (+ graphify commit hook)
+code-intel refresh    # update them after edits
+code-intel status     # show index state per tool
 ```
 
-`.vera/`, `.codegraph/`, and `graphify-out/` are gitignored globally. Install/upgrade the tools themselves with the `code-intel` topic (`code-intel/install.sh`).
+Or per tool: `vera index .` / `vera update .` (or `vera watch .` for live freshness); `codegraph init` + `codegraph index` / `codegraph sync` (auto-syncs while its MCP server runs); `graphify .` / `graphify . --update` (`graphify hook install` rebuilds on each commit).
+
+`.vera/`, `.codegraph/`, and `graphify-out/` are gitignored globally. Install/upgrade the tools with the `code-intel` topic (`code-intel/install.sh`).
