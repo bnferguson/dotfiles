@@ -67,15 +67,12 @@ The exception here is when you notice the code is getting messy or needs to be r
 - **This applies to all prose output**, not just long-form writing. PR descriptions, PR review comments, issue comments, Slack messages, commit messages, and any other text written on Brandon's behalf should follow the style guide and avoid the tropes
 - When drafting PR descriptions specifically: write in Brandon's voice, be direct and specific about what changed and why, skip the filler transitions and false profundity
 
-## Code Search
+## Code Intelligence
 
-Use Vera before opening many files or running broad text search when you need to find where logic lives or how a feature works.
+For finding, navigating, and understanding code, use the **code-intel** skill — it routes between three complementary tools by what you need:
 
-- `vera search "query"` for semantic code search. Describe behavior: "JWT validation", not "auth".
-- `vera grep "pattern"` for exact text or regex
-- `vera references <symbol>` for callers and callees
-- `vera overview` for a project summary (languages, entry points, hotspots)
-- `vera search --deep "query"` for RAG-fusion query expansion + merged ranking
-- Narrow results with `--lang`, `--path`, `--type`, or `--scope docs`
-- `vera watch .` to auto-update the index, or `vera update .` after edits (`vera index .` if `.vera/` is missing)
-- For detailed usage, query patterns, and troubleshooting, read the Vera skill file installed by `vera agent install`
+- **Comprehend** an unfamiliar codebase (architecture, how code + docs + schema connect) → `graphify`
+- **Locate** code by meaning when you don't know the symbol name → `vera search`
+- **Traverse** structure — callers, callees, impact radius → `codegraph` (MCP) or LSP
+
+Reach for these on large or unfamiliar repos; on small or familiar code, LSP + grep are enough. The skill has the full workflow and per-tool commands.
