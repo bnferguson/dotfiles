@@ -77,6 +77,21 @@ get_pr_number() {
     fi
 }
 
+# Seed code-intel indexes in a fresh worktree, detached + logged so it survives
+# this command exiting and never blocks the auto-cd (which parses stdout).
+warm_worktree() {
+    # Resolve code-intel by this script's own dir, not PATH — otherwise the
+    # `./bin` PATH entry + a worktree cwd would shadow it with the worktree's
+    # own (possibly older) copy.
+    local cg; cg="$(cd "$(dirname "$0")" && pwd)/code-intel"
+    [ -x "$cg" ] || return 0
+    local wt="$1"
+    local log="${TMPDIR:-/tmp}/code-intel-warm-$(basename "$wt").log"
+    ( cd "$wt" && "$cg" warm ) >"$log" 2>&1 &
+    disown 2>/dev/null || true
+    echo "› warming code-intel indexes in background (log: $log)" >&2
+}
+
 repo=$(get_repo_name)
 command="$1"
 shift
@@ -207,7 +222,7 @@ EOF
            git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
             git worktree add "$path" "$branch"
             echo "✓ Worktree created at: $path"
-            ( cd "$path" && command -v code-intel >/dev/null 2>&1 && code-intel warm ) 1>&2 || true
+            warm_worktree "$path"
             echo "TREE_ME_CD:$path"
         else
             echo "Error: Branch '$branch' does not exist" >&2
@@ -232,7 +247,7 @@ EOF
         # Create new branch
         git worktree add "$path" -b "$branch" "$base"
         echo "✓ Worktree created at: $path"
-        ( cd "$path" && command -v code-intel >/dev/null 2>&1 && code-intel warm ) 1>&2 || true
+        warm_worktree "$path"
         echo "TREE_ME_CD:$path"
         ;;
 
@@ -262,7 +277,7 @@ EOF
         git fetch origin "pull/$pr_number/head:$branch" 2>/dev/null || true
         git worktree add "$path" "$branch"
         echo "✓ PR #$pr_number checked out at: $path"
-        ( cd "$path" && command -v code-intel >/dev/null 2>&1 && code-intel warm ) 1>&2 || true
+        warm_worktree "$path"
         echo "TREE_ME_CD:$path"
         ;;
 

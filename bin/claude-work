@@ -138,10 +138,16 @@ case "$1" in
       new_wt=true
     fi
 
+    # Resolve code-intel by this script's own dir (cwd/`./bin` could shadow it).
+    code_intel="$(cd "$(dirname "$0")" && pwd)/code-intel"
     cd "$WT_PATH"
-    # Seed code-intel indexes from the main worktree so the session starts hot.
-    if [ "$new_wt" = true ] && command -v code-intel >/dev/null 2>&1; then
-      code-intel warm || true
+    # Seed code-intel indexes from the main worktree in the background, so the
+    # session launches now and the indexes fill in within seconds (logged, not
+    # printed, to keep them out of Claude's TUI).
+    if [ "$new_wt" = true ] && [ -x "$code_intel" ]; then
+      warm_log="${TMPDIR:-/tmp}/code-intel-warm-$WT_NAME.log"
+      echo "› warming code-intel indexes in background (log: $warm_log)"
+      nohup "$code_intel" warm >"$warm_log" 2>&1 &
     fi
     claude --dangerously-skip-permissions "$@"
 
