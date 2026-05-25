@@ -36,21 +36,31 @@ else
 fi
 
 # --- codegraph: structural graph over MCP (TRAVERSE) ----------------------
-if command -v npm >/dev/null 2>&1; then
-  if ! command -v codegraph >/dev/null 2>&1; then
-    echo "  Installing codegraph..."
-    npm install -g @colbymchenry/codegraph || true
+# Install the standalone bundled-runtime build (ships its own Node), NOT
+# `npm i -g`: under mise, an npm-global bin becomes a shim that fails in any
+# project pinning a different node version ("No version is set for shim"), and
+# it needs node present at all (not guaranteed on Linux). The launcher resolves
+# symlinks, so a ~/.local/bin symlink into the bundle is the supported install.
+if ! command -v codegraph >/dev/null 2>&1; then
+  echo "  Installing codegraph (standalone)..."
+  cg_os=$(uname -s | tr '[:upper:]' '[:lower:]')
+  cg_arch=$(uname -m); case "$cg_arch" in x86_64|amd64) cg_arch=x64;; aarch64) cg_arch=arm64;; esac
+  cg_dir="codegraph-${cg_os}-${cg_arch}"
+  cg_url="https://github.com/colbymchenry/codegraph/releases/latest/download/${cg_dir}.tar.gz"
+  mkdir -p "$HOME/.local/lib" "$HOME/.local/bin"
+  if curl -fsSL "$cg_url" | tar -xz -C "$HOME/.local/lib"; then
+    ln -sf "$HOME/.local/lib/$cg_dir/bin/codegraph" "$HOME/.local/bin/codegraph"
+  else
+    echo "  codegraph download failed (${cg_dir}.tar.gz)"
   fi
-  # Register the MCP server ourselves (user scope, machine-local) rather than
-  # `codegraph install`, which would append instructions into the
-  # dotfiles-managed ~/.claude/CLAUDE.md. Tool permissions live in settings.json.
-  if command -v claude >/dev/null 2>&1 \
-    && ! claude mcp list 2>/dev/null | grep -qi '^codegraph'; then
-    echo "  Registering codegraph MCP server..."
-    claude mcp add -s user codegraph -- codegraph serve --mcp || true
-  fi
-else
-  echo "  Skipping codegraph — npm (node) not found"
+fi
+# Register the MCP server ourselves (user scope, machine-local) rather than
+# `codegraph install`, which would append instructions into the
+# dotfiles-managed ~/.claude/CLAUDE.md. Tool permissions live in settings.json.
+if command -v codegraph >/dev/null 2>&1 && command -v claude >/dev/null 2>&1 \
+  && ! claude mcp list 2>/dev/null | grep -qi '^codegraph'; then
+  echo "  Registering codegraph MCP server..."
+  claude mcp add -s user codegraph -- codegraph serve --mcp || true
 fi
 
 # --- graphify: knowledge graph (COMPREHEND) -------------------------------
