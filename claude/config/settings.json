@@ -104,7 +104,15 @@
       "mcp__plugin_playwright_playwright__browser_evaluate",
       "mcp__plugin_playwright_playwright__browser_wait_for",
       "Skill(mesa-resolve)",
-      "Skill(mesa-fix)"
+      "Skill(mesa-fix)",
+      "mcp__codegraph__codegraph_search",
+      "mcp__codegraph__codegraph_context",
+      "mcp__codegraph__codegraph_callers",
+      "mcp__codegraph__codegraph_callees",
+      "mcp__codegraph__codegraph_impact",
+      "mcp__codegraph__codegraph_node",
+      "mcp__codegraph__codegraph_files",
+      "mcp__codegraph__codegraph_status"
     ],
     "deny": [
       "Bash(rm -rf *)",

@@ -16,8 +16,6 @@ brew "duti"         # set default apps for file types
 brew "syncthing"    # peer-to-peer file sync
 
 # Development
-tap "oven-sh/bun"
-brew "oven-sh/bun/bun" # javascript runtime (vera dependency)
 brew "jj"           # jujutsu vcs (checkpointing safety net)
 brew "ast-grep"     # structural code search
 brew "actionlint"   # github actions linter

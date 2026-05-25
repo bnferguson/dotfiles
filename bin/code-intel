@@ -1,0 +1,94 @@
+#!/bin/bash
+# code-intel — manage the code-intelligence indexes (vera, codegraph, graphify)
+# for the project in the current directory.
+#
+# Usage: code-intel <init|refresh|status>
+#
+# Each tool is optional — missing ones are skipped. Run from the repo root.
+# Indexing is worth it on large or unfamiliar repos; on small/familiar code,
+# LSP + grep are faster. Install the tools with the code-intel dotfiles topic.
+
+set -u
+
+have() { command -v "$1" >/dev/null 2>&1; }
+step() { printf '\n\033[1m▸ %s\033[0m\n' "$1"; }
+skip() { printf '  skipping %s — not installed\n' "$1"; }
+note() { printf '  %s\n' "$1"; }
+
+ci_init() {
+  if have vera; then step "vera — semantic index"; vera index .; else skip vera; fi
+
+  if have codegraph; then
+    step "codegraph — structural graph"
+    [ -d .codegraph ] || codegraph init
+    codegraph index
+  else
+    skip codegraph
+  fi
+
+  if have graphify; then
+    step "graphify — knowledge graph (code structure)"
+    graphify update . || note "graphify extraction skipped"
+    graphify hook install || true
+    note "for the full LLM-enriched graph (docs + the 'why'), run /graphify . inside an agent session"
+  else
+    skip graphify
+  fi
+}
+
+ci_refresh() {
+  if have vera; then step "vera — update"; vera update .; else skip vera; fi
+  if have codegraph; then step "codegraph — sync"; codegraph sync; else skip codegraph; fi
+  if have graphify; then
+    step "graphify — re-extract code"
+    graphify update . || note "graphify update skipped"
+  else
+    skip graphify
+  fi
+}
+
+ci_status() {
+  if have vera; then step "vera"; vera stats 2>/dev/null || vera doctor; else skip vera; fi
+  if have codegraph; then step "codegraph"; codegraph status; else skip codegraph; fi
+  if have graphify; then
+    step "graphify"
+    if [ -d graphify-out ]; then
+      note "graphify-out/ present ($(du -sh graphify-out 2>/dev/null | cut -f1))"
+    else
+      note "no graphify-out/ — run: code-intel init"
+    fi
+  else
+    skip graphify
+  fi
+}
+
+show_help() {
+  cat << 'EOF'
+Usage: code-intel <command>
+
+Manage the code-intelligence indexes (vera, codegraph, graphify) for the
+project in the current directory.
+
+Commands:
+  init      Build all three indexes from scratch (+ graphify commit hook)
+  refresh   Update all three after edits
+  status    Show index state for each tool
+  help      Show this help
+
+Notes:
+  - Missing tools are skipped; graphify's build needs a model backend.
+  - For live freshness during a session, run `vera watch .` (codegraph
+    auto-syncs while its MCP server is up; graphify rebuilds on git commit
+    once `graphify hook install` has run).
+  - Indexing pays off on large/unfamiliar repos — on small or familiar code,
+    LSP + grep are faster.
+EOF
+}
+
+case "${1:-help}" in
+  init)            ci_init ;;
+  refresh|update)  ci_refresh ;;
+  status)          ci_status ;;
+  help|-h|--help)  show_help ;;
+  *) printf 'Unknown command: %s\n\n' "${1:-}"; show_help; exit 1 ;;
+esac

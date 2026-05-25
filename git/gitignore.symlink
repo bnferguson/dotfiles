@@ -2,3 +2,5 @@
 *~
 *.swp
 .vera/
+.codegraph/
+graphify-out/
