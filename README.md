@@ -33,7 +33,7 @@ Cross-platform topics live at the repo root. OS-specific topics live under `linu
 |-------|-------------|
 | `linux/environment.d/` | systemd-user env (currently the `$SHELL` override; symlinks to root-level `shell.env`) |
 | `linux/hyprland/` | Hyprland WM overrides — bindings + input |
-| `linux/keyd/` | keyd keyboard remapper config (Caps → Hyper) |
+| `linux/keyd/` | keyd keyboard remapper config (Caps → Hyper, Alt → Ctrl in GUI apps) |
 | `linux/vpn/` | OpenVPN systemd-unit aliases |
 
 **macOS-only (`macos/`):**

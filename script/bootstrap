@@ -212,7 +212,13 @@ install_larger_paths () {
     if [ -d "$HOME/.config/hypr" ]; then
       link_file "$DOTFILES_ROOT/linux/hyprland/bindings.conf" "$HOME/.config/hypr/bindings.conf"
       link_file "$DOTFILES_ROOT/linux/hyprland/input.conf" "$HOME/.config/hypr/input.conf"
+      link_file "$DOTFILES_ROOT/linux/hyprland/autostart.conf" "$HOME/.config/hypr/autostart.conf"
     fi
+
+    # keyd per-user app remaps (Alt-as-Cmd in GUI apps). Consumed by
+    # keyd-application-mapper, which Hyprland autostarts.
+    mkdir -p "$HOME/.config/keyd"
+    link_file "$DOTFILES_ROOT/linux/keyd/app.conf" "$HOME/.config/keyd/app.conf"
 
     # Waybar config override (clock format + module layout)
     if [ -d "$HOME/.config/waybar" ]; then
