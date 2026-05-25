@@ -121,6 +121,7 @@ case "$1" in
     if [ -d "$WT_PATH" ]; then
       echo "Worktree already exists at $WT_PATH"
       echo "Resuming review..."
+      new_wt=false
     else
       mkdir -p "$WORKTREE_DIR"
 
@@ -138,9 +139,14 @@ case "$1" in
           git worktree add -b "$TARGET" "$WT_PATH" "origin/$TARGET"
         fi
       fi
+      new_wt=true
     fi
 
     cd "$WT_PATH"
+    # Seed code-intel indexes from the main worktree so the session starts hot.
+    if [ "$new_wt" = true ] && command -v code-intel >/dev/null 2>&1; then
+      code-intel warm || true
+    fi
     claude --dangerously-skip-permissions "$@"
 
     # Offer cleanup when claude exits

@@ -62,6 +62,27 @@ ci_status() {
   fi
 }
 
+ci_warm() {
+  # Seed this worktree's indexes from the repo's main worktree, then reconcile.
+  # Far cheaper than a cold build: vera detects unchanged files by content, so
+  # `vera update` after a copy re-embeds only this branch's diffs (seconds).
+  src=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')
+  here=$(pwd -P)
+  if [ -z "$src" ] || [ "$src" = "$here" ]; then
+    note "no source worktree to warm from — run: code-intel init"
+    return 0
+  fi
+  step "warming from $src"
+  for idx in .vera .codegraph graphify-out; do
+    if [ -d "$src/$idx" ] && [ ! -e "$idx" ]; then
+      cp -R "$src/$idx" "./$idx" && note "copied $idx"
+    fi
+  done
+  if have vera      && [ -d .vera ];        then step "vera — update";    vera update .;   fi
+  if have codegraph && [ -d .codegraph ];   then step "codegraph — sync"; codegraph sync;  fi
+  if have graphify  && [ -d graphify-out ]; then step "graphify — update"; graphify update .; fi
+}
+
 show_help() {
   cat << 'EOF'
 Usage: code-intel <command>
@@ -72,6 +93,7 @@ project in the current directory.
 Commands:
   init      Build all three indexes from scratch (+ graphify commit hook)
   refresh   Update all three after edits
+  warm      Seed indexes from the main worktree + reconcile (for new worktrees)
   status    Show index state for each tool
   help      Show this help
 
@@ -88,6 +110,7 @@ EOF
 case "${1:-help}" in
   init)            ci_init ;;
   refresh|update)  ci_refresh ;;
+  warm)            ci_warm ;;
   status)          ci_status ;;
   help|-h|--help)  show_help ;;
   *) printf 'Unknown command: %s\n\n' "${1:-}"; show_help; exit 1 ;;

@@ -207,6 +207,7 @@ EOF
            git show-ref --verify --quiet "refs/remotes/origin/$branch"; then
             git worktree add "$path" "$branch"
             echo "✓ Worktree created at: $path"
+            ( cd "$path" && command -v code-intel >/dev/null 2>&1 && code-intel warm ) 1>&2 || true
             echo "TREE_ME_CD:$path"
         else
             echo "Error: Branch '$branch' does not exist" >&2
@@ -231,6 +232,7 @@ EOF
         # Create new branch
         git worktree add "$path" -b "$branch" "$base"
         echo "✓ Worktree created at: $path"
+        ( cd "$path" && command -v code-intel >/dev/null 2>&1 && code-intel warm ) 1>&2 || true
         echo "TREE_ME_CD:$path"
         ;;
 
@@ -260,6 +262,7 @@ EOF
         git fetch origin "pull/$pr_number/head:$branch" 2>/dev/null || true
         git worktree add "$path" "$branch"
         echo "✓ PR #$pr_number checked out at: $path"
+        ( cd "$path" && command -v code-intel >/dev/null 2>&1 && code-intel warm ) 1>&2 || true
         echo "TREE_ME_CD:$path"
         ;;
 

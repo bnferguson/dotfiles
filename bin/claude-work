@@ -123,6 +123,7 @@ case "$1" in
     if [ -d "$WT_PATH" ]; then
       echo "Worktree already exists at $WT_PATH"
       echo "Resuming..."
+      new_wt=false
     else
       if git show-ref --verify --quiet "refs/heads/$BRANCH"; then
         echo "Branch '$BRANCH' already exists. Use claude-review to attach to it." >&2
@@ -134,9 +135,14 @@ case "$1" in
       DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||') || DEFAULT_BRANCH="main"
       git fetch origin "$DEFAULT_BRANCH" 2>/dev/null || true
       git worktree add -b "$BRANCH" "$WT_PATH" "origin/$DEFAULT_BRANCH"
+      new_wt=true
     fi
 
     cd "$WT_PATH"
+    # Seed code-intel indexes from the main worktree so the session starts hot.
+    if [ "$new_wt" = true ] && command -v code-intel >/dev/null 2>&1; then
+      code-intel warm || true
+    fi
     claude --dangerously-skip-permissions "$@"
 
     echo ""
