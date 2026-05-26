@@ -15,36 +15,72 @@ step() { printf '\n\033[1m▸ %s\033[0m\n' "$1"; }
 skip() { printf '  skipping %s — not installed\n' "$1"; }
 note() { printf '  %s\n' "$1"; }
 
-ci_init() {
-  if have vera; then step "vera — semantic index"; vera index .; else skip vera; fi
+# --- parallel runner ------------------------------------------------------
+# The three indexers are independent: separate output dirs (.vera/, .codegraph/,
+# graphify-out/), no ordering dependency, and only vera touches a model backend
+# (codegraph is structural SQLite; the CLI's `graphify update` is AST-only). So
+# init/refresh/warm run them concurrently. Each job's output is captured to its
+# own log and replayed in launch order on completion — three live streams would
+# otherwise interleave into mush. Kept to stock macOS bash 3.2: no `wait -n`, no
+# associative arrays.
+par_dir=""
+par_jobs=""   # space-separated "name:pid"
 
-  if have codegraph; then
-    step "codegraph — structural graph"
-    [ -d .codegraph ] || codegraph init
-    codegraph index
-  else
-    skip codegraph
-  fi
+par_start() { par_dir=$(mktemp -d "${TMPDIR:-/tmp}/code-intel.XXXXXX"); par_jobs=""; }
 
-  if have graphify; then
-    step "graphify — knowledge graph (code structure)"
-    graphify update . || note "graphify extraction skipped"
-    graphify hook install || true
-    note "for the full LLM-enriched graph (docs + the 'why'), run /graphify . inside an agent session"
-  else
-    skip graphify
+# par_run <name> <fn> [args...] — run job fn in the background, output logged.
+par_run() {
+  _name=$1; _fn=$2; shift 2
+  ( "$_fn" "$@" ) >"$par_dir/$_name.log" 2>&1 &
+  par_jobs="$par_jobs $_name:$!"
+}
+
+# par_wait — wait for every launched job, replaying its log in launch order.
+par_wait() {
+  for _job in $par_jobs; do
+    wait "${_job##*:}"
+    cat "$par_dir/${_job%%:*}.log"
+  done
+  rm -rf "$par_dir"
+}
+
+j_vera_index()  { step "vera — semantic index"; vera index .; }
+j_vera_update() { step "vera — update"; vera update .; }
+j_codegraph_index() {
+  step "codegraph — structural graph"
+  [ -d .codegraph ] || codegraph init
+  codegraph index
+}
+j_codegraph_sync() { step "codegraph — sync"; codegraph sync; }
+j_graphify_init() {
+  step "graphify — knowledge graph (code structure)"
+  graphify update . || note "graphify extraction skipped"
+  graphify hook install || true
+  note "for the full LLM-enriched graph (docs + the 'why'), run /graphify . inside an agent session"
+}
+j_graphify_refresh() { step "graphify — re-extract code"; graphify update . || note "graphify update skipped"; }
+j_graphify_warm()    { step "graphify — update"; graphify update .; }
+j_warm_copy() {  # $1 = index dir to seed from $warm_src
+  idx=$1
+  if [ -d "$warm_src/$idx" ] && [ ! -e "$idx" ]; then
+    cp -R "$warm_src/$idx" "./$idx" && note "copied $idx"
   fi
 }
 
+ci_init() {
+  par_start
+  if have vera;      then par_run vera j_vera_index;           else skip vera;      fi
+  if have codegraph; then par_run codegraph j_codegraph_index; else skip codegraph; fi
+  if have graphify;  then par_run graphify j_graphify_init;    else skip graphify;  fi
+  par_wait
+}
+
 ci_refresh() {
-  if have vera; then step "vera — update"; vera update .; else skip vera; fi
-  if have codegraph; then step "codegraph — sync"; codegraph sync; else skip codegraph; fi
-  if have graphify; then
-    step "graphify — re-extract code"
-    graphify update . || note "graphify update skipped"
-  else
-    skip graphify
-  fi
+  par_start
+  if have vera;      then par_run vera j_vera_update;          else skip vera;      fi
+  if have codegraph; then par_run codegraph j_codegraph_sync;  else skip codegraph; fi
+  if have graphify;  then par_run graphify j_graphify_refresh; else skip graphify;  fi
+  par_wait
 }
 
 ci_status() {
@@ -73,14 +109,18 @@ ci_warm() {
     return 0
   fi
   step "warming from $src"
-  for idx in .vera .codegraph graphify-out; do
-    if [ -d "$src/$idx" ] && [ ! -e "$idx" ]; then
-      cp -R "$src/$idx" "./$idx" && note "copied $idx"
-    fi
-  done
-  if have vera      && [ -d .vera ];        then step "vera — update";    vera update .;   fi
-  if have codegraph && [ -d .codegraph ];   then step "codegraph — sync"; codegraph sync;  fi
-  if have graphify  && [ -d graphify-out ]; then step "graphify — update"; graphify update .; fi
+  warm_src=$src
+  par_start
+  par_run vera-copy      j_warm_copy .vera
+  par_run codegraph-copy j_warm_copy .codegraph
+  par_run graphify-copy  j_warm_copy graphify-out
+  par_wait
+  # Reconcile against this branch only after the copies have landed.
+  par_start
+  if have vera      && [ -d .vera ];        then par_run vera j_vera_update;         fi
+  if have codegraph && [ -d .codegraph ];   then par_run codegraph j_codegraph_sync; fi
+  if have graphify  && [ -d graphify-out ]; then par_run graphify j_graphify_warm;   fi
+  par_wait
 }
 
 show_help() {
