@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+#
+# app-stack — give a set of windows one hotkey: summon them as a single
+# tiled group on first press, rotate through the group on repeat.
+#
+# Hyprland groups stack multiple windows onto one tile footprint. This
+# script makes a "stack" out of any set of apps:
+#
+#   - focused window is in the stack  -> rotate to the next member in place
+#   - otherwise                       -> launch any missing members, gather
+#                                         them into one group, and focus it
+#
+# We build the group ourselves rather than via `group set` window rules:
+# that rule only joins a window to an already-focused group, which a silent
+# launch never satisfies, so it yields N solo groups instead of one stack.
+#
+# Each argument is one member: "<pattern>|<launch-command>". The pattern is
+# lowercased and substring-matched against the window's "class title", so it
+# works for both detection here and the workspace pin in bindings.conf.
+# Verify a new member's runtime class with `hyprctl clients` — it often
+# differs from the .desktop StartupWMClass (e.g. `org.telegram.desktop`).
+#
+# Usage: app-stack "<pattern>|<cmd>" "<pattern>|<cmd>" [...]
+
+set -euo pipefail
+
+if (($# < 1)); then
+  echo "Usage: $(basename "$0") <pattern|cmd> [<pattern|cmd> ...]" >&2
+  exit 1
+fi
+
+patterns=()
+launches=()
+for entry in "$@"; do
+  patterns+=("${entry%%|*}")
+  launches+=("${entry#*|}")
+done
+
+# Address of the first window matching $1, or empty. $2 is a clients dump.
+addr_for() {
+  jq -r --arg p "${1,,}" \
+    '[.[] | select(((.class // "") + " " + (.title // "") | ascii_downcase) | contains($p))][0].address // empty' \
+    <<<"$2"
+}
+
+# "x y w h" geometry for a window address from a clients dump.
+geom_for() {
+  jq -r --arg a "$1" '.[] | select(.address==$a) | "\(.at[0]) \(.at[1]) \(.size[0]) \(.size[1])"' <<<"$2"
+}
+
+focused=$(hyprctl activewindow -j \
+  | jq -r '((.class // "") + " " + (.title // "")) | ascii_downcase')
+
+# Already on the stack? Rotate the group and we're done.
+for p in "${patterns[@]}"; do
+  if [[ $focused == *"${p,,}"* ]]; then
+    hyprctl dispatch changegroupactive f
+    exit 0
+  fi
+done
+
+# Summon: launch missing members so the workspace-pin rules place them home.
+clients=$(hyprctl clients -j)
+for i in "${!patterns[@]}"; do
+  [[ -z $(addr_for "${patterns[$i]}" "$clients") ]] && eval "${launches[$i]} &"
+done
+
+# Collect the members that exist right now, in declared order.
+present=()
+for p in "${patterns[@]}"; do
+  a=$(addr_for "$p" "$clients")
+  [[ -n $a ]] && present+=("$a")
+done
+(( ${#present[@]} == 0 )) && exit 0   # everything was just launched; rules place it
+
+anchor=${present[0]}
+
+# Already one group? (anchor's group contains every present member.) Then
+# just focus it — don't rebuild on every summon.
+if jq -e --argjson members "$(printf '%s\n' "${present[@]}" | jq -R . | jq -s .)" \
+     --arg a "$anchor" \
+     '(.[] | select(.address==$a) | .grouped) as $g
+      | ($members | all(. as $m | $g | index($m)))' \
+     <<<"$clients" >/dev/null; then
+  hyprctl dispatch focuswindow "address:$anchor"
+  exit 0
+fi
+
+# Build the group. Dissolve any stray solo/partial groups among the members,
+# co-locate them on the anchor's workspace, then merge each into the anchor.
+ws=$(jq -r --arg a "$anchor" '.[] | select(.address==$a) | .workspace.id' <<<"$clients")
+
+# Suspend focus-follows-mouse for the build: otherwise the cursor steals
+# focus between dispatches and togglegroup/moveintogroup hit the wrong
+# window. Restore on any exit.
+prev_follow=$(hyprctl getoption input:follow_mouse -j | jq -r .int)
+trap 'hyprctl keyword input:follow_mouse "$prev_follow" >/dev/null' EXIT
+hyprctl keyword input:follow_mouse 0 >/dev/null
+
+for a in "${present[@]}"; do
+  if [[ $(jq -r --arg a "$a" '.[] | select(.address==$a) | (.grouped|length)' <<<"$clients") != 0 ]]; then
+    hyprctl dispatch focuswindow "address:$a"
+    hyprctl dispatch togglegroup
+  fi
+  hyprctl dispatch movetoworkspacesilent "$ws,address:$a"
+done
+
+hyprctl dispatch focuswindow "address:$anchor"
+hyprctl dispatch togglegroup   # anchor becomes a one-member group
+
+for a in "${present[@]:1}"; do
+  fresh=$(hyprctl clients -j)
+  read -r ax ay aw ah <<<"$(geom_for "$anchor" "$fresh")"
+  read -r wx wy ww wh <<<"$(geom_for "$a" "$fresh")"
+  # Direction from this window's centre toward the group's centre.
+  dx=$(( (ax + aw/2) - (wx + ww/2) ))
+  dy=$(( (ay + ah/2) - (wy + wh/2) ))
+  if (( ${dx#-} >= ${dy#-} )); then
+    (( dx < 0 )) && dir=l || dir=r
+  else
+    (( dy < 0 )) && dir=u || dir=d
+  fi
+  hyprctl dispatch focuswindow "address:$a"
+  hyprctl dispatch moveintogroup "$dir"
+done
+
+hyprctl dispatch focuswindow "address:$anchor"
