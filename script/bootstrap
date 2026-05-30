@@ -176,9 +176,14 @@ install_larger_paths () {
   mkdir -p "$HOME/.config/zed"
   link_file "$DOTFILES_ROOT/zed/settings.json" "$HOME/.config/zed/settings.json"
   link_file "$DOTFILES_ROOT/zed/keymap.json" "$HOME/.config/zed/keymap.json"
+  # Zed doesn't follow a symlinked themes *directory* (the file watcher
+  # loses sync), so link the theme file into a real themes dir instead.
+  mkdir -p "$HOME/.config/zed/themes"
+  link_file "$DOTFILES_ROOT/zed/themes/soft-paper.json" "$HOME/.config/zed/themes/soft-paper.json"
 
   mkdir -p "$HOME/.config/ghostty"
   link_file "$DOTFILES_ROOT/ghostty/config" "$HOME/.config/ghostty/config"
+  link_file "$DOTFILES_ROOT/ghostty/themes" "$HOME/.config/ghostty/themes"
   if [ "$(uname -s)" == "Darwin" ]; then
     link_file "$DOTFILES_ROOT/ghostty/config.macos" "$HOME/.config/ghostty/config.macos"
   fi

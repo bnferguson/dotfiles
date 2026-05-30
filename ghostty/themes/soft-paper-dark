@@ -1,0 +1,30 @@
+# Soft Paper Dark — Catppuccin Frappé base with the Soft Paper accent set.
+# Ported from the Obsidian "Soft Paper" theme (Nick Milo); text and
+# comments brightened a notch for legibility.
+
+background = #303446
+foreground = #d6dcf7
+cursor-color = #d6dcf7
+cursor-text = #303446
+selection-background = #51566c
+selection-foreground = #d6dcf7
+
+# normal
+palette = 0=#51566c
+palette = 1=#e78284
+palette = 2=#74ce9b
+palette = 3=#d7cb55
+palette = 4=#8caaee
+palette = 5=#e58bb9
+palette = 6=#2bc6d3
+palette = 7=#c3cae6
+
+# bright
+palette = 8=#6e748d
+palette = 9=#ea999c
+palette = 10=#74ce9b
+palette = 11=#d7cb55
+palette = 12=#8caaee
+palette = 13=#bb93d6
+palette = 14=#99d1db
+palette = 15=#d6dcf7
