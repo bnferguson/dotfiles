@@ -57,3 +57,4 @@ Bootstrap uses **relative symlinks** (via perl `File::Spec->abs2rel`) so they wo
 - BTT presets are not auto-synced; manual export/import is required after changes
 - BTT preset arrow-key bindings store an implicit Fn modifier (`BTTShortcutModifierKeys: 10354688` = Hyper+Fn) because Apple keyboards attach Fn to arrow keys at the hardware level. When documenting those shortcuts, write them as `Hyper+Up` etc. — not `Fn+Hyper+Up`.
 - `nvim/lazy-lock.json` tracks neovim plugin versions — changes here are from plugin updates
+- Zed extensions are synced declaratively via `auto_install_extensions` in `zed/settings.json` — add new registry extensions there so other machines pick them up (Zed doesn't write back to this list).
