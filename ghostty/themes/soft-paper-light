@@ -1,0 +1,31 @@
+# Soft Paper Light — warm cream paper with deep purple-grey ink.
+# Ported from the Obsidian "Soft Paper" theme (Nick Milo); the light
+# face is a warmer Rosé Pine Dawn, with ink and accents darkened a
+# notch for legibility.
+
+background = #eee6dd
+foreground = #423e5c
+cursor-color = #423e5c
+cursor-text = #eee6dd
+selection-background = #dcd3cb
+selection-foreground = #423e5c
+
+# normal
+palette = 0=#423e5c
+palette = 1=#a24e68
+palette = 2=#468c66
+palette = 3=#b87b2e
+palette = 4=#286983
+palette = 5=#7e6699
+palette = 6=#4d858d
+palette = 7=#dcd3cb
+
+# bright
+palette = 8=#514c66
+palette = 9=#ac5c75
+palette = 10=#4e9b74
+palette = 11=#c8654b
+palette = 12=#1a7da4
+palette = 13=#bc5990
+palette = 14=#5e979f
+palette = 15=#eee6dd
