@@ -13,7 +13,7 @@ if command -v brew >/dev/null 2>&1; then
 elif command -v pacman >/dev/null 2>&1; then
   echo "› installing packages via pacman"
   sudo pacman -S --needed --noconfirm \
-    zsh starship mise neovim github-cli jq go-yq fzf fd ast-grep uv jujutsu keyd \
+    zsh starship mise neovim github-cli jq go-yq fzf fd ast-grep uv jujutsu keyd openssh \
     actionlint syncthing gammastep \
     ttf-ibmplex-mono-nerd \
     firefox telegram-desktop signal-desktop zed
@@ -41,6 +41,21 @@ elif command -v pacman >/dev/null 2>&1; then
     sudo cp "$DOTFILES_ROOT/linux/keyd/default.conf" /etc/keyd/default.conf
     sudo systemctl enable keyd
     sudo systemctl restart keyd
+  fi
+
+  # sshd — key-only auth, no root login. Validate the merged config before
+  # reloading and back out the drop-in on failure so we can't lock ourselves out.
+  if [ -f "$DOTFILES_ROOT/linux/ssh/sshd-hardening.conf" ]; then
+    echo "› hardening sshd"
+    sudo install -m 0644 "$DOTFILES_ROOT/linux/ssh/sshd-hardening.conf" \
+      /etc/ssh/sshd_config.d/10-hardening.conf
+    if sudo sshd -t; then
+      sudo systemctl enable --now sshd
+      sudo systemctl reload sshd
+    else
+      echo "  sshd config test failed; removing drop-in to avoid lockout" >&2
+      sudo rm -f /etc/ssh/sshd_config.d/10-hardening.conf
+    fi
   fi
 elif command -v apt-get >/dev/null 2>&1; then
   echo "› installing packages via apt"
