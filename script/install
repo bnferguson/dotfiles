@@ -14,7 +14,7 @@ elif command -v pacman >/dev/null 2>&1; then
   echo "› installing packages via pacman"
   sudo pacman -S --needed --noconfirm \
     zsh starship mise neovim github-cli jq go-yq fzf fd ast-grep uv jujutsu keyd openssh \
-    actionlint syncthing gammastep \
+    actionlint syncthing gammastep tailscale \
     ttf-ibmplex-mono-nerd \
     firefox telegram-desktop signal-desktop zed
 
@@ -56,6 +56,13 @@ elif command -v pacman >/dev/null 2>&1; then
       echo "  sshd config test failed; removing drop-in to avoid lockout" >&2
       sudo rm -f /etc/ssh/sshd_config.d/10-hardening.conf
     fi
+  fi
+
+  # tailscale — enable the daemon; `tailscale up` is left to run manually
+  # since it needs interactive auth.
+  if command -v tailscaled >/dev/null 2>&1; then
+    echo "› enabling tailscaled"
+    sudo systemctl enable --now tailscaled
   fi
 elif command -v apt-get >/dev/null 2>&1; then
   echo "› installing packages via apt"

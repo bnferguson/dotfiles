@@ -74,6 +74,7 @@ Install these before running bootstrap, or let `dots` handle it on macOS:
 
 - Machine-specific env vars go in `~/.localrc` (not committed)
 - Git author info goes in `git/gitconfig.local.symlink` (created by bootstrap)
+- Tailscale installs and enables `tailscaled`, but you need to authenticate the machine once: `sudo tailscale up`
 
 ## maintenance
 
