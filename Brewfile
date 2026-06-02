@@ -26,4 +26,5 @@ if OS.mac?
   cask "ghostty"        # terminal
   cask "1password-cli"  # secrets
   cask "jordanbaird-ice" # menubar manager
+  cask "tailscale-app"  # mesh vpn
 end
