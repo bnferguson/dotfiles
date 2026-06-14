@@ -2,3 +2,9 @@
 node = "latest"
 pnpm = "latest"
 rust = "latest"
+
+# Language servers Claude Code's LSP plugins shell out to off $PATH.
+# (neovim gets its own copies via Mason in an nvim-private dir.)
+"go:golang.org/x/tools/gopls" = "latest"
+"npm:typescript-language-server" = "latest"
+"npm:typescript" = "latest"
