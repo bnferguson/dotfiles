@@ -21,8 +21,6 @@ When reviewing PRs or working with branches, always check if the user is already
 ## jj as a safety net (checkpointing only)
 Do NOT use `jj` for day-to-day VCS — use `git`. But in colocated repos (`jj git init --colocate`), jj automatically snapshots the working copy whenever any `jj` command runs. This provides a recovery path when work is lost to agent crashes, context compaction, or accidental reverts.
 
-Hooks in `~/.claude/settings.json` run `jj status` at key moments (session start, pre-compact, stop) to trigger automatic snapshots. You don't need to run `jj` commands proactively — the hooks handle it.
-
 **When to check snapshots:** If something feels off after context compaction — files look different than expected, work seems missing, or the user says "wait, that's gone" — proactively check `jj obslog --revision @ --patch --limit 5` before re-doing any work. It's cheaper to restore than to recreate.
 
 **How to restore:**
