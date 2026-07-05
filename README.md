@@ -24,6 +24,7 @@ Cross-platform topics live at the repo root. OS-specific topics live under `linu
 | `starship/` | Starship prompt config |
 | `system/` | PATH, EDITOR, ls aliases, keybindings |
 | `zed/` | Zed editor settings |
+| `zellij/` | Zellij terminal multiplexer config |
 | `zsh/` | Shell config, completion, prompt |
 | `shell.env` | Single source of truth for `$SHELL` — read by `script/install` and (via symlink) by `linux/environment.d/shell.conf` |
 

@@ -35,7 +35,7 @@ Other conventions:
 - `*.symlink` files → symlinked to `$HOME` as dotfiles (e.g., `git/gitconfig.symlink` → `~/.gitconfig`)
 - `bin/` → added to `$PATH`, contains git extensions and utilities
 - `functions/` → autoloaded zsh functions (files starting with `_` are completion functions)
-- Deeper paths (nvim, starship, gh, ghostty, ssh, jj, claude, zed at root; `linux/hyprland`, `linux/environment.d`, `macos/karabiner` under OS buckets) are symlinked into `~/.config/` or `~/.claude/` by `install_larger_paths` in bootstrap
+- Deeper paths (nvim, starship, gh, ghostty, ssh, jj, claude, zed, zellij at root; `linux/hyprland`, `linux/environment.d`, `macos/karabiner` under OS buckets) are symlinked into `~/.config/` or `~/.claude/` by `install_larger_paths` in bootstrap
 
 ## Key Architecture Details
 
