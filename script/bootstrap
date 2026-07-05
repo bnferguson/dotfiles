@@ -191,6 +191,9 @@ install_larger_paths () {
     link_file "$DOTFILES_ROOT/ghostty/config.linux" "$HOME/.config/ghostty/config.linux"
   fi
 
+  mkdir -p "$HOME/.config/zellij"
+  link_file "$DOTFILES_ROOT/zellij/config.kdl" "$HOME/.config/zellij/config.kdl"
+
   mkdir -p "$HOME/.ssh"
   chmod 700 "$HOME/.ssh"
   link_file "$DOTFILES_ROOT/ssh/config" "$HOME/.ssh/config"
