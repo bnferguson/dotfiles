@@ -8,7 +8,6 @@
   },
   "permissions": {
     "allow": [
-      "Bash(jj:*)",
       "Bash(git:*)",
       "Bash(gh pr:*)",
       "Bash(gh api:*)",
@@ -149,6 +148,7 @@
     "ask": [],
     "defaultMode": "default"
   },
+  "model": "opus",
   "enableAllProjectMcpServers": false,
   "hooks": {
     "PreToolUse": [
@@ -288,9 +288,9 @@
       "Thundering in your heart"
     ]
   },
+  "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
   "remoteControlAtStartup": true,
-  "agentPushNotifEnabled": true,
-  "tui": "fullscreen"
+  "agentPushNotifEnabled": true
 }

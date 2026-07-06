@@ -18,16 +18,6 @@ Before starting a code review, always pull from remote first (`git fetch --all`)
 
 When reviewing PRs or working with branches, always check if the user is already on the relevant branch and read files locally instead of using GitHub API calls.
 
-## jj as a safety net (checkpointing only)
-Do NOT use `jj` for day-to-day VCS — use `git`. But in colocated repos (`jj git init --colocate`), jj automatically snapshots the working copy whenever any `jj` command runs. This provides a recovery path when work is lost to agent crashes, context compaction, or accidental reverts.
-
-**When to check snapshots:** If something feels off after context compaction — files look different than expected, work seems missing, or the user says "wait, that's gone" — proactively check `jj obslog --revision @ --patch --limit 5` before re-doing any work. It's cheaper to restore than to recreate.
-
-**How to restore:**
-- Single file: `jj restore --from <revision> -- path/to/file`
-- Everything: `jj restore --from <revision>`
-- Browse snapshots: `jj obslog --revision @ --patch` (each entry is a timestamped snapshot)
-
 # Pull Requests
 Prefer simple, direct changes. Pull requests should be small and focused on a single issue. You can make a note of potential features, but avoid making unrelated changes. If the instructions are unclear, ask for clarification.
 
