@@ -12,6 +12,18 @@ if command -v brew >/dev/null 2>&1; then
   brew bundle --file=Brewfile
 elif command -v pacman >/dev/null 2>&1; then
   echo "› installing packages via pacman"
+
+  # The standalone `rust` package conflicts with `rustup`; --noconfirm would
+  # default that prompt to "no" and abort the whole transaction. Clear it first
+  # so rustup can own the toolchain. rustup + ~/.cargo/bin provide rustc/cargo.
+  # Match a package *named* rust, not one that provides it — rustup itself
+  # declares provides=(rust), so `pacman -Q rust` resolves to rustup once it's
+  # installed and would otherwise trigger a bogus removal of a missing target.
+  if pacman -Qq | grep -qx rust; then
+    echo "› removing standalone rust package (superseded by rustup)"
+    sudo pacman -Rs --noconfirm rust
+  fi
+
   sudo pacman -S --needed --noconfirm \
     zsh starship mise neovim github-cli jq go-yq fzf fd zellij ast-grep uv rustup jujutsu keyd openssh \
     actionlint syncthing gammastep tailscale \
