@@ -16,7 +16,9 @@ elif command -v pacman >/dev/null 2>&1; then
   # The standalone `rust` package conflicts with `rustup`; --noconfirm would
   # default that prompt to "no" and abort the whole transaction. Clear it first
   # so rustup can own the toolchain. rustup + ~/.cargo/bin provide rustc/cargo.
-  if pacman -Qq rust >/dev/null 2>&1; then
+  # Match a package *named* rust, not one that provides it — rustup itself
+  # provides `rust`, so `pacman -Q rust` resolves to rustup once it's installed.
+  if pacman -Qq | grep -qx rust; then
     echo "› removing standalone rust package (superseded by rustup)"
     sudo pacman -Rs --noconfirm rust
   fi
