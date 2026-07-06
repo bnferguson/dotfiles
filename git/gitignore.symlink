@@ -4,3 +4,5 @@
 .vera/
 .codegraph/
 graphify-out/
+
+**/.claude/.cc-writes/
