@@ -13,7 +13,7 @@ if command -v brew >/dev/null 2>&1; then
 elif command -v pacman >/dev/null 2>&1; then
   echo "› installing packages via pacman"
   sudo pacman -S --needed --noconfirm \
-    zsh starship mise neovim github-cli jq go-yq fzf fd zellij ast-grep uv jujutsu keyd openssh \
+    zsh starship mise neovim github-cli jq go-yq fzf fd zellij ast-grep uv rustup jujutsu keyd openssh \
     actionlint syncthing gammastep tailscale \
     ttf-ibmplex-mono-nerd \
     firefox telegram-desktop signal-desktop zed

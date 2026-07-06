@@ -21,6 +21,7 @@ brew "zellij"       # terminal multiplexer
 brew "ast-grep"     # structural code search
 brew "actionlint"   # github actions linter
 brew "uv"           # python package manager
+brew "rustup"       # rust toolchain manager
 
 # macOS casks
 if OS.mac?
