@@ -1,7 +1,9 @@
 [tools]
 node = "latest"
 pnpm = "latest"
-rust = "latest"
+# Rust is owned by rustup, not mise — see the rust/ topic. rustup is the
+# upstream-recommended installer and manages toolchains + per-project overrides
+# (rust-toolchain.toml) itself.
 
 # Language servers Claude Code's LSP plugins shell out to off $PATH.
 # (neovim gets its own copies via Mason in an nvim-private dir.)
