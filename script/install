@@ -112,7 +112,11 @@ if [ -f shell.env ]; then
 fi
 
 # Run topic installers
-find . -name install.sh -not -path './.git/*' -not -path './script/*' | while read installer ; do
+# Read the installer list on fd 3 so each installer inherits the real stdin
+# (the terminal). Piping find into `while read` would leave stdin as the pipe,
+# and any password prompt (e.g. `sudo softwareupdate`) couldn't disable echo —
+# your typed password would be visible.
+while IFS= read -r installer <&3 ; do
   echo "› running $installer"
   sh -c "${installer}"
-done
+done 3< <(find . -name install.sh -not -path './.git/*' -not -path './script/*')

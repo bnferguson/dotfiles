@@ -42,6 +42,14 @@ export ZSH=$HOME/.dotfiles
 
 # macOS-specific updates
 if [ "$(uname -s)" = "Darwin" ]; then
+	# Ensure passwordless sudo for softwareupdate is in place (idempotent) so the
+	# `sudo softwareupdate` in macos/scripts/install.sh doesn't prompt. Run it as a
+	# subprocess — it `exit 0`s when the rule already exists, which would otherwise
+	# abort the rest of this script when sourced.
+	if [ -x "$ZSH/macos/scripts/setup-sudoers.sh" ]; then
+		"$ZSH/macos/scripts/setup-sudoers.sh"
+	fi
+
 	if [ -f "$ZSH/macos/set-defaults.sh" ]; then
 		$ZSH/macos/set-defaults.sh
 	fi
