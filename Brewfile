@@ -23,10 +23,14 @@ brew "actionlint"   # github actions linter
 brew "uv"           # python package manager
 brew "rustup"       # rust toolchain manager
 
+# Third-party taps
+tap "mirendev/tap"  # miren deploy CLI (Linux gets it via the miren/ topic)
+
 # macOS casks
 if OS.mac?
   cask "ghostty"        # terminal
   cask "1password-cli"  # secrets
   cask "jordanbaird-ice" # menubar manager
   cask "tailscale-app"  # mesh vpn
+  cask "miren"          # deploy CLI for Miren runtime
 end
