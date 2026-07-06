@@ -17,6 +17,7 @@ brew "syncthing"    # peer-to-peer file sync
 
 # Development
 brew "jj"           # jujutsu vcs (checkpointing safety net)
+brew "zellij"       # terminal multiplexer
 brew "ast-grep"     # structural code search
 brew "actionlint"   # github actions linter
 brew "uv"           # python package manager
