@@ -25,6 +25,22 @@ The exception here is when you notice the code is getting messy or needs to be r
 
 **ALWAYS use the `/pr` skill to create pull requests — never use `gh pr create` directly.** The skill handles the full process: research, drafting, interview, and creation. Follow the skill's process exactly — the interview and structured sections are mandatory, not suggestions. Prefer draft PRs — this gives the author a chance to add their own voice before it goes out for review.
 
+## Stacked PRs
+
+The `gh-stack` skill covers building and rebasing stacks, but it defers to `/pr` for opening them. **Never run `gh stack submit`** — its `--auto` titles are generated from commit messages, which is exactly what the interview exists to prevent. Instead, any time the stack has branches without PRs — a fresh stack, or a new layer added on top of one that's already up for review:
+
+1. `gh stack push` — pushes every branch and sets upstreams, so `/pr` never hits an interactive push prompt.
+2. Find the branches that need a PR. `gh stack view --json` lists them bottom → top, and omits the `pr` field on any branch that doesn't have one yet:
+
+   ```sh
+   gh stack view --json | jq -r '.branches[] | select(.pr == null) | .name'
+   ```
+
+3. For each of those, bottom → top: check it out and run `/pr` in full, with `base` set to the branch below it — trunk for the bottom branch. Each layer gets its own interview; the base argument is what chains the PRs. **Never run `/pr` on a branch that already has one** — the skill creates PRs, it doesn't edit them, so it would fail on step 9. Revise an existing description with `gh pr edit` instead.
+4. `gh stack link <every PR number in the stack, bottom → top>` — wires them into a stack on GitHub. Linking is additive and skips PRs already in the stack, so re-listing the existing ones alongside the new one is correct. Pass no `--open`; the drafts stay drafts.
+
+Everything else in the gh-stack skill stands, including its rule that every command runs non-interactively.
+
 # Tool Guidance
 - When interacting with GitHub use `gh`
 - Use `git` for source control

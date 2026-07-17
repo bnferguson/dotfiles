@@ -13,7 +13,7 @@ Cross-platform topics live at the repo root. OS-specific topics live under `linu
 | `bin/` | Scripts added to `$PATH` — `git-tree`, `git-sync`, `code-intel`, etc. |
 | `claude/` | Claude Code config — settings, skills, commands, agents |
 | `code-intel/` | Installs the code-intelligence stack — vera, codegraph, graphify |
-| `gh/` | GitHub CLI config |
+| `gh/` | GitHub CLI config, and installs extensions — `gh-stack` |
 | `ghostty/` | Ghostty terminal config (`config.linux` and `config.macos` siblings handle OS-specific bindings) |
 | `git/` | Git aliases, global gitconfig, gitignore |
 | `jj/` | Jujutsu VCS config — aliases, completion, config |
