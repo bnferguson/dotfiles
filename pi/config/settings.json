@@ -1,7 +1,7 @@
 {
   "lastChangelogVersion": "0.83.0",
   "defaultProvider": "anthropic",
-  "defaultModel": "claude-sonnet-5",
+  "defaultModel": "claude-opus-5",
   "subagents": {
     "agentOverrides": {
       "context-builder": {
@@ -25,7 +25,9 @@
     }
   },
   "packages": [
-    "npm:pi-claude-cli"
+    "npm:pi-claude-cli",
+    "npm:pi-lmstudio",
+    "npm:pi-web-access"
   ],
   "theme": "dark"
 }
