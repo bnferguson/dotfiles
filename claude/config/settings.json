@@ -148,7 +148,7 @@
     "ask": [],
     "defaultMode": "default"
   },
-  "model": "opus",
+  "model": "opus[1m]",
   "enableAllProjectMcpServers": false,
   "hooks": {
     "PreToolUse": [
@@ -158,10 +158,6 @@
           {
             "type": "command",
             "command": "bash ~/.claude/hooks/block-rm-rf.sh"
-          },
-          {
-            "type": "command",
-            "command": "bash ~/.claude/hooks/block-push-to-main.sh"
           },
           {
             "type": "command",
@@ -288,6 +284,7 @@
       "Thundering in your heart"
     ]
   },
+  "effortLevel": "high",
   "tui": "fullscreen",
   "skipDangerousModePermissionPrompt": true,
   "theme": "dark",
