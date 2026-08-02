@@ -1,0 +1,583 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# pi-pelican-bench: run the "pelican riding a bicycle" SVG benchmark across
+# every LLM installed in LM Studio, driving each one through the pi agent.
+#
+# Produces an HTML report with the rendered SVGs side by side plus timing and
+# token metrics, and prints a summary table to the terminal.
+
+require "base64"
+require "cgi"
+require "fileutils"
+require "json"
+require "optparse"
+require "shellwords"
+require "time"
+require "timeout"
+
+DEFAULT_PROMPT = "Generate an SVG of a pelican riding a bicycle. " \
+                 "Respond with the SVG markup only, no commentary."
+
+LMS = File.expand_path("~/.lmstudio/bin/lms")
+
+options = {
+  prompt: DEFAULT_PROMPT,
+  models: nil,
+  out: nil,
+  runs: 1,
+  thinking: nil,
+  timeout: 900,
+  parallel: 1,
+  unload: true,
+  open: true
+}
+
+OptionParser.new do |opts|
+  opts.banner = "Usage: pi-pelican-bench [options]"
+
+  opts.on("-p", "--prompt TEXT", "Benchmark prompt (default: pelican SVG)") { |v| options[:prompt] = v }
+  opts.on("-P", "--prompt-file PATH", "Read the prompt from a file") { |v| options[:prompt] = File.read(v).strip }
+  opts.on("-m", "--models LIST", "Comma-separated model keys or substrings (default: all)") do |v|
+    options[:models] = v.split(",").map(&:strip)
+  end
+  opts.on("-o", "--out DIR", "Output directory") { |v| options[:out] = v }
+  opts.on("-n", "--runs N", Integer, "Runs per model (default: 1)") { |v| options[:runs] = v }
+  opts.on("-t", "--thinking LEVEL", "pi thinking level (off, low, medium, high, max)") { |v| options[:thinking] = v }
+  opts.on("--timeout SECS", Integer, "Per-run timeout in seconds (default: 900)") { |v| options[:timeout] = v }
+  opts.on("--parallel N", Integer, "Concurrent predictions to reserve at load (default: 1)") { |v| options[:parallel] = v }
+  opts.on("--keep-loaded", "Don't unload models between runs") { options[:unload] = false }
+  opts.on("--no-open", "Don't open the report when finished") { options[:open] = false }
+  opts.on("-h", "--help", "Show this help") { puts opts; exit }
+end.parse!
+
+abort "pi not found on PATH" unless system("command -v pi > /dev/null 2>&1")
+abort "lms not found at #{LMS}" unless File.executable?(LMS)
+
+# `lms` writes status chatter to stderr, so captured calls fold it into stdout.
+def lms(*args, capture: false)
+  cmd = [LMS, *args]
+  return `#{cmd.shelljoin} 2>&1` if capture
+
+  system(*cmd, out: File::NULL, err: File::NULL)
+end
+
+# LM Studio's daemon has to be up before anything else works.
+unless lms("server", "status", capture: true).include?("running on port")
+  print "Starting LM Studio server... "
+  abort "failed. Start LM Studio and retry." unless lms("server", "start")
+  puts "ok"
+end
+
+catalog = JSON.parse(lms("ls", "--json", capture: true))
+  .select { |m| m["type"] == "llm" }
+
+if options[:models]
+  catalog = catalog.select do |m|
+    options[:models].any? { |pat| m["modelKey"].include?(pat) }
+  end
+end
+abort "No matching LM Studio LLMs found." if catalog.empty?
+
+# pi's per-model overrides are the ceilings a run can hit, so the report can
+# show how close each model came to its own maxTokens/contextWindow.
+LIMITS = begin
+  path = File.expand_path("~/.pi/agent/models.json")
+  File.exist?(path) ? JSON.parse(File.read(path)).dig("providers", "lmstudio", "modelOverrides") || {} : {}
+rescue JSON::ParserError
+  {}
+end
+
+stamp = Time.now.strftime("%Y%m%d-%H%M%S")
+out_dir = File.expand_path(
+  options[:out] || File.join(ENV["XDG_CACHE_HOME"] || "~/.cache", "pi-pelican-bench", stamp)
+)
+FileUtils.mkdir_p(out_dir)
+
+def slug(key) = key.gsub(%r{[^A-Za-z0-9]+}, "-").gsub(/\A-|-\z/, "")
+
+def clock = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+DARWIN = RUBY_PLATFORM.include?("darwin")
+
+# What LM Studio *actually* loaded, which can differ from what pi asked for in
+# models.json — a mismatch there is invisible in the timings but explains them.
+def loaded_state(key)
+  entry = JSON.parse(lms("ps", "--json", capture: true)).find { |m| m["identifier"] == key }
+  return {} unless entry
+
+  {
+    context_loaded: entry["contextLength"],
+    context_max: entry["maxContextLength"],
+    parallel: entry["parallel"],
+    device: entry["deviceIdentifier"]
+  }
+rescue JSON::ParserError, TypeError
+  {}
+end
+
+# Swap counters, in MB and cumulative page-ins. On a 48 GB box running 24 GB
+# models, spill to swap — not compute — is the usual reason tok/s collapses.
+def swap_sample
+  return nil unless DARWIN
+
+  usage = `sysctl -n vm.swapusage 2>/dev/null`
+  swapins = `vm_stat 2>/dev/null`[/Swapins:\s+(\d+)/, 1]
+  { used_mb: usage[/used = ([\d.]+)M/, 1].to_f, swapins: swapins.to_i }
+rescue StandardError
+  nil
+end
+
+# Polls swap while a run is in flight so a transient spike isn't missed by
+# before/after sampling alone.
+def sample_swap_during(&block)
+  return [block.call, {}] unless DARWIN
+
+  before = swap_sample
+  peak = before&.dig(:used_mb) || 0
+  stop = false
+  sampler = Thread.new do
+    until stop
+      sample = swap_sample
+      peak = [peak, sample[:used_mb]].max if sample
+      sleep 2
+    end
+  end
+
+  result = block.call
+  stop = true
+  sampler.join(3)
+  after = swap_sample
+
+  stats = if before && after
+            { swap_peak_mb: peak,
+              swap_delta_mb: after[:used_mb] - before[:used_mb],
+              swapins: after[:swapins] - before[:swapins] }
+          else
+            {}
+          end
+  [result, stats]
+end
+
+# Runs one pi invocation against a model, streaming its JSON event log so we can
+# time the first token separately from the rest of the generation.
+def run_pi(model, prompt, options, stderr_path, events_path)
+  cmd = %w[pi -p --mode json --provider lmstudio
+           --no-tools --no-session --no-context-files --no-skills --offline]
+  cmd += ["--model", model]
+  cmd += ["--thinking", options[:thinking]] if options[:thinking]
+  cmd << prompt
+
+  started = clock
+  result = { ttft: nil, text: "", usage: {}, pi_errors: [], retries: 0, event_types: [], streamed: +"" }
+  io = IO.popen(cmd, err: [stderr_path, "w"])
+  # Keep the stream so a run can be re-analysed without re-running it. Every
+  # message_update repeats the whole message so far, making a verbatim log
+  # quadratic in output length (192 MB for one 8k-token run) — so drop those
+  # cumulative snapshots and keep the deltas. message_end still has the full text.
+  events = File.open(events_path, "w")
+
+  begin
+    Timeout.timeout(options[:timeout]) do
+      io.each_line do |line|
+        event = begin
+          JSON.parse(line)
+        rescue JSON::ParserError
+          events.write(line)
+          next
+        end
+
+        if event["type"] == "message_update"
+          delta = (event["assistantMessageEvent"] || {}).reject { |k, _| k == "partial" }
+          events.puts(JSON.generate({ "type" => "message_update", "assistantMessageEvent" => delta }))
+        else
+          events.write(line)
+        end
+
+        # Accumulate deltas as they stream. A run that times out never emits
+        # message_end, and without this the text it already produced is lost
+        # even though the event log is sitting right there holding all of it.
+        if event.dig("assistantMessageEvent", "type") == "text_delta"
+          result[:streamed] << event["assistantMessageEvent"]["delta"].to_s
+        end
+
+        type = event["type"]
+        result[:event_types] |= [type]
+
+        case type
+        when "message_update"
+          result[:ttft] ||= clock - started if event.dig("assistantMessageEvent", "type")&.end_with?("_delta")
+        when "message_end"
+          message = event["message"] || {}
+          # pi retries internally on a failed turn, so a run can emit several
+          # message_end events. The last one wins; earlier failures are retries.
+          result[:retries] += 1 if result[:stop_reason]
+          result[:usage] = message["usage"] || {}
+          result[:stop_reason] = message["stopReason"]
+          result[:text] = Array(message["content"])
+            .select { |c| c["type"] == "text" }
+            .map { |c| c["text"] }
+            .join
+        when "error"
+          result[:pi_errors] << (event["error"] || event["message"] || event).to_s[0, 300]
+        end
+      end
+    end
+  rescue Timeout::Error
+    result[:error] = "timed out after #{options[:timeout]}s"
+    Process.kill("TERM", io.pid)
+  ensure
+    io.close
+    events.close
+  end
+
+  # Fall back to the streamed deltas when the run died before message_end.
+  if result[:text].empty? && !result[:streamed].empty?
+    result[:text] = result[:streamed]
+    result[:partial] = true
+  end
+
+  result[:total] = clock - started
+  status = $?
+  result[:exit_status] = status&.exitstatus
+  result[:error] ||= "pi exited #{status.exitstatus}" if status && !status.success?
+  result[:error] ||= result[:pi_errors].first if result[:pi_errors].any?
+  result
+end
+
+# Models often emit several draft SVGs before settling. Take the LAST complete
+# one — the first is an early sketch, and picking it silently misreports the
+# model (and hides that the real final answer was cut off mid-path).
+def extract_svgs(text)
+  text.scan(%r{<svg\b.*?</svg>}mi)
+end
+
+# A model can return syntactically present but unparseable SVG; browsers render
+# that as a blank box, which looks like a bad drawing rather than broken markup.
+def validate_svg(svg)
+  require "rexml/document"
+  REXML::Document.new(svg)
+  nil
+rescue StandardError => e
+  e.message.to_s.split("\n").first[0, 200]
+end
+
+results = []
+total_runs = catalog.size * options[:runs]
+index = 0
+
+catalog.each do |model|
+  key = model["modelKey"]
+
+  options[:runs].times do |run|
+    index += 1
+    label = options[:runs] > 1 ? "#{key} (run #{run + 1}/#{options[:runs]})" : key
+    print "[#{index}/#{total_runs}] #{label}... "
+    $stdout.flush
+
+    lms("unload", "--all") if options[:unload]
+
+    # Load at the context pi actually asks for. Left to itself LM Studio picks
+    # near the model's maximum (226k for a model pi drives at 65k), reserving KV
+    # cache for context no run will ever use — and `parallel` multiplies it.
+    #
+    # `--parallel` takes effect. `-c` is received but overridden upward by
+    # LM Studio's context auto-fit, which expands the KV cache to fill free
+    # memory (server log: "configured=8,192 fitted=162,816 effective=162,816").
+    # Passed anyway to record intent — context_mismatch reports what actually
+    # got loaded rather than assuming the request was honoured.
+    load_args = [key, "-y", "--parallel", options[:parallel].to_s]
+    context = LIMITS.dig(key, "contextWindow")
+    load_args += ["-c", context.to_s] if context
+
+    load_started = clock
+    loaded = options[:unload] ? lms("load", *load_args) : true
+    load_time = options[:unload] ? clock - load_started : nil
+
+    unless loaded
+      puts "load failed"
+      results << { model: model, run: run, error: "model failed to load" }
+      next
+    end
+
+    base = options[:runs] > 1 ? "#{slug(key)}-run#{run + 1}" : slug(key)
+    state = loaded_state(key)
+
+    run_result, swap = sample_swap_during do
+      run_pi(key, options[:prompt], options,
+             File.join(out_dir, "#{base}.stderr.log"),
+             File.join(out_dir, "#{base}.events.jsonl"))
+    end
+    run_result = run_result.merge(swap).merge(state)
+
+    svgs = extract_svgs(run_result[:text])
+    svg = svgs.last
+    svg_error = svg && validate_svg(svg)
+    File.write(File.join(out_dir, "#{base}.svg"), svg) if svg
+    File.write(File.join(out_dir, "#{base}.txt"), run_result[:text])
+
+    results << run_result.merge(model: model, run: run, load: load_time, base: base,
+                                svg: svg, svg_count: svgs.size, svg_error: svg_error,
+                                limits: LIMITS[key] || {})
+
+    if run_result[:error]
+      puts run_result[:error]
+    else
+      out_tokens = run_result[:usage]["output"].to_i
+      gen = run_result[:total] - (run_result[:ttft] || 0)
+      rate = gen.positive? ? out_tokens / gen : 0
+      flags = []
+      flags << "TRUNCATED (hit maxTokens)" if run_result[:stop_reason] == "length"
+      flags << "stop=#{run_result[:stop_reason]}" if %w[aborted error].include?(run_result[:stop_reason])
+      flags << "#{run_result[:retries]} retries" if run_result[:retries].positive?
+      flags << "#{svgs.size} SVG drafts" if svgs.size > 1
+      flags << "INVALID SVG" if svg_error
+      flags << "NO SVG" if svg.nil?
+      flags << format("swapped +%.0fMB", run_result[:swap_delta_mb]) if run_result[:swap_delta_mb].to_f > 50
+      puts format("%.1fs, %d tok, %.1f tok/s%s", run_result[:total], out_tokens, rate,
+                  flags.empty? ? "" : ", #{flags.join(", ")}")
+    end
+  end
+end
+
+lms("unload", "--all") if options[:unload]
+
+# --- Report ------------------------------------------------------------------
+
+def metrics(r)
+  usage = r[:usage] || {}
+  gen = r[:total] && r[:ttft] ? r[:total] - r[:ttft] : nil
+  out_tokens = usage["output"].to_i
+  in_tokens = usage["input"].to_i
+  limits = r[:limits] || {}
+  max_tokens = limits["maxTokens"]
+  context_window = limits["contextWindow"]
+
+  {
+    load: r[:load],
+    ttft: r[:ttft],
+    total: r[:total],
+    input: in_tokens,
+    output: out_tokens,
+    reasoning: usage["reasoning"].to_i,
+    rate: (gen && gen.positive? ? out_tokens / gen : nil),
+    # Prompt processing and decoding tune differently; ttft isolates prefill.
+    prefill: (r[:ttft]&.positive? ? in_tokens / r[:ttft] : nil),
+    stop_reason: r[:stop_reason],
+    # "length" means the model ran out of maxTokens mid-answer; anything it
+    # produced is a partial, even when a stray </svg> makes it look complete.
+    truncated: r[:stop_reason] == "length",
+    retries: r[:retries].to_i,
+    pi_errors: r[:pi_errors] || [],
+    exit_status: r[:exit_status],
+    svg_count: r[:svg_count].to_i,
+    svg_error: r[:svg_error],
+    # Text recovered from the delta stream rather than a completed message.
+    partial: r[:partial],
+    max_tokens: max_tokens,
+    context_window: context_window,
+    context_loaded: r[:context_loaded],
+    parallel: r[:parallel],
+    device: r[:device],
+    # pi asked for one context size in models.json; LM Studio may have loaded
+    # another. The timings look normal either way, so surface the mismatch.
+    context_mismatch: (context_window && r[:context_loaded] && context_window != r[:context_loaded]),
+    swap_peak_mb: r[:swap_peak_mb],
+    swap_delta_mb: r[:swap_delta_mb],
+    swapins: r[:swapins],
+    out_pct: (max_tokens ? 100.0 * out_tokens / max_tokens : nil),
+    ctx_pct: (context_window ? 100.0 * usage["totalTokens"].to_i / context_window : nil)
+  }
+end
+
+def fmt(value, precision = 1)
+  value ? format("%.#{precision}f", value) : "—"
+end
+
+rows = results.map do |r|
+  m = metrics(r)
+  {
+    name: r[:model]["displayName"] || r[:model]["modelKey"],
+    key: r[:model]["modelKey"],
+    run: r[:run],
+    params: r[:model]["paramsString"],
+    quant: r[:model].dig("quantization", "name"),
+    arch: r[:model]["architecture"],
+    size_gb: r[:model]["sizeBytes"].to_f / 1024**3,
+    svg: r[:svg],
+    base: r[:base],
+    error: r[:error],
+    **m
+  }
+end
+
+# Terminal summary, fastest generation first.
+puts
+header = ["model", "params", "quant", "ctx", "load", "ttft", "total", "out tok", "%max", "tok/s", "swapΔ", "stop", "svg"]
+table = rows.sort_by { |r| -(r[:rate] || 0) }.map do |r|
+  svg_state = if r[:error] then "ERR"
+              elsif r[:svg].nil? then "none"
+              elsif r[:svg_error] then "INVALID"
+              elsif r[:svg_count] > 1 then "ok(#{r[:svg_count]})"
+              else "ok"
+              end
+  [
+    r[:key] + (r[:run].positive? ? " ##{r[:run] + 1}" : ""),
+    r[:params].to_s, r[:quant].to_s,
+    "#{r[:context_loaded] || "—"}#{r[:context_mismatch] ? "!" : ""}",
+    "#{fmt(r[:load])}s", "#{fmt(r[:ttft])}s", "#{fmt(r[:total])}s",
+    r[:output].to_s, r[:out_pct] ? "#{fmt(r[:out_pct], 0)}%" : "—", fmt(r[:rate]),
+    r[:swap_delta_mb] ? fmt(r[:swap_delta_mb], 0) : "—",
+    r[:truncated] ? "LENGTH!" : (r[:stop_reason] || "—"),
+    svg_state
+  ]
+end
+widths = header.each_index.map { |i| ([header[i]] + table.map { |row| row[i] }).map(&:length).max }
+line = ->(cells) { cells.each_with_index.map { |c, i| c.ljust(widths[i]) }.join("  ").rstrip }
+puts line.call(header)
+puts widths.map { |w| "-" * w }.join("  ")
+table.each { |row| puts line.call(row) }
+
+def data_uri(svg)
+  "data:image/svg+xml;base64,#{Base64.strict_encode64(svg)}"
+end
+
+def h(text) = CGI.escapeHTML(text.to_s)
+
+cards = rows.map do |r|
+  art = if r[:svg]
+          %(<img src="#{data_uri(r[:svg])}" alt="#{h(r[:name])} pelican">)
+        else
+          %(<p class="missing">#{h(r[:error] || "no SVG in response")}</p>)
+        end
+
+  warnings = []
+  warnings << "truncated — hit maxTokens (#{r[:output]}/#{r[:max_tokens]}), output is partial" if r[:truncated]
+  warnings << "invalid SVG: #{h(r[:svg_error])}" if r[:svg_error]
+  warnings << "partial — recovered from the delta stream, run never completed" if r[:partial]
+  warnings << "#{r[:svg_count]} SVG drafts emitted — showing the last" if r[:svg_count] > 1
+  warnings << "#{r[:retries]} internal pi retr#{r[:retries] == 1 ? "y" : "ies"}" if r[:retries].positive?
+  warnings << "stop=#{h(r[:stop_reason])}" if %w[aborted error].include?(r[:stop_reason])
+  if r[:context_mismatch]
+    warnings << "context mismatch — pi requested #{r[:context_window]}, LM Studio loaded #{r[:context_loaded]}"
+  end
+  warnings << "swap grew #{fmt(r[:swap_delta_mb], 0)} MB during this run" if r[:swap_delta_mb].to_f > 50
+  r[:pi_errors].each { |e| warnings << "pi error: #{h(e)}" }
+  warning = warnings.map { |w| %(<p class="warn">#{w}</p>) }.join
+
+  <<~HTML
+    <article class="card#{warnings.empty? ? "" : " truncated"}">
+      <div class="art">#{art}</div>
+      <h2>#{h(r[:name])}#{r[:run].positive? ? %( <span class="run">run #{r[:run] + 1}</span>) : ""}</h2>
+      <p class="meta">#{h(r[:params])} · #{h(r[:quant])} · #{h(r[:arch])} · #{fmt(r[:size_gb])} GB#{r[:context_loaded] ? " · ctx #{r[:context_loaded]} · parallel #{r[:parallel]}" : ""}</p>
+      #{warning}
+      <dl>
+        <div><dt>load</dt><dd>#{fmt(r[:load])}s</dd></div>
+        <div><dt>first token</dt><dd>#{fmt(r[:ttft])}s</dd></div>
+        <div><dt>total</dt><dd>#{fmt(r[:total])}s</dd></div>
+        <div><dt>speed</dt><dd>#{fmt(r[:rate])} tok/s</dd></div>
+        <div><dt>prefill</dt><dd>#{fmt(r[:prefill])} tok/s</dd></div>
+        <div><dt>out tokens</dt><dd>#{r[:output]}#{r[:out_pct] ? " (#{fmt(r[:out_pct], 0)}%)" : ""}</dd></div>
+        <div><dt>reasoning</dt><dd>#{r[:reasoning]}</dd></div>
+        <div><dt>stop</dt><dd>#{h(r[:stop_reason] || "—")}</dd></div>
+        <div><dt>swap Δ</dt><dd>#{r[:swap_delta_mb] ? "#{fmt(r[:swap_delta_mb], 0)} MB" : "—"}</dd></div>
+      </dl>
+    </article>
+  HTML
+end.join("\n")
+
+table_rows = rows.sort_by { |r| -(r[:rate] || 0) }.map do |r|
+  <<~HTML
+    <tr>
+      <td>#{h(r[:key])}#{r[:run].positive? ? " ##{r[:run] + 1}" : ""}</td>
+      <td>#{h(r[:params])}</td><td>#{h(r[:quant])}</td>
+      <td class="num">#{fmt(r[:load])}</td><td class="num">#{fmt(r[:ttft])}</td>
+      <td class="num">#{fmt(r[:total])}</td>
+      <td class="num">#{r[:input]}</td><td class="num">#{r[:output]}</td>
+      <td class="num#{r[:out_pct] && r[:out_pct] >= 95 ? " bad" : ""}">#{r[:out_pct] ? "#{fmt(r[:out_pct], 0)}%" : "—"}</td>
+      <td class="num">#{r[:reasoning]}</td>
+      <td class="num">#{fmt(r[:prefill])}</td><td class="num">#{fmt(r[:rate])}</td>
+      <td#{r[:truncated] ? %( class="bad") : ""}>#{h(r[:stop_reason] || "—")}</td>
+      <td#{r[:svg_error] ? %( class="bad") : ""}>#{r[:svg_error] ? "invalid" : (r[:svg] ? "ok#{r[:svg_count] > 1 ? " (#{r[:svg_count]})" : ""}" : "none")}</td>
+    </tr>
+  HTML
+end.join("\n")
+
+report = <<~HTML
+  <!doctype html>
+  <html lang="en">
+  <head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>pi × LM Studio — pelican benchmark</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #fff; --fg: #16181d; --muted: #6b7280; --line: #e5e7eb; --card: #fafafa; }
+    @media (prefers-color-scheme: dark) {
+      :root { --bg: #101215; --fg: #e8eaed; --muted: #9aa0a6; --line: #2a2e35; --card: #191c21; }
+    }
+    body { margin: 0; padding: 2.5rem 1.5rem 4rem; background: var(--bg); color: var(--fg);
+           font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    main { max-width: 1100px; margin: 0 auto; }
+    h1 { font-size: 1.6rem; margin: 0 0 .25rem; }
+    .sub { color: var(--muted); margin: 0 0 2rem; }
+    .prompt { background: var(--card); border: 1px solid var(--line); border-radius: 8px;
+              padding: .75rem 1rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+              font-size: .85rem; margin-bottom: 2.5rem; }
+    .grid { display: grid; gap: 1.5rem; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+    .card { border: 1px solid var(--line); border-radius: 10px; background: var(--card); padding: 1rem; }
+    .art { aspect-ratio: 1; display: grid; place-items: center; background: #fff;
+           border-radius: 6px; margin-bottom: .9rem; overflow: hidden; }
+    .art img { width: 100%; height: 100%; object-fit: contain; }
+    .missing { color: #b91c1c; font-size: .85rem; text-align: center; padding: 1rem; }
+    .card.truncated { border-color: #d97706; }
+    .warn { color: #d97706; font-size: .78rem; margin: -.4rem 0 .8rem; }
+    .bad { color: #d97706; font-weight: 600; }
+    .card h2 { font-size: 1rem; margin: 0 0 .2rem; }
+    .run { color: var(--muted); font-weight: 400; }
+    .meta { color: var(--muted); font-size: .8rem; margin: 0 0 .8rem; }
+    dl { display: grid; grid-template-columns: 1fr 1fr; gap: .35rem .8rem; margin: 0; font-size: .82rem; }
+    dl div { display: flex; justify-content: space-between; gap: .5rem; }
+    dt { color: var(--muted); }
+    dd { margin: 0; font-variant-numeric: tabular-nums; }
+    .scroll { overflow-x: auto; margin-top: 3rem; }
+    table { border-collapse: collapse; width: 100%; font-size: .85rem; }
+    th, td { text-align: left; padding: .5rem .7rem; border-bottom: 1px solid var(--line); white-space: nowrap; }
+    th { color: var(--muted); font-weight: 500; }
+    .num { text-align: right; font-variant-numeric: tabular-nums; }
+  </style>
+  </head>
+  <body>
+  <main>
+    <h1>Pelican on a bicycle</h1>
+    <p class="sub">#{rows.size} run#{rows.size == 1 ? "" : "s"} across #{catalog.size} LM Studio model#{catalog.size == 1 ? "" : "s"} via pi · #{h(Time.now.strftime("%Y-%m-%d %H:%M"))}</p>
+    <div class="prompt">#{h(options[:prompt])}</div>
+    <div class="grid">
+  #{cards}
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr>
+          <th>model</th><th>params</th><th>quant</th>
+          <th class="num">load s</th><th class="num">ttft s</th><th class="num">total s</th>
+          <th class="num">in</th><th class="num">out</th><th class="num">% max</th><th class="num">reasoning</th>
+          <th class="num">prefill</th><th class="num">tok/s</th>
+          <th>stop</th><th>svg</th>
+        </tr></thead>
+        <tbody>
+  #{table_rows}
+        </tbody>
+      </table>
+    </div>
+  </main>
+  </body>
+  </html>
+HTML
+
+report_path = File.join(out_dir, "report.html")
+File.write(report_path, report)
+File.write(File.join(out_dir, "results.json"), JSON.pretty_generate(rows.map { |r| r.reject { |k, _| k == :svg } }))
+
+puts
+puts "Report:  #{report_path}"
+puts "Artifacts: #{out_dir}"
+system("open", report_path) if options[:open] && RUBY_PLATFORM.include?("darwin")
