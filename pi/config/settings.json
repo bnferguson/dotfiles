@@ -1,0 +1,31 @@
+{
+  "lastChangelogVersion": "0.83.0",
+  "defaultProvider": "anthropic",
+  "defaultModel": "claude-sonnet-5",
+  "subagents": {
+    "agentOverrides": {
+      "context-builder": {
+        "model": ""
+      },
+      "planner": {
+        "model": ""
+      },
+      "researcher": {
+        "model": ""
+      },
+      "reviewer": {
+        "model": ""
+      },
+      "scout": {
+        "model": ""
+      },
+      "worker": {
+        "model": ""
+      }
+    }
+  },
+  "packages": [
+    "npm:pi-claude-cli"
+  ],
+  "theme": "dark"
+}

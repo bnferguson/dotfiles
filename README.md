@@ -20,6 +20,7 @@ Cross-platform topics live at the repo root. OS-specific topics live under `linu
 | `kubernetes/` | kubectl completion (cached for speed) |
 | `mise/` | Global mise tool versions |
 | `nvim/` | Neovim config |
+| `pi/` | pi coding agent config — settings, custom providers |
 | `ssh/` | SSH config |
 | `starship/` | Starship prompt config |
 | `system/` | PATH, EDITOR, ls aliases, keybindings |

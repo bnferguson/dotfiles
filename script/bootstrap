@@ -211,6 +211,12 @@ install_larger_paths () {
   mkdir -p "$HOME/.config/jj"
   link_file "$DOTFILES_ROOT/jj/config.toml" "$HOME/.config/jj/config.toml"
 
+  # pi coding agent config — symlink individual files to preserve
+  # ~/.pi/agent session data, caches, and installed packages.
+  mkdir -p "$HOME/.pi/agent"
+  link_file "$DOTFILES_ROOT/pi/config/settings.json" "$HOME/.pi/agent/settings.json"
+  link_file "$DOTFILES_ROOT/pi/config/models.json" "$HOME/.pi/agent/models.json"
+
   if [ "$(uname -s)" == "Darwin" ]; then
     link_file "$DOTFILES_ROOT/macos/karabiner" "$HOME/.config/karabiner"
   fi
