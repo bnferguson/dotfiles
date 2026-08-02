@@ -1,23 +1,24 @@
 {
   "providers": {
     "lmstudio": {
-      "baseUrl": "http://localhost:1234/v1",
-      "api": "openai-completions",
-      "apiKey": "lmstudio",
-      "compat": {
-        "supportsDeveloperRole": false,
-        "supportsReasoningEffort": false,
-        "thinkingFormat": "qwen-chat-template"
-      },
-      "models": [
-        {
-          "id": "qwen/qwen3.6-27b",
-          "name": "Qwen3.6 27B (LM Studio)",
-          "reasoning": true,
-          "contextWindow": 262144,
+      "modelOverrides": {
+        "qwen/qwen3.6-35b-a3b": {
+          "contextWindow": 131072,
           "maxTokens": 32768
+        },
+        "google/gemma-4-26b-a4b-qat": {
+          "contextWindow": 65536,
+          "maxTokens": 16384
+        },
+        "prism-ml/bonsai-27b": {
+          "contextWindow": 65536,
+          "maxTokens": 16384
+        },
+        "zai-org/glm-4.7-flash": {
+          "contextWindow": 32768,
+          "maxTokens": 8192
         }
-      ]
+      }
     }
   }
 }

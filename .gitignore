@@ -7,8 +7,9 @@ __pycache__/
 
 # Nvim (lazy.nvim installs to stdpath("data"), not in dotfiles)
 
-# Claude Code — ignore project-level settings (contains local paths)
-.claude/settings.local.json
+# Claude Code — local project state: settings with local paths, and agent
+# worktrees (real git worktrees checked out under the repo, not content to track)
+.claude/
 
 # code-intel — graphify installs its own skill per-machine (code-intel/install.sh);
 # the router skill (code-intel/) is the committed layer.
