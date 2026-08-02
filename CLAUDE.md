@@ -35,7 +35,7 @@ Other conventions:
 - `*.symlink` files → symlinked to `$HOME` as dotfiles (e.g., `git/gitconfig.symlink` → `~/.gitconfig`)
 - `bin/` → added to `$PATH`, contains git extensions and utilities
 - `functions/` → autoloaded zsh functions (files starting with `_` are completion functions)
-- Deeper paths (nvim, starship, gh, ghostty, ssh, jj, claude, zed, zellij at root; `linux/hyprland`, `linux/environment.d`, `macos/karabiner` under OS buckets) are symlinked into `~/.config/` or `~/.claude/` by `install_larger_paths` in bootstrap
+- Deeper paths (nvim, starship, gh, ghostty, ssh, jj, claude, pi, zed, zellij at root; `linux/hyprland`, `linux/environment.d`, `macos/karabiner` under OS buckets) are symlinked into `~/.config/`, `~/.claude/`, or `~/.pi/agent/` by `install_larger_paths` in bootstrap
 
 ## Key Architecture Details
 
@@ -44,6 +44,7 @@ Other conventions:
 - Git author config lives in `git/gitconfig.local.symlink` (created by bootstrap, gitignored)
 - jj user config lives in `~/.config/jj/conf.d/local.toml` (created by bootstrap from template)
 - Claude Code config files are symlinked individually (not the whole `~/.claude/` dir) to preserve session data
+- pi coding agent config files are symlinked individually (not the whole `~/.pi/agent/` dir) to preserve sessions, caches, and installed packages — see `pi/config/`
 - The `script/install` script supports macOS (brew), Arch (pacman), and Ubuntu (apt) with graceful fallbacks
 
 ## Symlink Strategy
