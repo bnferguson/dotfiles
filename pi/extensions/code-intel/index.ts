@@ -672,6 +672,55 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 		handler: async (ctx) => cycle(ctx),
 	});
 
+	pi.registerCommand("code-intel-init", {
+		description: "Build the missing code-intelligence indexes for this project (slow, asks first)",
+		handler: async (_args, ctx) => {
+			if (!have("code-intel")) {
+				ctx.ui.notify("`code-intel` helper not on PATH (it lives in the dotfiles bin/ topic).", "error");
+				return;
+			}
+			const { present, missing } = indexReport(ctx.cwd);
+			if (missing.length === 0) {
+				ctx.ui.notify(`All indexes already present: ${present.join(", ")}. Use /code-intel-sync to refresh.`, "info");
+				return;
+			}
+
+			// A first index is nothing like the incremental syncs. A cold vera build
+			// on a few thousand files is minutes of saturated CPU and hundreds of MB
+			// on disk, so this is always a deliberate, confirmed act — never something
+			// that fires on its own at session start.
+			const ok = await ctx.ui.confirm(
+				`Build ${missing.join(", ")} for this project?`,
+				[
+					`Directory: ${ctx.cwd}`,
+					"",
+					"This is a cold build, not an incremental sync: expect minutes of high",
+					"CPU and a few hundred MB on disk for a large repo. It runs to completion",
+					"once started — interrupting a vera index is far more expensive than",
+					"letting it finish.",
+				].join("\n"),
+			);
+			if (!ok) return;
+
+			ctx.ui.setStatus("code-intel-init", ctx.ui.theme.fg("warning", "◆ indexing"));
+			try {
+				// No signal, long timeout: see above.
+				const res = await pi.exec("code-intel", ["init"], { cwd: ctx.cwd, timeout: 3_600_000 });
+				const after = indexReport(ctx.cwd);
+				ctx.ui.notify(
+					res.code === 0
+						? `code-intel init done. Indexed: ${after.present.join(", ") || "none"}${
+								after.missing.length ? ` (still missing: ${after.missing.join(", ")})` : ""
+							}`
+						: `code-intel init exited ${res.code}. Indexed: ${after.present.join(", ") || "none"}\n${(res.stderr || res.stdout).slice(-500)}`,
+					res.code === 0 ? "info" : "error",
+				);
+			} finally {
+				ctx.ui.setStatus("code-intel-init", undefined);
+			}
+		},
+	});
+
 	pi.registerCommand("code-intel-sync", {
 		description: "Force an index sync now (codegraph + vera)",
 		handler: async (_args, ctx) => {
@@ -700,11 +749,44 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 
 	// Auto-enable where it pays off: a repo that's already indexed. Explicit
 	// --code-intel always wins over detection.
-	pi.on("session_start", async (_event, ctx) => {
+	/** Last mode this session recorded, if it recorded one. */
+	function persistedMode(ctx: ExtensionContext): Mode | undefined {
+		try {
+			const entries = ctx.sessionManager.getEntries() as {
+				type?: string;
+				customType?: string;
+				data?: { mode?: string };
+			}[];
+			for (let i = entries.length - 1; i >= 0; i--) {
+				const e = entries[i];
+				if (e.type === "custom" && e.customType === "code-intel" && e.data?.mode) {
+					const m = e.data.mode;
+					if (MODES.includes(m as Mode)) return m as Mode;
+				}
+			}
+		} catch {}
+		return undefined;
+	}
+
+	pi.on("session_start", async (event, ctx) => {
 		const flag = String(pi.getFlag("code-intel") ?? "").toLowerCase();
 		if (MODES.includes(flag as Mode)) {
 			setMode(flag as Mode, ctx, true);
 			return;
+		}
+
+		// Resuming must not silently drop the mode. A long strict-mode refactor
+		// that gets resumed would otherwise quietly stop being strict, and any
+		// comparison you were running would be contaminated with no visible sign.
+		if (event.reason !== "startup") {
+			const prior = persistedMode(ctx);
+			if (prior !== undefined) {
+				setMode(prior, ctx, true);
+				if (prior !== "off") {
+					ctx.ui.notify(`code-intel: ${prior} — restored from the resumed session.`, "info");
+				}
+				return;
+			}
 		}
 
 		const { present, missing } = indexReport(ctx.cwd);

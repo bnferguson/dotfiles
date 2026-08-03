@@ -132,6 +132,18 @@ Text searches get one redirect to a structural tool. /code-intel to change mode.
 Interactive sessions only; `pi -p` stays quiet. `/code-intel status` reports the
 same present/missing split on demand.
 
+Mode survives `/resume` — it's persisted per session and restored (including
+re-pruning the tool set in `strict`). Precedence is `--code-intel` flag, then the
+resumed session's mode, then index auto-detection. Without this a long
+strict-mode refactor would quietly stop being strict on resume, which is exactly
+the kind of silent drift that ruins a comparison.
+
+`/code-intel-init` builds whatever's missing, and is the one thing here that
+always asks first. A cold index is nothing like the incremental syncs — minutes
+of saturated CPU and hundreds of MB — so it is never automatic, and it runs
+without an abort signal because interrupting a vera index costs far more than
+letting it finish.
+
 Two things learned by watching it run, both now fixed in the code and worth
 remembering if this is ever rewritten:
 
