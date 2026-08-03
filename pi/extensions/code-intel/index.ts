@@ -734,7 +734,7 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 		// `grep -rn`. Close that hole outright, or "strict" measures nothing.
 		if (mode === "strict" && event.toolName === "bash") {
 			const command = String((event.input as { command?: string }).command ?? "");
-			if (/(^|[|;&]|\$\(|`)\s*(sudo\s+)?(grep|egrep|fgrep|rg|ag|ack)\b/.test(command)) {
+			if (/(^|[|;&]|\$\()\s*(sudo\s+)?(grep|egrep|fgrep|rg|ag|ack)\b/.test(command)) {
 				return {
 					block: true,
 					reason: [
@@ -760,7 +760,10 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 			const command = String((event.input as { command?: string }).command ?? "");
 			// Match only when a search binary is the command being run — at the start,
 			// or after a pipe/separator — so `foo --grep` or `ripgrep_notes.md` don't trip it.
-			if (/(^|[|;&]|\$\(|`)\s*(sudo\s+)?(grep|egrep|fgrep|rg|ag|ack)\b/.test(command)) {
+			// Backtick command substitution is deliberately NOT matched: it fires on any
+			// command whose text merely quotes `grep` (a commit message, a heredoc, a doc
+			// edit), which in this repo is constant. $(...) still covers real substitution.
+			if (/(^|[|;&]|\$\()\s*(sudo\s+)?(grep|egrep|fgrep|rg|ag|ack)\b/.test(command)) {
 				return nudgeFor("shell text search", `bash:${command}`, ctx.cwd);
 			}
 		}
