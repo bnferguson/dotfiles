@@ -178,12 +178,29 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 
 	// ---------------------------------------------------------------- helpers
 
+	/**
+	 * Which indexes exist here, and which could. The three are complementary
+	 * rather than alternatives — codegraph traverses, vera finds by meaning,
+	 * graphify spans docs — so a project with only one is under-served, and the
+	 * missing list is worth surfacing rather than quietly working around.
+	 */
+	function indexReport(cwd: string): { present: string[]; missing: string[] } {
+		const all: [boolean, string, string][] = [
+			[hasCodegraph, "codegraph", ".codegraph"],
+			[hasVera, "vera", ".vera"],
+			[hasGraphify, "graphify", join("graphify-out", "graph.json")],
+		];
+		const present: string[] = [];
+		const missing: string[] = [];
+		for (const [installed, name, marker] of all) {
+			if (!installed) continue; // tool isn't on this machine; not a gap to nag about
+			(existsSync(join(cwd, marker)) ? present : missing).push(name);
+		}
+		return { present, missing };
+	}
+
 	function indexedWith(ctx: { cwd: string }): string[] {
-		const found: string[] = [];
-		if (hasCodegraph && existsSync(join(ctx.cwd, ".codegraph"))) found.push("codegraph");
-		if (hasVera && existsSync(join(ctx.cwd, ".vera"))) found.push("vera");
-		if (hasGraphify && existsSync(join(ctx.cwd, "graphify-out", "graph.json"))) found.push("graphify");
-		return found;
+		return indexReport(ctx.cwd).present;
 	}
 
 	/**
@@ -627,13 +644,16 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 			const arg = args.trim().toLowerCase();
 			if (arg === "status" || arg === "?") {
 				const available = OWNED_TOOLS.filter((t) => pi.getActiveTools().includes(t));
-				const idx = indexedWith(ctx);
+				const { present, missing } = indexReport(ctx.cwd);
 				ctx.ui.notify(
 					[
 						`mode: ${mode}`,
-						`indexes here: ${idx.length ? idx.join(", ") : "none — run `code-intel init`"}`,
+						`indexed:     ${present.length ? present.join(", ") : "none — run `code-intel init`"}`,
+						missing.length ? `not indexed: ${missing.join(", ")} (\`code-intel init\` builds all three)` : "",
 						`tools: ${available.length ? available.join(", ") : "none registered"}`,
-					].join("\n"),
+					]
+						.filter(Boolean)
+						.join("\n"),
 					"info",
 				);
 				return;
@@ -686,7 +706,27 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 			setMode(flag as Mode, ctx, true);
 			return;
 		}
-		if (indexedWith(ctx).length > 0) setMode("on", ctx, true);
+
+		const { present, missing } = indexReport(ctx.cwd);
+		if (present.length === 0) return;
+
+		// Announce rather than enable silently. Auto-enable changes how tool calls
+		// behave, and an unannounced behaviour change is the same failure mode as a
+		// stale index answering confidently: correct-looking, but not what you
+		// think is happening.
+		setMode("on", ctx, true);
+		ctx.ui.notify(
+			[
+				`code-intel: on — ${present.join(", ")} indexed here.`,
+				missing.length
+					? `Not indexed: ${missing.join(", ")}. They answer different questions; \`code-intel init\` builds the full set.`
+					: "",
+				"Text searches get one redirect to a structural tool. /code-intel to change mode.",
+			]
+				.filter(Boolean)
+				.join("\n"),
+			"info",
+		);
 	});
 
 	/**

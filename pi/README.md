@@ -115,7 +115,22 @@ interrupted run rather than the tool.
 - `strict` — `grep`/`find` removed from the tool set *and* shell text search
   blocked. No textual fallback exists. This is the measurement mode.
 
-Auto-enables `on` when a repo already has `.codegraph/` or `.vera/`.
+Auto-enables `on` when a repo already has any of `.codegraph/`, `.vera/`, or
+`graphify-out/`, and **says so** rather than changing tool behaviour silently —
+an unannounced behaviour change is the same failure mode as a stale index
+answering confidently. It also names what's *missing*, since the three are
+complementary rather than alternatives and a project with one of them is
+under-served:
+
+```
+code-intel: on — vera indexed here.
+Not indexed: codegraph, graphify. They answer different questions;
+`code-intel init` builds the full set.
+Text searches get one redirect to a structural tool. /code-intel to change mode.
+```
+
+Interactive sessions only; `pi -p` stays quiet. `/code-intel status` reports the
+same present/missing split on demand.
 
 Two things learned by watching it run, both now fixed in the code and worth
 remembering if this is ever rewritten:
