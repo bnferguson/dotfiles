@@ -179,9 +179,13 @@ Other things that matter in headless use:
   and are killed on `session_shutdown` — otherwise `rust-analyzer` instances
   pile up in the background.
 - `workspace/configuration` and friends must be answered or servers hang forever.
-- rust-analyzer and gopls answer "no results" *confidently while still
-  indexing*, which is the most misleading failure mode here. Requests retry
-  while the server reports work in progress.
+- Servers answer **immediately and incompletely** while still loading a
+  project, with nothing to distinguish the wrong answer from the right one.
+  Measured on a 635-file Next.js app: `lsp_references` for a symbol with 16 real
+  references returned **1 at 0.3s and 16 from 3.4s onwards**. `$/progress` is no
+  help — typescript-language-server never emits it — so definition and reference
+  queries poll until two consecutive identical results, once per session. Costs
+  ~2s on the first query per project, nothing after.
 - **Once a document is `didOpen`'d, the server ignores the file on disk.** An
   agent that opens a file, edits it, then queries again gets answers about the
   pre-edit text, silently. Every tool re-reads open documents and pushes

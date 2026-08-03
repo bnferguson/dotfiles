@@ -187,6 +187,8 @@ interface Session {
 	opened: Map<string, OpenDoc>;
 	/** Count of in-flight server-reported work items (indexing, cargo check...). */
 	busy: number;
+	/** Set once project-wide results have been observed to stabilize. */
+	warm: boolean;
 	ready: Promise<void>;
 }
 
@@ -231,7 +233,7 @@ export default function lspExtension(pi: ExtensionAPI): void {
 			new rpc.StreamMessageWriter(proc.stdin!),
 		);
 
-		const session: Session = { conn, proc, root, opened: new Map(), busy: 0, ready: Promise.resolve() };
+		const session: Session = { conn, proc, root, opened: new Map(), busy: 0, warm: false, ready: Promise.resolve() };
 
 		// Servers hang forever if these go unanswered — respond to all of them.
 		conn.onRequest("workspace/configuration", (p: { items: unknown[] }) => p.items.map(() => ({})));
@@ -334,18 +336,44 @@ export default function lspExtension(pi: ExtensionAPI): void {
 	}
 
 	/**
-	 * Retry while the server reports background work. rust-analyzer and gopls
-	 * both answer "no results" confidently while still indexing, which is the
-	 * single most misleading failure mode in agent-driven LSP use.
+	 * Wait for a project-wide answer to stop changing before trusting it.
+	 *
+	 * Servers answer *immediately* and *incompletely* while still loading the
+	 * project, and there is no reliable signal for it. Measured on a 635-file
+	 * Next.js app: `textDocument/references` for a symbol with 16 real references
+	 * returned 1 (the declaration alone) at 0.3s and the full 16 from 3.4s
+	 * onwards. Nothing distinguishes the wrong answer from the right one — no
+	 * error, no partial-result flag — and for references specifically, an answer
+	 * that is too small is exactly what silently breaks a refactor.
+	 *
+	 * `$/progress` doesn't save us: typescript-language-server never emits it, so
+	 * gating on `busy` (as this used to) meant never waiting at all. Instead poll
+	 * until two consecutive identical results, once per session — subsequent
+	 * queries then answer at full speed. `busy` is still honoured for the servers
+	 * that do report it (rust-analyzer, gopls), which take far longer to index.
 	 */
-	async function whenReady<T>(session: Session, fn: () => Promise<T>, isEmpty: (r: T) => boolean): Promise<T> {
+	async function settled<T>(session: Session, fn: () => Promise<T>, fingerprint: (r: T) => string): Promise<T> {
 		let result = await fn();
-		for (let i = 0; i < 30 && isEmpty(result) && session.busy > 0; i++) {
+		if (session.warm) return result;
+
+		const deadline = Date.now() + 60_000;
+		while (Date.now() < deadline) {
 			await new Promise((r) => setTimeout(r, 1000));
-			result = await fn();
+			const next = await fn();
+			if (session.busy === 0 && fingerprint(next) === fingerprint(result)) {
+				session.warm = true;
+				return next;
+			}
+			result = next;
 		}
+		session.warm = true;
 		return result;
 	}
+
+	const locationFingerprint = (r: unknown): string => {
+		const list = Array.isArray(r) ? r : r ? [r] : [];
+		return String(list.length);
+	};
 
 	interface Resolved { session: Session; uri: string; file: string; line: number; character: number }
 
@@ -456,14 +484,14 @@ export default function lspExtension(pi: ExtensionAPI): void {
 		parameters: Type.Object(symbolParams),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const at = await locate(ctx.cwd, params.path, params.symbol);
-			const res = await whenReady(
+			const res = await settled(
 				at.session,
 				() =>
 					at.session.conn.sendRequest("textDocument/definition", {
 						textDocument: { uri: at.uri },
 						position: { line: at.line, character: at.character },
 					}) as Promise<Loc[]>,
-				(r) => !r || (Array.isArray(r) && r.length === 0),
+				locationFingerprint,
 			);
 			return ok(fmtLocations(ctx.cwd, res));
 		},
@@ -484,7 +512,7 @@ export default function lspExtension(pi: ExtensionAPI): void {
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
 			const at = await locate(ctx.cwd, params.path, params.symbol);
-			const res = await whenReady(
+			const res = await settled(
 				at.session,
 				() =>
 					at.session.conn.sendRequest("textDocument/references", {
@@ -492,7 +520,7 @@ export default function lspExtension(pi: ExtensionAPI): void {
 						position: { line: at.line, character: at.character },
 						context: { includeDeclaration: params.includeDeclaration ?? false },
 					}) as Promise<Loc[]>,
-				(r) => !r || (Array.isArray(r) && r.length === 0),
+				locationFingerprint,
 			);
 			const out = fmtLocations(ctx.cwd, res);
 			const n = Array.isArray(res) ? res.length : 0;
