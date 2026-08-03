@@ -29,5 +29,9 @@
     "npm:pi-lmstudio",
     "npm:pi-web-access"
   ],
-  "theme": "dark"
+  "skills": [
+    "~/.claude/skills"
+  ],
+  "theme": "dark",
+  "defaultThinkingLevel": "high"
 }
