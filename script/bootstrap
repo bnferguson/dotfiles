@@ -217,6 +217,17 @@ install_larger_paths () {
   link_file "$DOTFILES_ROOT/pi/config/settings.json" "$HOME/.pi/agent/settings.json"
   link_file "$DOTFILES_ROOT/pi/config/models.json" "$HOME/.pi/agent/models.json"
 
+  # pi extensions — linked per-extension, not as a whole directory, so that
+  # extensions installed with `pi install` keep their place alongside these.
+  # node_modules is linked too: jiti resolves imports from a parent of the
+  # extension's realpath, and linking it keeps resolution working either way.
+  mkdir -p "$HOME/.pi/agent/extensions"
+  link_file "$DOTFILES_ROOT/pi/extensions/code-intel" "$HOME/.pi/agent/extensions/code-intel"
+  link_file "$DOTFILES_ROOT/pi/extensions/lsp" "$HOME/.pi/agent/extensions/lsp"
+  if [ -d "$DOTFILES_ROOT/pi/extensions/node_modules" ]; then
+    link_file "$DOTFILES_ROOT/pi/extensions/node_modules" "$HOME/.pi/agent/extensions/node_modules"
+  fi
+
   if [ "$(uname -s)" == "Darwin" ]; then
     link_file "$DOTFILES_ROOT/macos/karabiner" "$HOME/.config/karabiner"
   fi

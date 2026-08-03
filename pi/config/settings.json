@@ -1,7 +1,7 @@
 {
   "lastChangelogVersion": "0.83.0",
-  "defaultProvider": "lmstudio",
-  "defaultModel": "qwen/qwen3.6-35b-a3b",
+  "defaultProvider": "anthropic",
+  "defaultModel": "claude-opus-5",
   "subagents": {
     "agentOverrides": {
       "context-builder": {
@@ -29,5 +29,9 @@
     "npm:pi-lmstudio",
     "npm:pi-web-access"
   ],
-  "theme": "dark"
+  "skills": [
+    "~/.claude/skills"
+  ],
+  "theme": "dark",
+  "defaultThinkingLevel": "high"
 }
