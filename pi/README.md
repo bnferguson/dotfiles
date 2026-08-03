@@ -201,7 +201,40 @@ Servers are discovered on `PATH` and in nvim's mason bin dir, so anything
 installed for the editor is reused. `/lsp` shows what's running and what's
 missing.
 
+### `telemetry`
+
+Records what a session actually did, so changes to tooling can be evaluated
+instead of guessed at. Deliberately generic — it hooks pi's own tool and turn
+events, so it sees built-in tools, every extension's tools, and anything added
+later, with no knowledge of any of them.
+
+One JSONL file per session in `~/.pi/agent/telemetry/` (never in the project):
+session metadata (cwd, branch, commit, model, active tool set), per-tool-call
+timing/errors/output size, and per-turn token and cost breakdown.
+
+It records names and sizes, **not** tool inputs or outputs — those are your
+source, prompts, and occasionally secrets, and this writes plaintext to disk.
+`PI_TELEMETRY_VERBOSE=1` opts into capturing arguments.
+
+`/stats` summarizes the live session. `bin/pi-telemetry` reads the logs:
+
+```sh
+pi-telemetry list --repo soffi-main --days 7
+pi-telemetry show <fragment>
+pi-telemetry compare --group-by tool:lsp_references
+```
+
+`compare` is observational, not randomized — sessions differ in task as well as
+tooling — so it prints n and says so. It's a prompt to investigate, not a
+result.
+
+One thing worth knowing: `usage.input` alone is misleading under prompt caching.
+A turn reading 15k tokens of context can report `input: 2` because the rest was
+a cache read. The full breakdown and `cost` are recorded for that reason.
+
 ## Why both
+
+
 
 They answer different questions, and the overlap is smaller than it looks:
 

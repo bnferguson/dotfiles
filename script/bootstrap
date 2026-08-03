@@ -226,6 +226,7 @@ install_larger_paths () {
   mkdir -p "$HOME/.pi/agent/extensions"
   link_file "$DOTFILES_ROOT/pi/extensions/code-intel" "$HOME/.pi/agent/extensions/code-intel"
   link_file "$DOTFILES_ROOT/pi/extensions/lsp" "$HOME/.pi/agent/extensions/lsp"
+  link_file "$DOTFILES_ROOT/pi/extensions/telemetry" "$HOME/.pi/agent/extensions/telemetry"
   if [ -d "$DOTFILES_ROOT/pi/extensions/node_modules" ]; then
     link_file "$DOTFILES_ROOT/pi/extensions/node_modules" "$HOME/.pi/agent/extensions/node_modules"
   fi
