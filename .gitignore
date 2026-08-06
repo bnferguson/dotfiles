@@ -14,3 +14,7 @@ __pycache__/
 # code-intel — graphify installs its own skill per-machine (code-intel/install.sh);
 # the router skill (code-intel/) is the committed layer.
 claude/config/skills/graphify/
+
+# pi — a local npm install, not a symlink source. Bootstrap only links
+# pi/config/*.json; pi's own extensions live in ~/.pi/agent/extensions.
+pi/extensions/
