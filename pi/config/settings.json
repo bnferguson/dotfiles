@@ -27,7 +27,8 @@
   "packages": [
     "npm:pi-claude-cli",
     "npm:pi-lmstudio",
-    "npm:pi-web-access"
+    "npm:pi-web-access",
+    "https://github.com/stuttlepress/pi-claude-cli"
   ],
   "skills": [
     "~/.claude/skills"
