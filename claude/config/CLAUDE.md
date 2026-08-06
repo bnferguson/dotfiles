@@ -43,6 +43,7 @@ Everything else in the gh-stack skill stands, including its rule that every comm
 
 # Tool Guidance
 - When interacting with GitHub use `gh`
+- To put an image or file into a GitHub issue, PR, or README, use `gh image <path>` — it uploads to GitHub's `user-attachments` endpoint and prints the markdown reference to paste. Uploads inherit the target repo's visibility, so private repos stay private. Infers the repo from the git remote; `--repo owner/repo` overrides. Auth comes from the browser session cookie, not the `gh` token — if it fails, check `gh image check-token`
 - Use `git` for source control
 - I use `mise` to manage my shell environment for projects
 - I use `brew` to install tools that aren't specified in `mise`
