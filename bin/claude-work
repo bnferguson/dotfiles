@@ -134,7 +134,9 @@ case "$1" in
 
       DEFAULT_BRANCH=$(git symbolic-ref refs/remotes/origin/HEAD 2>/dev/null | sed 's|refs/remotes/origin/||') || DEFAULT_BRANCH="main"
       git fetch origin "$DEFAULT_BRANCH" 2>/dev/null || true
-      git worktree add -b "$BRANCH" "$WT_PATH" "origin/$DEFAULT_BRANCH"
+      # --no-track: without it the new branch's upstream becomes origin/main,
+      # which breaks push.default=simple and makes pull merge main back in.
+      git worktree add --no-track -b "$BRANCH" "$WT_PATH" "origin/$DEFAULT_BRANCH"
       new_wt=true
     fi
 
