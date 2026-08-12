@@ -72,6 +72,33 @@ Everything else in the gh-stack skill stands, including its rule that every comm
 - **This applies to all prose output**, not just long-form writing. PR descriptions, PR review comments, issue comments, Slack messages, commit messages, and any other text written on Brandon's behalf should follow the style guide and avoid the tropes
 - When drafting PR descriptions specifically: write in Brandon's voice, be direct and specific about what changed and why, skip the filler transitions and false profundity
 
+## Simple English
+
+Apply the `simple-english` skill (ASD-STE100 Simplified Technical English) to **all** prose — chat responses, PR descriptions, review comments, commit messages, docs, issue comments, Slack. Default to its pragmatic mode. Invoke the skill for anything longer than a few paragraphs or when writing docs; for short responses, just apply the rules below.
+
+What carries over to everything:
+
+- One instruction per sentence. Condition before the command: "If the build fails, read the log" — not the reverse.
+- Active voice. Simple tenses. Approved modals are can/will/must; "should", "may", "might", and "could" all resolve to one of those or get cut.
+- One word, one meaning. Don't rotate synonyms (config/settings/options — pick one and keep it).
+- The slop-to-simple substitutions are non-negotiable: leverage → use, in order to → to, ensure → make sure that, and delete simply/just/seamlessly/robust/comprehensive outright.
+- No semicolons. Never touch code, identifiers, commands, paths, or quoted errors.
+- Sentence limits (20 procedural / 25 descriptive) are a signal, not a hard cap, outside strict mode. If a sentence runs past ~25 words, it usually wants to be two.
+
+### Where Simple English and the style guide conflict
+
+They disagree on voice, and the style guide wins there. STE bans contractions, hedges, and long winding sentences; those are load-bearing in Brandon's writing. So:
+
+- **Keep** contractions, parenthetical asides, plainly-stated uncertainty ("I'm unsure", "I haven't dug into this"), and natural sentence-length variation.
+- **Take from STE** the structural discipline and the vocabulary: condition-first, active voice, one idea per sentence, no synonym rotation, no filler adjectives.
+- STE's dictionary rulings that fight readable English (`operate` for run, `do` for execute, `erase` for delete) are strict-mode only. Ignore them by default.
+- Use **strict mode** only when Brandon names STE, ASD-STE100, or compliance, or when the text is a runbook, procedure, error message, or something headed for translation.
+- Don't apply STE to personal or persuasive writing — thank-yous, recommendations, anything with warmth in it. It deletes the warmth by design.
+
+## Diagrams
+
+Use the `diagram-design` skill for technical and product diagrams (architecture, sequence, flowchart, ER, state, timeline, quadrant, and ~20 more) rendered as self-contained HTML with inline SVG. It also imports existing draw.io and Mermaid sources and redraws them. It has a first-run gate that asks about customizing colors and fonts per project — answering (e) proceeds with its default neutral skin.
+
 ## Code Intelligence
 
 For finding, navigating, and understanding code, use the **code-intel** skill — it routes between three complementary tools by what you need:
