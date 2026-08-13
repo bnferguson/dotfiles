@@ -26,7 +26,7 @@ elif command -v pacman >/dev/null 2>&1; then
 
   sudo pacman -S --needed --noconfirm \
     zsh starship mise neovim github-cli jq go-yq fzf fd zellij ast-grep uv rustup jujutsu keyd openssh \
-    actionlint syncthing gammastep tailscale \
+    actionlint syncthing gammastep tailscale gpu-screen-recorder \
     ttf-ibmplex-mono-nerd \
     firefox telegram-desktop signal-desktop zed
 
