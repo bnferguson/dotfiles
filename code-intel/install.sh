@@ -23,14 +23,18 @@ if command -v uvx >/dev/null 2>&1; then
     echo "  vera present — checking for updates..."
     vera upgrade --apply 2>/dev/null || true
   fi
-  # Local embedding backend + models, skipping the interactive wizard.
-  # CoreML on Apple Silicon, CPU elsewhere. (Skip vera's agent-install step —
-  # the vera skill ships with these dotfiles.)
-  if [ "$(uname -s)" = "Darwin" ] && [ "$(uname -m)" = "arm64" ]; then
-    vera backend --onnx-jina-coreml --yes 2>/dev/null || true
-  else
-    vera backend --onnx-jina-cpu --yes 2>/dev/null || true
-  fi
+  # Potion Code static embeddings everywhere, skipping the interactive wizard.
+  # Don't "upgrade" this to an ONNX/Jina backend without measuring first. The
+  # jina-v5 export is built from com.microsoft contrib ops (MultiHeadAttention,
+  # RotaryEmbedding, SkipSimplifiedLayerNormalization), and only the CPU and
+  # CUDA providers have kernels for them. On Apple Silicon the CoreML EP claims
+  # 6 nodes out of ~1700 and times identically to plain CPU, so --onnx-jina-coreml
+  # bought nothing and cost ~120x: 60s vs 0.5s for the same 848 chunks. Vera's
+  # own docs claim the embedding model is GPU-accelerated under CoreML; it isn't.
+  # Only worth revisiting on a box with a real NVIDIA GPU, where --onnx-jina-cuda
+  # does have kernels for those ops.
+  # (Skip vera's agent-install step — the vera skill ships with these dotfiles.)
+  vera backend --potion-code --yes 2>/dev/null || true
 else
   echo "  Skipping vera — uv not found"
 fi
