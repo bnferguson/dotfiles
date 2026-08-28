@@ -50,10 +50,6 @@ o.bind(hyper_key("F"), "File manager (focus or launch)", "omarchy launch or focu
 o.bind(hyper_key("G"), "Terminal", "omarchy launch terminal")
 o.bind(hyper_key("C"), "Obsidian (focus or launch)", "omarchy launch or focus '^obsidian$' 'uwsm-app -- obsidian --disable-gpu --enable-wayland-ime'")
 
--- In apps where keyd rewrites Alt to Ctrl, Ctrl+Q closes the app itself;
--- elsewhere this Hyprland binding closes the active window.
-o.bind("ALT + Q", "Close window", hl.dsp.window.close())
-
 o.bind(hyper_key("UP"), "Toggle maximize", hl.dsp.window.fullscreen({ mode = "maximized" }))
 o.bind(hyper_key("DOWN"), "Toggle floating", hl.dsp.window.float({ action = "toggle" }))
 o.bind(hyper_key("LEFT"), "Tile left", hl.dsp.window.move({ direction = "l" }))

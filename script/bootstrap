@@ -229,11 +229,6 @@ install_larger_paths () {
       link_file "$DOTFILES_ROOT/linux/hyprland/autostart.lua" "$HOME/.config/hypr/autostart.lua"
     fi
 
-    # keyd per-user app remaps (Alt-as-Cmd in GUI apps). Consumed by
-    # keyd-application-mapper, which Hyprland autostarts.
-    mkdir -p "$HOME/.config/keyd"
-    link_file "$DOTFILES_ROOT/linux/keyd/app.conf" "$HOME/.config/keyd/app.conf"
-
     # systemd-user environment overrides
     mkdir -p "$HOME/.config/environment.d"
     link_file "$DOTFILES_ROOT/linux/environment.d/shell.conf" "$HOME/.config/environment.d/shell.conf"
