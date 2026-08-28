@@ -1,0 +1,186 @@
+#!/usr/bin/env python3
+"""pi-telemetry — summarize and compare pi session telemetry.
+
+The telemetry extension (pi/config/extensions/telemetry) writes one JSONL file per
+session to ~/.pi/agent/telemetry/. This reads them.
+
+Usage:
+  pi-telemetry list [--repo NAME] [--days N]
+  pi-telemetry show <session-fragment>
+  pi-telemetry compare --group-by tool:<name> [--repo NAME] [--days N]
+  pi-telemetry compare --a <fragment> --b <fragment>
+
+`compare --group-by tool:lsp_references` splits sessions into those that used
+that tool and those that didn't, then reports both groups. That is the crude
+form of the A/B: it is observational, so treat it as a signal to investigate,
+not a result. n is reported precisely because it is usually too small.
+"""
+
+import argparse
+import json
+import os
+import statistics
+import sys
+from collections import defaultdict
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+LOG_DIR = Path.home() / ".pi" / "agent" / "telemetry"
+
+
+def short_id(stem):
+    """Session files are '<date>-<iso-timestamp>_<uuid>'. The date prefix repeats
+    the timestamp, and the uuid tail is what actually distinguishes sessions, so
+    a truncated full stem is identical for every row."""
+    name = stem
+    if "_" in name:
+        ts, uid = name.rsplit("_", 1)
+        time = ts.split("T")[-1][:8] if "T" in ts else ts[-8:]
+        return f"{time}_{uid[:8]}"
+    return name[-22:]
+
+
+def load(path):
+    """Parse one session file into a dict, tolerating truncated final lines."""
+    s = {"file": path, "tools": defaultdict(lambda: {"calls": 0, "ms": 0, "errors": 0, "bytes": 0}),
+         "turns": 0, "cost": 0.0, "totalTokens": 0, "wallMs": None, "cwd": None,
+         "branch": None, "model": None, "session": path.stem, "activeTools": []}
+    try:
+        lines = path.read_text().splitlines()
+    except OSError:
+        return None
+    for line in lines:
+        try:
+            d = json.loads(line)
+        except json.JSONDecodeError:
+            continue  # a session killed mid-write leaves a partial last line
+        ev = d.get("ev")
+        if ev == "session":
+            s["cwd"] = d.get("cwd"); s["branch"] = d.get("branch")
+            s["model"] = d.get("model"); s["activeTools"] = d.get("tools") or []
+            s["start"] = d.get("t")
+        elif ev == "tool":
+            t = s["tools"][d.get("tool", "?")]
+            t["calls"] += 1
+            t["ms"] += d.get("ms", 0)
+            t["bytes"] += d.get("bytes", 0)
+            if not d.get("ok", True):
+                t["errors"] += 1
+        elif ev == "turn":
+            s["turns"] += 1
+            s["cost"] += d.get("cost", 0) or 0
+            s["totalTokens"] += d.get("totalTokens", 0) or 0
+        elif ev == "session_end":
+            s["wallMs"] = d.get("wallMs")
+    return s
+
+
+def sessions(repo=None, days=None):
+    if not LOG_DIR.is_dir():
+        return []
+    out = []
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days) if days else None
+    for p in sorted(LOG_DIR.glob("*.jsonl")):
+        s = load(p)
+        if not s or not s.get("cwd"):
+            continue
+        if repo and repo not in str(s["cwd"]):
+            continue
+        if cutoff:
+            try:
+                if datetime.fromisoformat(s["start"].replace("Z", "+00:00")) < cutoff:
+                    continue
+            except (KeyError, ValueError, AttributeError):
+                pass
+        out.append(s)
+    return out
+
+
+def tool_calls(s):
+    return sum(t["calls"] for t in s["tools"].values())
+
+
+def fmt_group(name, group):
+    if not group:
+        return f"{name}: (no sessions)"
+    def med(key):
+        vals = [g[key] for g in group if g.get(key)]
+        return statistics.median(vals) if vals else 0
+    calls = [tool_calls(g) for g in group]
+    lines = [
+        f"{name}  n={len(group)}",
+        f"  tool calls   median {statistics.median(calls):.0f}   range {min(calls)}-{max(calls)}",
+        f"  turns        median {med('turns'):.0f}",
+        f"  tokens       median {med('totalTokens'):,.0f}",
+        f"  cost         median ${med('cost'):.4f}",
+    ]
+    if any(g["wallMs"] for g in group):
+        lines.append(f"  wall         median {med('wallMs')/1000:.0f}s")
+    agg = defaultdict(int)
+    for g in group:
+        for t, v in g["tools"].items():
+            agg[t] += v["calls"]
+    top = sorted(agg.items(), key=lambda kv: -kv[1])[:8]
+    lines.append("  tools: " + ", ".join(f"{t}={c}" for t, c in top))
+    return "\n".join(lines)
+
+
+def cmd_list(args):
+    ss = sessions(args.repo, args.days)
+    if not ss:
+        print("No sessions found in", LOG_DIR)
+        return
+    print(f"{'session':18} {'repo':22} {'turns':>5} {'calls':>6} {'tokens':>9} {'cost':>8}")
+    for s in ss:
+        print(f"{short_id(s['session']):18} {os.path.basename(s['cwd'] or ''):22} "
+              f"{s['turns']:>5} {tool_calls(s):>6} {s['totalTokens']:>9,} {s['cost']:>8.4f}")
+
+
+def cmd_show(args):
+    ss = [s for s in sessions() if args.fragment in s["session"]]
+    if not ss:
+        print("No matching session."); sys.exit(1)
+    for s in ss:
+        print(f"\n=== {short_id(s['session'])} ===")
+        print(f"repo {s['cwd']}  branch {s['branch']}  model {s['model']}")
+        print(f"turns {s['turns']}  tokens {s['totalTokens']:,}  cost ${s['cost']:.4f}"
+              + (f"  wall {s['wallMs']/1000:.0f}s" if s["wallMs"] else ""))
+        rows = sorted(s["tools"].items(), key=lambda kv: -kv[1]["calls"])
+        if rows:
+            w = max(len(t) for t, _ in rows)
+            print(f"  {'tool'.ljust(w)}  calls      ms  err     KB")
+            for t, v in rows:
+                print(f"  {t.ljust(w)}  {v['calls']:>5}  {v['ms']:>6}  {v['errors']:>3}  {v['bytes']/1024:>5.0f}")
+
+
+def cmd_compare(args):
+    if args.a and args.b:
+        ga = [s for s in sessions() if args.a in s["session"]]
+        gb = [s for s in sessions() if args.b in s["session"]]
+        print(fmt_group(f"A ({args.a})", ga)); print(); print(fmt_group(f"B ({args.b})", gb))
+        return
+    if not args.group_by or not args.group_by.startswith("tool:"):
+        print("Use --group-by tool:<name>, or --a/--b session fragments."); sys.exit(1)
+    tool = args.group_by.split(":", 1)[1]
+    ss = sessions(args.repo, args.days)
+    used = [s for s in ss if s["tools"].get(tool, {}).get("calls", 0) > 0]
+    notused = [s for s in ss if s["tools"].get(tool, {}).get("calls", 0) == 0]
+    print(fmt_group(f"used {tool}", used)); print(); print(fmt_group(f"did not use {tool}", notused))
+    print("\nObservational, not randomized: sessions differ in task as well as tooling.")
+    if min(len(used), len(notused)) < 5:
+        print("n is small — treat as a prompt to investigate, not a finding.")
+
+
+def main():
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    p = sub.add_parser("list"); p.add_argument("--repo"); p.add_argument("--days", type=int); p.set_defaults(fn=cmd_list)
+    p = sub.add_parser("show"); p.add_argument("fragment"); p.set_defaults(fn=cmd_show)
+    p = sub.add_parser("compare"); p.add_argument("--group-by"); p.add_argument("--repo")
+    p.add_argument("--days", type=int); p.add_argument("--a"); p.add_argument("--b"); p.set_defaults(fn=cmd_compare)
+    args = ap.parse_args()
+    args.fn(args)
+
+
+if __name__ == "__main__":
+    main()

@@ -139,9 +139,16 @@ Commands:
 
 Notes:
   - Missing tools are skipped; graphify's build needs a model backend.
+  - Never interrupt a running `vera update`/`index`. A killed run leaves its
+    content-hash bookkeeping inconsistent and the next update re-embeds
+    everything it lost track of (measured: 1692 files / 19.5 min wall / 71 min
+    CPU on a 6k-file repo, from a single timeout kill). Incremental updates are
+    otherwise sub-second, so if vera seems pathologically slow, suspect an
+    earlier interrupted run.
   - For live freshness during a session, run `vera watch .` (codegraph
     auto-syncs while its MCP server is up; graphify rebuilds on git commit
-    once `graphify hook install` has run).
+    once `graphify hook install` has run). In pi this is unnecessary — the
+    code-intel extension syncs before each query.
   - Indexing pays off on large/unfamiliar repos — on small or familiar code,
     LSP + grep are faster.
 EOF

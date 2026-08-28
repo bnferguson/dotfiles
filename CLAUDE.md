@@ -45,6 +45,7 @@ Other conventions:
 - jj user config lives in `~/.config/jj/conf.d/local.toml` (created by bootstrap from template)
 - Claude Code config files are symlinked individually (not the whole `~/.claude/` dir) to preserve session data
 - pi coding agent config files are symlinked individually (not the whole `~/.pi/agent/` dir) to preserve sessions, caches, and installed packages — see `pi/config/`
+- pi extensions live in `pi/config/extensions/` and are symlinked per-extension into `~/.pi/agent/extensions/`. `code-intel` exposes vera/codegraph/ast-grep as pi tools and can enforce structural-first routing; `lsp` is a direct LSP client (pi has no MCP, so MCP-based tools like serena are unusable). Both are loaded automatically — see `pi/README.md`
 - The `script/install` script supports macOS (brew), Arch (pacman), and Ubuntu (apt) with graceful fallbacks
 
 ## Symlink Strategy

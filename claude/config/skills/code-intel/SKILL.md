@@ -12,6 +12,11 @@ Three tools, three zoom levels. They are complementary, not competing — pick t
 | **Comprehend** | graphify | "What *is* this project, how do the big pieces (incl. docs/schema) connect?" | Multimodal knowledge graph, snapshot |
 | **Locate** | vera | "Where's the code about X?" when you don't know the symbol name | Embedding semantic search |
 | **Traverse** | codegraph | "Who calls this? What does it call? Blast radius of a change?" | Structural call graph, live over MCP |
+| **Resolve** | LSP / ast-grep | "What exactly is this symbol, and what are its *real* references?" | Compiler truth; AST patterns. No index |
+
+The first three need a built index and go stale between refreshes. The fourth
+needs nothing and is always available — reach for it freely, including in small
+repos where indexing isn't worth it.
 
 ## When to reach for this
 
@@ -35,6 +40,10 @@ Index when a repo is **large, polyglot, long-lived, or already has a `.codegraph
 | Exact string, regex, import, or TODO | **vera** (or `rg`) | `vera grep "pattern"` |
 | Trace who calls a symbol / what it calls | **codegraph** | MCP `codegraph_callers` / `codegraph_callees` (CLI: `codegraph callers <sym>`) |
 | Assess the blast radius before changing a symbol | **codegraph** | MCP `codegraph_impact` (CLI: `codegraph impact <sym>`) |
+| Enumerate the *exact* references to a symbol (before a rename or signature change) | **LSP** | `lsp_references` in pi; grep both over- and under-reports — it hits comments and misses aliased imports |
+| Rename a symbol safely | **LSP** | `lsp_rename` — only the language server knows which occurrences are the same symbol |
+| Match a code *shape* rather than a literal string | **ast-grep** | `ast-grep run -p '$A.then($B)'` — immune to formatting and line breaks |
+| Mechanical multi-file refactor | **ast-grep** | `ast-grep run -p <pat> -r <rewrite>`; check `codegraph impact` first |
 | Build task context (entry points + related symbols, few calls) | **codegraph** | MCP `codegraph_context "<task>"` |
 
 When codegraph's MCP tools are available, prefer them over re-deriving structure with grep — answer directly rather than delegating to file-reading sub-agents (that erases the savings).
@@ -50,6 +59,8 @@ When codegraph's MCP tools are available, prefer them over re-deriving structure
 - **Structural references:** codegraph beats `vera references` (true call edges vs. embedding-derived). Use codegraph to traverse.
 - **Semantic search:** vera is the only one that finds code by *meaning*. That's its unique slice.
 - **Non-code:** graphify is the only one that maps docs, schemas, and infra alongside code.
+- **References for a refactor:** LSP beats codegraph — it's compiler-exact within a project and never stale. codegraph wins on breadth (whole repo, cross-language, no per-language server needed).
+- **Renames:** LSP always. `ast-grep -r` and sed only know what *looks* alike, which is how a rename quietly corrupts a comment or an unrelated same-named field.
 
 ## Setup per project
 
@@ -64,3 +75,13 @@ code-intel status     # show index state per tool
 Or per tool: `vera index .` / `vera update .` (or `vera watch .` for live freshness); `codegraph init` + `codegraph index` / `codegraph sync` (auto-syncs while its MCP server runs); `/graphify .` in-agent for the full graph or `graphify update .` for a code-only CLI build (`graphify hook install` rebuilds on each commit).
 
 `.vera/`, `.codegraph/`, and `graphify-out/` are gitignored globally. Install/upgrade the tools with the `code-intel` topic (`code-intel/install.sh`).
+
+No setup is needed for the resolve layer: `ast-grep` comes from the Brewfile/pacman list, and language servers are whatever nvim/mason already installed.
+
+## In pi
+
+pi has no MCP, so these are exposed as native tools by the `code-intel` and `lsp`
+extensions instead (`pi/config/extensions/`, documented in `pi/README.md`): `cg_*`,
+`vera_search`, `ast_search`/`ast_rewrite`, and `lsp_*`. `/code-intel strict`
+there removes text search entirely, which is the honest way to test whether this
+layer actually helps.

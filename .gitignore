@@ -16,6 +16,7 @@ __pycache__/
 # the router skill (code-intel/) is the committed layer.
 claude/config/skills/graphify/
 
-# pi — a local npm install, not a symlink source. Bootstrap only links
-# pi/config/*.json; pi's own extensions live in ~/.pi/agent/extensions.
-pi/extensions/
+# pi extensions — npm deps for the lsp extension (vscode-jsonrpc), installed
+# per-machine by pi/install.sh
+pi/config/extensions/node_modules/
+pi/config/extensions/package-lock.json
