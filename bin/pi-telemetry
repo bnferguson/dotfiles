@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """pi-telemetry — summarize and compare pi session telemetry.
 
-The telemetry extension (pi/extensions/telemetry) writes one JSONL file per
+The telemetry extension (pi/config/extensions/telemetry) writes one JSONL file per
 session to ~/.pi/agent/telemetry/. This reads them.
 
 Usage:

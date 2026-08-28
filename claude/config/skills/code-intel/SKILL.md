@@ -81,7 +81,7 @@ No setup is needed for the resolve layer: `ast-grep` comes from the Brewfile/pac
 ## In pi
 
 pi has no MCP, so these are exposed as native tools by the `code-intel` and `lsp`
-extensions instead (`pi/extensions/`, documented in `pi/README.md`): `cg_*`,
+extensions instead (`pi/config/extensions/`, documented in `pi/README.md`): `cg_*`,
 `vera_search`, `ast_search`/`ast_rewrite`, and `lsp_*`. `/code-intel strict`
 there removes text search entirely, which is the honest way to test whether this
 layer actually helps.

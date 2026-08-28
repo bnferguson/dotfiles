@@ -18,5 +18,5 @@ claude/config/skills/graphify/
 
 # pi extensions — npm deps for the lsp extension (vscode-jsonrpc), installed
 # per-machine by pi/install.sh
-pi/extensions/node_modules/
-pi/extensions/package-lock.json
+pi/config/extensions/node_modules/
+pi/config/extensions/package-lock.json

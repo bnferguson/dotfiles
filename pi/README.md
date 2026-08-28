@@ -4,7 +4,7 @@ Config and extensions for the [pi coding agent](https://github.com/earendil-work
 
 `pi/config/*.json` is symlinked file-by-file into `~/.pi/agent/` (not the whole
 directory) so sessions, caches, and `pi install`ed packages survive. Extensions
-under `pi/extensions/` are symlinked per-extension into `~/.pi/agent/extensions/`
+under `pi/config/extensions/` are symlinked per-extension into `~/.pi/agent/extensions/`
 for the same reason.
 
 ## Extensions

@@ -2,16 +2,16 @@
 #
 # pi coding agent — extension dependencies.
 #
-# The `lsp` extension (pi/extensions/lsp) speaks LSP directly over JSON-RPC,
+# The `lsp` extension (pi/config/extensions/lsp) speaks LSP directly over JSON-RPC,
 # since pi ships no MCP client and every off-the-shelf LSP bridge is MCP-only.
 # That needs vscode-jsonrpc at runtime. pi loads extensions through jiti, which
 # resolves node_modules from a parent directory, so a single install at
-# pi/extensions/ covers every extension in the topic.
+# pi/config/extensions/ covers every extension in the topic.
 #
 # node_modules/ here is gitignored — it's a per-machine build artifact.
 
 DOTFILES_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
-EXT_DIR="$DOTFILES_ROOT/pi/extensions"
+EXT_DIR="$DOTFILES_ROOT/pi/config/extensions"
 
 if [ ! -f "$EXT_DIR/package.json" ]; then
   echo "  Skipping pi extensions — no package.json"
