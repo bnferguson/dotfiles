@@ -216,6 +216,8 @@ install_larger_paths () {
   mkdir -p "$HOME/.pi/agent"
   link_file "$DOTFILES_ROOT/pi/config/settings.json" "$HOME/.pi/agent/settings.json"
   link_file "$DOTFILES_ROOT/pi/config/models.json" "$HOME/.pi/agent/models.json"
+  mkdir -p "$HOME/.pi/agent/extensions"
+  link_file "$DOTFILES_ROOT/pi/config/extensions/claude-statusline.ts" "$HOME/.pi/agent/extensions/claude-statusline.ts"
 
   if [ "$(uname -s)" == "Darwin" ]; then
     link_file "$DOTFILES_ROOT/macos/karabiner" "$HOME/.config/karabiner"
