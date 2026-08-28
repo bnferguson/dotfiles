@@ -16,7 +16,7 @@
 #
 # Each argument is one member: "<pattern>|<launch-command>". The pattern is
 # lowercased and substring-matched against the window's "class title", so it
-# works for both detection here and the workspace pin in bindings.conf.
+# works for both detection here and the workspace pin in bindings.lua.
 # Verify a new member's runtime class with `hyprctl clients` — it often
 # differs from the .desktop StartupWMClass (e.g. `org.telegram.desktop`).
 #

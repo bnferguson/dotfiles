@@ -10,23 +10,17 @@ cd "$(dirname $0)"/..
 if command -v brew >/dev/null 2>&1; then
   echo "› brew bundle"
   brew bundle --file=Brewfile
-elif command -v pacman >/dev/null 2>&1; then
-  echo "› installing packages via pacman"
+elif command -v omarchy >/dev/null 2>&1; then
+  echo "› installing packages via Omarchy"
 
-  # The standalone `rust` package conflicts with `rustup`; --noconfirm would
-  # default that prompt to "no" and abort the whole transaction. Clear it first
-  # so rustup can own the toolchain. rustup + ~/.cargo/bin provide rustc/cargo.
-  # Match a package *named* rust, not one that provides it — rustup itself
-  # declares provides=(rust), so `pacman -Q rust` resolves to rustup once it's
-  # installed and would otherwise trigger a bogus removal of a missing target.
-  if pacman -Qq | grep -qx rust; then
-    echo "› removing standalone rust package (superseded by rustup)"
-    sudo pacman -Rs --noconfirm rust
-  fi
+  # The standalone `rust` package conflicts with `rustup`. Omarchy's drop
+  # helper matches exact installed package names, so this is a safe no-op once
+  # rustup owns the toolchain.
+  omarchy pkg drop rust
 
-  sudo pacman -S --needed --noconfirm \
+  omarchy pkg add \
     zsh starship mise neovim github-cli jq go-yq fzf fd zellij ast-grep uv rustup jujutsu keyd openssh \
-    actionlint syncthing gammastep tailscale gpu-screen-recorder \
+    actionlint syncthing tailscale gpu-screen-recorder \
     ttf-ibmplex-mono-nerd \
     firefox telegram-desktop signal-desktop zed
 
@@ -38,12 +32,12 @@ elif command -v pacman >/dev/null 2>&1; then
     xdg-settings set default-web-browser firefox.desktop
   fi
 
-  # AUR packages — yay is the assumed helper (ships with Omarchy)
-  if command -v yay >/dev/null 2>&1; then
-    echo "› installing AUR packages via yay"
-    yay -S --needed --noconfirm slack-desktop
+  # AUR packages — use Omarchy's availability check and package wrapper.
+  if omarchy pkg aur accessible; then
+    echo "› installing AUR packages via Omarchy"
+    omarchy pkg aur add slack-desktop
   else
-    echo "  Note: yay not found; skipping AUR packages (slack-desktop)"
+    echo "  Note: AUR unavailable; skipping AUR packages (slack-desktop)"
   fi
 
   # keyd — system-level key remapper for Hyper key (Caps Lock → Esc/Hyper)
