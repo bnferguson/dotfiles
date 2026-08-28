@@ -222,11 +222,11 @@ install_larger_paths () {
   fi
 
   if [ "$(uname -s)" == "Linux" ]; then
-    # Hyprland config overrides (bindings + input)
+    # Hyprland Lua overrides loaded after Omarchy's Quattro defaults.
     if [ -d "$HOME/.config/hypr" ]; then
-      link_file "$DOTFILES_ROOT/linux/hyprland/bindings.conf" "$HOME/.config/hypr/bindings.conf"
-      link_file "$DOTFILES_ROOT/linux/hyprland/input.conf" "$HOME/.config/hypr/input.conf"
-      link_file "$DOTFILES_ROOT/linux/hyprland/autostart.conf" "$HOME/.config/hypr/autostart.conf"
+      link_file "$DOTFILES_ROOT/linux/hyprland/bindings.lua" "$HOME/.config/hypr/bindings.lua"
+      link_file "$DOTFILES_ROOT/linux/hyprland/input.lua" "$HOME/.config/hypr/input.lua"
+      link_file "$DOTFILES_ROOT/linux/hyprland/autostart.lua" "$HOME/.config/hypr/autostart.lua"
     fi
 
     # keyd per-user app remaps (Alt-as-Cmd in GUI apps). Consumed by
@@ -234,18 +234,10 @@ install_larger_paths () {
     mkdir -p "$HOME/.config/keyd"
     link_file "$DOTFILES_ROOT/linux/keyd/app.conf" "$HOME/.config/keyd/app.conf"
 
-    # Waybar config override (clock format + module layout)
-    if [ -d "$HOME/.config/waybar" ]; then
-      link_file "$DOTFILES_ROOT/linux/waybar/config.jsonc" "$HOME/.config/waybar/config.jsonc"
-    fi
-
     # systemd-user environment overrides
     mkdir -p "$HOME/.config/environment.d"
     link_file "$DOTFILES_ROOT/linux/environment.d/shell.conf" "$HOME/.config/environment.d/shell.conf"
 
-    # gammastep — blue light filter, manual location set in the config
-    mkdir -p "$HOME/.config/gammastep"
-    link_file "$DOTFILES_ROOT/linux/gammastep/config.ini" "$HOME/.config/gammastep/config.ini"
   fi
 }
 

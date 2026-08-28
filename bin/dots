@@ -68,9 +68,9 @@ fi
 
 # Linux-specific updates
 if [ "$(uname -s)" = "Linux" ]; then
-	if command -v pacman >/dev/null 2>&1; then
-		echo "› pacman -Syu"
-		sudo pacman -Syu
+	if command -v omarchy >/dev/null 2>&1; then
+		echo "› omarchy update"
+		omarchy update
 	fi
 fi
 
