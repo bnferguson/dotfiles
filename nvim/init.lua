@@ -19,6 +19,7 @@ end
 
 -- Load core config before plugins
 require("config.options")
+require("config.remote_clipboard").setup()
 require("config.keymaps")
 require("config.autocmds")
 
