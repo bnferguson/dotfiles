@@ -5,11 +5,12 @@ pnpm = "latest"
 # upstream-recommended installer and manages toolchains + per-project overrides
 # (rust-toolchain.toml) itself.
 
-# Language servers Claude Code's LSP plugins shell out to off $PATH.
-# (neovim gets its own copies via Mason in an nvim-private dir.)
+# Language servers used by Pi and Claude Code need to be on PATH. Neovim may
+# have separate Mason copies, but headless agent extensions cannot rely on it.
 "go:golang.org/x/tools/gopls" = "latest"
 "npm:typescript-language-server" = "latest"
 "npm:typescript" = "latest"
+"npm:pyright" = "latest"
 hadolint = "2.14.0"
 gh = "latest"
 codex = "latest"

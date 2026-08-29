@@ -622,6 +622,7 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 		if (next === "strict") applyStrict();
 		else releaseStrict();
 		updateStatus(ctx);
+		pi.events.emit("code-intel:mode", mode);
 		if (!quiet) {
 			const msg =
 				next === "off"

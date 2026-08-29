@@ -14,7 +14,14 @@ export default function (pi: ExtensionAPI) {
 	let worktreeName: string | undefined;
 	let pullRequest: { number: number; url: string } | undefined;
 	let displayCwd: string | undefined;
+	let codeIntelMode: "off" | "on" | "strict" = "off";
 	let requestRender: (() => void) | undefined;
+
+	pi.events.on("code-intel:mode", (mode: unknown) => {
+		if (mode !== "off" && mode !== "on" && mode !== "strict") return;
+		codeIntelMode = mode;
+		requestRender?.();
+	});
 
 	const refreshGitDetails = async (cwd: string) => {
 		const [diff, root, commonDir, gitDir, pr] = await Promise.all([
@@ -96,10 +103,12 @@ export default function (pi: ExtensionAPI) {
 						? ` ${theme.fg("success", `+${linesAdded}`)}${theme.fg("error", `-${linesRemoved}`)}`
 						: "";
 					const model = theme.fg("dim", ctx.model?.name || ctx.model?.id || "no model");
+					const codeIntelColor = codeIntelMode === "strict" ? "warning" : codeIntelMode === "on" ? "accent" : "muted";
+					const codeIntel = theme.fg(codeIntelColor, ` intel:${codeIntelMode}`);
 
 					return [
 						truncateToWidth(`${cwd}${separator}${branchText}${worktree}${pr}`, width),
-						truncateToWidth(`${model}${context}${costText}${changed}`, width),
+						truncateToWidth(`${model}${codeIntel}${context}${costText}${changed}`, width),
 					];
 				},
 			};

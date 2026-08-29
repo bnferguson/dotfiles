@@ -118,7 +118,8 @@ interrupted run rather than the tool.
 Auto-enables `on` when a repo already has any of `.codegraph/`, `.vera/`, or
 `graphify-out/`, and **says so** rather than changing tool behaviour silently —
 an unannounced behaviour change is the same failure mode as a stale index
-answering confidently. It also names what's *missing*, since the three are
+answering confidently. The custom footer also shows `intel:off`, `intel:on`, or
+`intel:strict` beside the model. It also names what's *missing*, since the three are
 complementary rather than alternatives and a project with one of them is
 under-served:
 
@@ -197,9 +198,11 @@ Other things that matter in headless use:
   project pinned to an older TS must be analyzed by that TS), then follows `tsc`
   on PATH.
 
-Servers are discovered on `PATH` and in nvim's mason bin dir, so anything
-installed for the editor is reused. `/lsp` shows what's running and what's
-missing.
+Servers are discovered on `PATH` and in nvim's Mason bin dir. The shared
+baseline is installed by the `mise` topic (`typescript-language-server`,
+TypeScript, `gopls`, and `pyright`); Rust comes from rustup's `rust-analyzer`
+component. Mason supplies the editor-oriented Lua, Ruby, Terraform, and Zig
+servers. `/lsp` shows what's running and what's missing.
 
 ### `telemetry`
 
@@ -251,5 +254,7 @@ symbol, `ast_rewrite` only knows which ones look alike.
 ## Install
 
 `pi/install.sh` (run by `script/install` and `dots`) installs the extension's
-npm deps and reports which language servers are visible. `node_modules/` here is
-a per-machine artifact and is gitignored.
+npm dependency and reports which language servers are visible. The `mise` topic
+installs the shared headless language-server baseline, and the `rust` topic
+installs `rust-analyzer`. `node_modules/` here is a per-machine artifact and is
+gitignored.

@@ -76,7 +76,7 @@ Or per tool: `vera index .` / `vera update .` (or `vera watch .` for live freshn
 
 `.vera/`, `.codegraph/`, and `graphify-out/` are gitignored globally. Install/upgrade the tools with the `code-intel` topic (`code-intel/install.sh`).
 
-No setup is needed for the resolve layer: `ast-grep` comes from the Brewfile/pacman list, and language servers are whatever nvim/mason already installed.
+No project index is needed for the resolve layer. `ast-grep` comes from the Brewfile/pacman list. The shared language-server baseline (`typescript-language-server`, TypeScript, `gopls`, and `pyright`) is managed by mise; Rust uses rustup's `rust-analyzer` component, while Pi also reuses Neovim Mason servers.
 
 ## In pi
 

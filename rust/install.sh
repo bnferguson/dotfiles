@@ -28,3 +28,11 @@ case "$current" in
     echo "  Default Rust toolchain already set: ${current%% *}"
     ;;
 esac
+
+# Pi's LSP extension starts rust-analyzer directly. rustup otherwise leaves a
+# proxy on PATH which exists but exits immediately, making the extension report
+# Rust as available before its first request hangs or fails.
+if ! rustup component list --installed 2>/dev/null | grep -qx 'rust-analyzer'; then
+  echo "  Installing rust-analyzer for Pi's LSP extension"
+  rustup component add rust-analyzer
+fi
