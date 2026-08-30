@@ -2,6 +2,11 @@ personality = "pragmatic"
 model = "gpt-5.6-sol"
 model_reasoning_effort = "medium"
 
+[tui]
+# Mirror the Claude status line with the closest native Codex fields.
+status_line = ["current-dir", "git-branch", "model-with-reasoning", "context-used", "estimated-thread-cost", "branch-changes"]
+status_line_use_colors = true
+
 [agents]
 max_concurrent_threads_per_session = 8
 
