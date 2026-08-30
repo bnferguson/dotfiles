@@ -74,6 +74,21 @@ if [ "$(uname -s)" = "Linux" ]; then
 	fi
 fi
 
+# Update mise-managed tools.
+#
+# `mise install` (run by mise/install.sh during script/install below) only
+# fetches what's missing. A `latest` pin that already resolved to some version
+# is a no-op for it, so without this the mise half of the toolchain silently
+# freezes while the brew/pacman half keeps moving.
+#
+# Run against $ZSH so only the global config applies. `dots` can be invoked
+# from any directory, and we don't want to upgrade a project's pinned tools
+# as a side effect of a dotfiles maintenance run.
+if command -v mise >/dev/null 2>&1; then
+	echo "› mise upgrade"
+	mise -C "$ZSH" upgrade --yes
+fi
+
 # Run topic installers
 echo "› $ZSH/script/install"
 $ZSH/script/install
