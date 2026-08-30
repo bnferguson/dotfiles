@@ -1,0 +1,51 @@
+personality = "pragmatic"
+model = "gpt-5.6-sol"
+model_reasoning_effort = "medium"
+
+[agents]
+max_concurrent_threads_per_session = 8
+
+[agents."application-architect"]
+description = "Design non-trivial features and produce detailed implementation plans."
+config_file = "./agents/application-architect.toml"
+
+[agents."docs-fetcher-summarizer"]
+description = "Fetch and summarize current framework and library documentation."
+config_file = "./agents/docs-fetcher-summarizer.toml"
+
+[agents."go-core-code-reviewer"]
+description = "Review changed Go code against Go team standards."
+config_file = "./agents/go-core-code-reviewer.toml"
+
+[agents."meta-agent"]
+description = "Create focused Codex custom-agent definitions."
+config_file = "./agents/meta-agent.toml"
+
+[agents."miren-core-code-reviewer"]
+description = "Review changed Miren Go code for substance and house style."
+config_file = "./agents/miren-core-code-reviewer.toml"
+
+[agents."rails-core-code-reviewer"]
+description = "Review Ruby, Rails, JavaScript, and Svelte changes against Rails core standards."
+config_file = "./agents/rails-core-code-reviewer.toml"
+
+[agents."test-writer"]
+description = "Write and verify one requested type of automated test."
+config_file = "./agents/test-writer.toml"
+
+[agents."zig-core-code-reviewer"]
+description = "Review changed Zig code for safety, performance, explicitness, and quality."
+config_file = "./agents/zig-core-code-reviewer.toml"
+
+[mcp_servers.codegraph]
+command = "codegraph"
+args = ["serve", "--mcp"]
+
+[projects."/Users/bnferguson/dev/soffi-main"]
+trust_level = "trusted"
+
+[projects."/Users/bnferguson/dev/soffi-main/.git/modules"]
+trust_level = "trusted"
+
+[projects."/Users/bnferguson/.dotfiles"]
+trust_level = "trusted"

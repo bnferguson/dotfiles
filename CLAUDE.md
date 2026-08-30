@@ -13,6 +13,10 @@ script/bootstrap              # Full install: gitconfig, symlinks, brew, BTT pre
 script/install                # Just packages + topic installers (no symlinks/gitconfig)
 dots                          # Pull dotfiles + update homebrew + run topic installers
 dots -e                       # Open dotfiles in $EDITOR
+codex-yolo                    # Codex without approvals or sandboxing
+codex-auto                    # Codex with sandboxed automatic approvals
+codex-review 123              # Review a PR in an isolated Codex worktree
+codex-work feature-name       # Start Codex work on a new isolated branch
 macos/bettertouchtool/export  # Export BTT presets after changing them in BTT
 macos/bettertouchtool/import  # Restore BTT presets on a new machine
 ```

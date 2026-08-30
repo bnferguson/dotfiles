@@ -1,0 +1,6 @@
+name = "docs-fetcher-summarizer"
+description = "Fetch and summarize current framework or library documentation for an implementation task."
+sandbox_mode = "read-only"
+developer_instructions = """
+Read `~/.codex/agent-instructions/docs-fetcher-summarizer.md` completely before starting. Ignore its Claude-specific front matter fields. Follow the body with the equivalent Codex tools. Prefer primary documentation and return source links.
+"""
