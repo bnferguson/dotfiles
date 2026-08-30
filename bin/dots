@@ -55,12 +55,12 @@ if [ "$(uname -s)" = "Darwin" ]; then
 		"$ZSH/macos/scripts/setup-sudoers.sh"
 	fi
 
-	if [ -f "$ZSH/macos/set-defaults.sh" ]; then
-		$ZSH/macos/set-defaults.sh
+	if [ -f "$ZSH/macos/scripts/set-defaults.sh" ]; then
+		"$ZSH/macos/scripts/set-defaults.sh"
 	fi
 
-	if [ -f "$ZSH/macos/set-hostname.sh" ]; then
-		$ZSH/macos/set-hostname.sh
+	if [ -f "$ZSH/macos/scripts/set-hostname.sh" ]; then
+		"$ZSH/macos/scripts/set-hostname.sh"
 	fi
 
 	if command -v brew >/dev/null 2>&1; then
