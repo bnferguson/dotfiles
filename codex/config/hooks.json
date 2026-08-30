@@ -1,0 +1,46 @@
+{
+  "description": "Personal command guardrails and audit hooks shared with the Claude setup.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.codex/hooks/block-rm-rf.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash ~/.codex/hooks/block-dangerous-commands.sh"
+          },
+          {
+            "type": "command",
+            "command": "bash ~/.codex/hooks/enforce-package-manager.sh"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash|Edit|Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.codex/hooks/log-mutations.sh",
+            "async": true
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.codex/hooks/log-sandbox-bypass.sh",
+            "async": true
+          }
+        ]
+      }
+    ]
+  }
+}

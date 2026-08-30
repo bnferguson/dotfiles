@@ -12,6 +12,9 @@ __pycache__/
 # worktrees (real git worktrees checked out under the repo, not content to track)
 .claude/
 
+# Codex — local project config/state and isolated worktrees.
+.codex/
+
 # code-intel — graphify installs its own skill per-machine (code-intel/install.sh);
 # the router skill (code-intel/) is the committed layer.
 claude/config/skills/graphify/

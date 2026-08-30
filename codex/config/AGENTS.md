@@ -1,0 +1,110 @@
+# Philosophy
+When working in a language, please follow the style of the core team. Eg; if it's not up to the standard of the Rails core team when working in rails, it's not ready. If that's not possible or there's a good reason to deviate note why.
+
+If the instructions are unclear, ask for clarification. You're as much for helping me have clear vision for what we're doing as you are for producing high-quality code.
+
+Don't over comment on obvious things. Comment on non-obvious things.
+
+# Testing & Red-Green-Refactor
+Follow the red-green-refactor cycle: write a failing test first, make it pass, then clean up. This applies to new features and refactors, but is **mandatory** for bug fixes — always write a failing test that reproduces the bug before writing the fix. If the test doesn't fail first, we haven't proven we're testing the right thing.
+
+# Communication
+When replying to PR comments, issues, or any GitHub interaction on behalf of the user, always preface with a note identifying yourself as an AI assistant (e.g., "🤖 Codex here —") so it's clear the response didn't come from a human.
+
+# Source Control & Code Review
+Use `git` for all VCS operations.
+
+Before starting a code review, always pull from remote first (`git fetch --all`) to ensure you're working with the latest changes.
+
+When reviewing PRs or working with branches, always check if the user is already on the relevant branch and read files locally instead of using GitHub API calls.
+
+# Pull Requests
+Prefer simple, direct changes. Pull requests should be small and focused on a single issue. You can make a note of potential features, but avoid making unrelated changes. If the instructions are unclear, ask for clarification.
+
+The exception here is when you notice the code is getting messy or needs to be refactored (eg. code smells, adding something that two of already exist and there's a third maybe it's time to refactor). If this is the case, you can make a plan for it and ask the user about the change.
+
+**ALWAYS use the `$pr` skill to create pull requests — never use `gh pr create` directly.** The skill handles the full process: research, drafting, interview, and creation. Follow the skill's process exactly — the interview and structured sections are mandatory, not suggestions. Prefer draft PRs — this gives the author a chance to add their own voice before it goes out for review.
+
+## Stacked PRs
+
+The `gh-stack` skill covers building and rebasing stacks, but it defers to `$pr` for opening them. **Never run `gh stack submit`** — its `--auto` titles are generated from commit messages, which is exactly what the interview exists to prevent. Instead, any time the stack has branches without PRs — a fresh stack, or a new layer added on top of one that's already up for review:
+
+1. `gh stack push` — pushes every branch and sets upstreams, so `$pr` never hits an interactive push prompt.
+2. Find the branches that need a PR. `gh stack view --json` lists them bottom → top, and omits the `pr` field on any branch that doesn't have one yet:
+
+   ```sh
+   gh stack view --json | jq -r '.branches[] | select(.pr == null) | .name'
+   ```
+
+3. For each of those, bottom → top: check it out and run `$pr` in full, with `base` set to the branch below it — trunk for the bottom branch. Each layer gets its own interview; the base argument is what chains the PRs. **Never run `$pr` on a branch that already has one** — the skill creates PRs, it doesn't edit them, so it would fail on step 9. Revise an existing description with `gh pr edit` instead.
+4. `gh stack link <every PR number in the stack, bottom → top>` — wires them into a stack on GitHub. Linking is additive and skips PRs already in the stack, so re-listing the existing ones alongside the new one is correct. Pass no `--open`; the drafts stay drafts.
+
+Everything else in the gh-stack skill stands, including its rule that every command runs non-interactively.
+
+# Tool Guidance
+- When interacting with GitHub use `gh`
+- To put an image or file into a GitHub issue, PR, or README, use `gh image <path>` — it uploads to GitHub's `user-attachments` endpoint and prints the markdown reference to paste. Uploads inherit the target repo's visibility, so private repos stay private. Infers the repo from the git remote; `--repo owner/repo` overrides. Auth comes from the browser session cookie, not the `gh` token — if it fails, check `gh image check-token`
+- Use `git` for source control
+- I use `mise` to manage my shell environment for projects
+- I use `brew` to install tools that aren't specified in `mise`
+- When dealing with code structure use `ast-grep` and LSP for the given language when available
+- **Prefer the LSP tool over grep/glob for code navigation.** When you need to understand how code connects — finding definitions, references, implementations, callers, or type info — use LSP first. It's faster and more accurate than text search for these tasks. Reserve grep/glob for text pattern matching, searching across files by content, or when LSP isn't available for the language. Specific guidance:
+  - **Go to definition / type:** Use `LSP goToDefinition` instead of grepping for `func FooBar` or `class FooBar`
+  - **Find all usages:** Use `LSP findReferences` instead of grepping for a symbol name
+  - **Understand a symbol:** Use `LSP hover` to get type info and docs
+  - **Map a file's structure:** Use `LSP documentSymbol` instead of grepping for `def ` or `func `
+  - **Find implementations:** Use `LSP goToImplementation` for interfaces/abstract methods
+  - **Trace call chains:** Use `LSP incomingCalls`/`outgoingCalls` to understand call graphs
+- When dealing with terraform use the Terraform MCP
+- When working with Rails use the `rails` command for migrations and generators
+
+## Shell tools for data processing
+  - JSON: use `jq`
+  - YAML/XML: use `yq`
+
+# Language-specific skills and agents
+- Ruby/Rails: always invoke the `rails-programmer` skill before writing Rails code, then run the `rails-core-code-reviewer` agent after to verify.
+- Go: always invoke the `effective-go` and `go-concurrency-patterns` skills before writing Go code, then run the `go-core-code-reviewer` agent after to verify.
+- Zig: always invoke the `idiomatic-zig` and `zig-programming` skills before writing Zig code, then run the `zig-core-code-reviewer` agent after to verify. Additionally, invoke `zig-interop` when working on C interop (e.g., libc bindings, `@cImport`, linking C libraries).
+
+# Prose
+- Follow [`style-guide.md`](style-guide.md) for voice and tone, and consult [`tropes.md`](tropes.md) for AI writing patterns to avoid
+- **This applies to all prose output**, not just long-form writing. PR descriptions, PR review comments, issue comments, Slack messages, commit messages, and any other text written on Brandon's behalf should follow the style guide and avoid the tropes
+- When drafting PR descriptions specifically: write in Brandon's voice, be direct and specific about what changed and why, skip the filler transitions and false profundity
+
+## Simple English
+
+Apply the `simple-english` skill (ASD-STE100 Simplified Technical English) to **all** prose — chat responses, PR descriptions, review comments, commit messages, docs, issue comments, Slack. Default to its pragmatic mode. Invoke the skill for anything longer than a few paragraphs or when writing docs; for short responses, just apply the rules below.
+
+What carries over to everything:
+
+- One instruction per sentence. Condition before the command: "If the build fails, read the log" — not the reverse.
+- Active voice. Simple tenses. Approved modals are can/will/must; "should", "may", "might", and "could" all resolve to one of those or get cut.
+- One word, one meaning. Don't rotate synonyms (config/settings/options — pick one and keep it).
+- The slop-to-simple substitutions are non-negotiable: leverage → use, in order to → to, ensure → make sure that, and delete simply/just/seamlessly/robust/comprehensive outright.
+- No semicolons. Never touch code, identifiers, commands, paths, or quoted errors.
+- Sentence limits (20 procedural / 25 descriptive) are a signal, not a hard cap, outside strict mode. If a sentence runs past ~25 words, it usually wants to be two.
+
+### Where Simple English and the style guide conflict
+
+They disagree on voice, and the style guide wins there. STE bans contractions, hedges, and long winding sentences; those are load-bearing in Brandon's writing. So:
+
+- **Keep** contractions, parenthetical asides, plainly-stated uncertainty ("I'm unsure", "I haven't dug into this"), and natural sentence-length variation.
+- **Take from STE** the structural discipline and the vocabulary: condition-first, active voice, one idea per sentence, no synonym rotation, no filler adjectives.
+- STE's dictionary rulings that fight readable English (`operate` for run, `do` for execute, `erase` for delete) are strict-mode only. Ignore them by default.
+- Use **strict mode** only when Brandon names STE, ASD-STE100, or compliance, or when the text is a runbook, procedure, error message, or something headed for translation.
+- Don't apply STE to personal or persuasive writing — thank-yous, recommendations, anything with warmth in it. It deletes the warmth by design.
+
+## Diagrams
+
+Use the `diagram-design` skill for technical and product diagrams (architecture, sequence, flowchart, ER, state, timeline, quadrant, and ~20 more) rendered as self-contained HTML with inline SVG. It also imports existing draw.io and Mermaid sources and redraws them. It has a first-run gate that asks about customizing colors and fonts per project — answering (e) proceeds with its default neutral skin.
+
+## Code Intelligence
+
+For finding, navigating, and understanding code, use the **code-intel** skill — it routes between three complementary tools by what you need:
+
+- **Comprehend** an unfamiliar codebase (architecture, how code + docs + schema connect) → `graphify`
+- **Locate** code by meaning when you don't know the symbol name → `vera search`
+- **Traverse** structure — callers, callees, impact radius → `codegraph` (MCP) or LSP
+
+Reach for these on large or unfamiliar repos; on small or familiar code, LSP + grep are enough. The skill has the full workflow and per-tool commands.

@@ -1,0 +1,6 @@
+name = "meta-agent"
+description = "Create focused custom agent definitions from a user's requirements."
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Read `~/.codex/agent-instructions/meta-agent.md` completely before starting. Adapt its Claude-specific output to Codex standalone TOML agents with name, description, and developer_instructions fields.
+"""

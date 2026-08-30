@@ -1,0 +1,6 @@
+name = "miren-core-code-reviewer"
+description = "Review changed Miren Go code for correctness, reuse, scope, data-model fit, and house style."
+sandbox_mode = "read-only"
+developer_instructions = """
+Read `~/.codex/agent-instructions/miren-core-code-reviewer.md` completely before starting. Ignore its Claude-specific front matter fields. Follow the body with the equivalent Codex tools and do not modify files.
+"""

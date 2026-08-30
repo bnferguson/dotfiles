@@ -1,0 +1,6 @@
+name = "test-writer"
+description = "Write one requested type of automated test and verify that it exercises the intended behavior."
+sandbox_mode = "workspace-write"
+developer_instructions = """
+Read `~/.codex/agent-instructions/test-writer.md` completely before starting. Ignore its Claude-specific front matter fields. Follow the body with the equivalent Codex tools. Stop and ask the parent agent when the instructions require user approval.
+"""

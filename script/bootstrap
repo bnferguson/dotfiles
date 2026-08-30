@@ -208,6 +208,34 @@ install_larger_paths () {
   link_file "$DOTFILES_ROOT/claude/config/agents" "$HOME/.claude/agents"
   link_file "$DOTFILES_ROOT/claude/config/hooks" "$HOME/.claude/hooks"
 
+  # Codex config — keep runtime state under ~/.codex, share the checked-in
+  # guidance and skills with Claude, and leave independently installed skills
+  # under ~/.agents/skills intact.
+  mkdir -p "$HOME/.codex"
+  link_file "$DOTFILES_ROOT/codex/config/config.toml" "$HOME/.codex/config.toml"
+  link_file "$DOTFILES_ROOT/codex/config/AGENTS.md" "$HOME/.codex/AGENTS.md"
+  link_file "$DOTFILES_ROOT/codex/config/style-guide.md" "$HOME/.codex/style-guide.md"
+  link_file "$DOTFILES_ROOT/codex/config/tropes.md" "$HOME/.codex/tropes.md"
+  link_file "$DOTFILES_ROOT/codex/config/hooks.json" "$HOME/.codex/hooks.json"
+  link_file "$DOTFILES_ROOT/codex/config/hooks" "$HOME/.codex/hooks"
+  link_file "$DOTFILES_ROOT/codex/config/agents" "$HOME/.codex/agents"
+  link_file "$DOTFILES_ROOT/claude/config/agents" "$HOME/.codex/agent-instructions"
+
+  mkdir -p "$HOME/.agents/skills"
+  for skill_dir in "$DOTFILES_ROOT"/claude/config/skills/*; do
+    [ -d "$skill_dir" ] || continue
+    skill_name="$(basename "$skill_dir")"
+    # Codex ships a native skill-creator. Keep it instead of shadowing it with
+    # the Claude-specific version.
+    [ "$skill_name" = "skill-creator" ] && continue
+    # The upstream deep-research skill uses lowercase skill.md. Point Codex at
+    # its identical, spec-compliant SKILL.md copy.
+    if [ "$skill_name" = "deep-research" ]; then
+      skill_dir="$DOTFILES_ROOT/codex/config/skills/deep-research"
+    fi
+    link_file "$skill_dir" "$HOME/.agents/skills/$skill_name"
+  done
+
   mkdir -p "$HOME/.config/jj"
   link_file "$DOTFILES_ROOT/jj/config.toml" "$HOME/.config/jj/config.toml"
 

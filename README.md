@@ -82,6 +82,14 @@ Install these before running bootstrap, or let `dots` handle it on macOS:
 
 Run `dots` periodically to pull the latest dotfiles from origin, update homebrew, and run installers. Use `dots -e` to open the dotfiles in your editor.
 
+## coding agents
+
+Claude Code and Codex share the checked-in skills and core working agreements. `script/bootstrap` links the Claude configuration into `~/.claude`, installs the shared skills individually under `~/.agents/skills`, and links the Codex configuration into `~/.codex` without replacing either agent's session data or independently installed Codex skills.
+
+Use `claude-yolo` or `codex-yolo` for an unrestricted session. `codex-auto` keeps Codex's workspace sandbox and sends approval requests to its automatic reviewer. Use `claude-review` or `codex-review` to review a PR or branch in an isolated worktree. Use `claude-work` or `codex-work` to start new work on a branch in an isolated worktree.
+
+Codex requires a one-time review of personal hooks. Start a new Codex session and use `/hooks` to inspect and trust them after bootstrap.
+
 ## keyboard setup
 
 Karabiner-Elements and BetterTouchTool work together to create a Hyper key system for launching apps, managing windows, and vim-style navigation.
