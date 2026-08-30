@@ -40,6 +40,11 @@ done
 
 export ZSH=$HOME/.dotfiles
 
+# Update the dotfiles before running installers so this invocation uses the
+# latest maintenance scripts regardless of the directory it was launched from.
+echo "› git pull --ff-only origin"
+git -C "$dotfilesDirectory" pull --ff-only origin
+
 # macOS-specific updates
 if [ "$(uname -s)" = "Darwin" ]; then
 	# Ensure passwordless sudo for softwareupdate is in place (idempotent) so the

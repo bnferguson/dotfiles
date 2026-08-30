@@ -80,7 +80,7 @@ Install these before running bootstrap, or let `dots` handle it on macOS:
 
 ## maintenance
 
-Run `dots` periodically to update homebrew and run installers. Use `dots -e` to open the dotfiles in your editor.
+Run `dots` periodically to pull the latest dotfiles from origin, update homebrew, and run installers. Use `dots -e` to open the dotfiles in your editor.
 
 ## keyboard setup
 
