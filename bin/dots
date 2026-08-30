@@ -81,12 +81,15 @@ fi
 # is a no-op for it, so without this the mise half of the toolchain silently
 # freezes while the brew/pacman half keeps moving.
 #
-# Run against $ZSH so only the global config applies. `dots` can be invoked
-# from any directory, and we don't want to upgrade a project's pinned tools
-# as a side effect of a dotfiles maintenance run.
+# Run from / so only the global config applies. `dots` can be invoked from any
+# directory, and mise resolves configs from the working directory upward — so
+# without this, running dots inside a project would upgrade that project's
+# pinned tools too. `upgrade` has a --local flag but no --global inverse, and /
+# is the one directory guaranteed never to hold a mise.toml. Don't "simplify"
+# this to $ZSH: the dotfiles root is a plausible home for one.
 if command -v mise >/dev/null 2>&1; then
 	echo "› mise upgrade"
-	mise -C "$ZSH" upgrade --yes
+	mise -C / upgrade --yes
 fi
 
 # Run topic installers
