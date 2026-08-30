@@ -19,7 +19,7 @@ elif command -v omarchy >/dev/null 2>&1; then
   omarchy pkg drop rust
 
   omarchy pkg add \
-    zsh starship mise neovim github-cli jq go-yq fzf fd zellij ast-grep uv rustup jujutsu keyd openssh \
+    zsh starship mise neovim jq go-yq fzf fd zellij ast-grep uv rustup jujutsu keyd openssh \
     actionlint syncthing tailscale gpu-screen-recorder \
     ttf-ibmplex-mono-nerd \
     firefox telegram-desktop signal-desktop zed
@@ -77,8 +77,8 @@ elif command -v apt-get >/dev/null 2>&1; then
   # These need separate install methods on Ubuntu:
   # starship: curl -sS https://starship.rs/install.sh | sh
   # mise:     curl https://mise.run | sh
-  # gh:       https://github.com/cli/cli/blob/trunk/docs/install_linux.md
-  echo "  Note: starship, mise, and gh need manual install on Ubuntu — see README"
+  # gh comes from mise once it is installed — see mise/config.toml.
+  echo "  Note: starship and mise need manual install on Ubuntu — see README"
 fi
 
 # Switch default shell to whatever shell.env declares, if it isn't already.

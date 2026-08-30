@@ -2,7 +2,6 @@
 brew "starship"     # prompt
 brew "mise"         # tool version manager
 brew "neovim"       # editor
-brew "gh"           # github cli
 brew "jq"           # json processing
 brew "yq"           # yaml processing
 brew "fzf"          # fuzzy finder
