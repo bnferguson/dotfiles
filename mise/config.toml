@@ -1,6 +1,16 @@
+# Global tool versions. This is the config every shell sees, so the pinning
+# policy differs by what the tool is:
+#
+#   Language toolchain  — pinned to a major. A global `latest` lets a major
+#                         land under you with no warning; that's how node,
+#                         pnpm and typescript all crossed a major in one
+#                         `dots` run. Bump these deliberately.
+#   Agents and CLIs     — `latest`. Newest is the point, and they don't
+#                         break builds when they move.
+
 [tools]
-node = "latest"
-pnpm = "latest"
+node = "26"
+pnpm = "11"
 # Rust is owned by rustup, not mise — see the rust/ topic. rustup is the
 # upstream-recommended installer and manages toolchains + per-project overrides
 # (rust-toolchain.toml) itself.
@@ -8,10 +18,12 @@ pnpm = "latest"
 # Language servers used by Pi and Claude Code need to be on PATH. Neovim may
 # have separate Mason copies, but headless agent extensions cannot rely on it.
 "go:golang.org/x/tools/gopls" = "latest"
-"npm:typescript-language-server" = "latest"
-"npm:typescript" = "latest"
+"npm:typescript-language-server" = "6"
+"npm:typescript" = "7"
 "npm:pyright" = "latest"
 hadolint = "2.14.0"
-gh = "latest"
 codex = "latest"
 pi = "latest"
+
+# gh is deliberately absent from Brewfile / the pacman list — mise owns it.
+gh = "latest"
