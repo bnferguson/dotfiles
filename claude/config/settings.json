@@ -157,6 +157,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python3 ~/.claude/hooks/allow-safe-relative-reads.py"
+          },
+          {
+            "type": "command",
             "command": "bash ~/.claude/hooks/block-rm-rf.sh"
           },
           {
