@@ -7,7 +7,7 @@
 #   codegraph TRAVERSE   — structural graph over MCP: callers/callees/impact
 #   graphify  COMPREHEND — multimodal knowledge graph: architecture + docs
 #
-# The `code-intel` skill (claude/config/skills/code-intel) routes between them.
+# The `code-intel` skill (.agents/skills/code-intel) routes between them.
 # Per-project indexes (.vera/, .codegraph/, graphify-out/) are built on demand,
 # not here — see the skill for the workflow.
 #

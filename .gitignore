@@ -17,7 +17,7 @@ __pycache__/
 
 # code-intel — graphify installs its own skill per-machine (code-intel/install.sh);
 # the router skill (code-intel/) is the committed layer.
-claude/config/skills/graphify/
+.agents/skills/graphify/
 
 # pi extensions — npm deps for the lsp extension (vscode-jsonrpc), installed
 # per-machine by pi/install.sh

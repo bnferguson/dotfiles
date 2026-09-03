@@ -3,7 +3,7 @@
 # Install gh CLI extensions.
 #
 #   gh-stack  stacked branches/PRs — pairs with the gh-stack skill in
-#             claude/config/skills/gh-stack, which documents the CLI.
+#             .agents/skills/gh-stack, which documents the CLI.
 #   gh-image  uploads files to GitHub's user-attachments endpoint and prints a
 #             pasteable markdown reference — the drag-and-drop flow, in a shell.
 

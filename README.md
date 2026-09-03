@@ -10,9 +10,11 @@ Cross-platform topics live at the repo root. OS-specific topics live under `linu
 
 | Topic | What it does |
 |-------|-------------|
+| `.agents/` | Shared skills for Claude Code, Codex, and pi |
 | `bin/` | Scripts added to `$PATH` — `git-tree`, `git-sync`, `code-intel`, etc. |
-| `claude/` | Claude Code config — settings, skills, commands, agents |
+| `claude/` | Claude Code config, agents, and Claude-only skills |
 | `code-intel/` | Installs the code-intelligence stack — vera, codegraph, graphify |
+| `codex/` | Codex config, hooks, agents, and Codex-only skills |
 | `gh/` | GitHub CLI config, and installs extensions — `gh-stack` |
 | `ghostty/` | Ghostty terminal config (`config.linux` and `config.macos` siblings handle OS-specific bindings) |
 | `git/` | Git aliases, global gitconfig, gitignore |
@@ -20,7 +22,7 @@ Cross-platform topics live at the repo root. OS-specific topics live under `linu
 | `kubernetes/` | kubectl completion (cached for speed) |
 | `mise/` | Global mise tool versions |
 | `nvim/` | Neovim config |
-| `pi/` | pi coding agent config — settings, custom providers |
+| `pi/` | pi config, extensions, and pi-only skills |
 | `ssh/` | SSH config |
 | `starship/` | Starship prompt config |
 | `system/` | PATH, EDITOR, ls aliases, keybindings |
@@ -84,7 +86,11 @@ Run `dots` periodically to pull the latest dotfiles from origin, update homebrew
 
 ## coding agents
 
-Claude Code and Codex share the checked-in skills and core working agreements. `script/bootstrap` links the Claude configuration into `~/.claude`, installs the shared skills individually under `~/.agents/skills`, and links the Codex configuration into `~/.codex` without replacing either agent's session data or independently installed Codex skills.
+Claude Code, Codex, and pi use one shared skill catalog: `.agents/skills`. Codex and pi load its links from `~/.agents/skills`. Claude loads matching links from `~/.claude/skills`. Store a skill under `claude/config/skills`, `codex/config/skills`, or `pi/config/skills` only when it works with one agent.
+
+Both custom and downloaded skills live in the shared catalog. The [skills CLI](https://skills.sh/) records source and hash details for downloaded skills in `skills-lock.json`. It leaves custom entries alone. `script/bootstrap` creates each link on its own, so local skills can stay beside the dotfiles catalog.
+
+Run `npx skills@latest update -p` from the dotfiles root to refresh package-managed skills, then review and commit the resulting `.agents/skills` and `skills-lock.json` changes.
 
 Use `claude-yolo` or `codex-yolo` for an unrestricted session. `codex-auto` keeps Codex's workspace sandbox and sends approval requests to its automatic reviewer. Use `claude-review` or `codex-review` to review a PR or branch in an isolated worktree. Use `claude-work` or `codex-work` to start new work on a branch in an isolated worktree.
 
