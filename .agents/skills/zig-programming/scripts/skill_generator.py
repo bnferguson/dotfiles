@@ -43,7 +43,7 @@ You are an expert Zig programmer with comprehensive knowledge of the Zig program
 
 When working with Zig code:
 1. Check for version-specific features or syntax
-2. Default to latest stable (0.15.2) if not specified
+2. Default to latest stable (0.16.0) if not specified
 3. Adapt examples to match user's version
 
 ### Version Differences

@@ -11,7 +11,7 @@ Usage:
     python get_references.py
 
     # Specify version explicitly
-    python get_references.py --version 0.15.2
+    python get_references.py --version 0.16.0
 
     # Get JSON output for scripting
     python get_references.py --json
@@ -24,10 +24,10 @@ Usage:
 
 Examples:
     $ python get_references.py
-    references/v0.15.2
+    references/v0.16.0
 
     $ python get_references.py --json
-    {"version": "0.15.2", "path": "references/v0.15.2", "confidence": "high", "fallback": false}
+    {"version": "0.16.0", "path": "references/v0.16.0", "confidence": "high", "fallback": false}
 
     $ python get_references.py --version 0.14.1
     Warning: No references for 0.14.1, using 0.15.2
@@ -44,7 +44,8 @@ from pathlib import Path
 
 # Available reference versions (in order of preference for fallbacks)
 AVAILABLE_REFERENCE_VERSIONS = [
-    "0.15.2",  # Current stable
+    "0.16.0",  # Current stable
+    "0.15.2",
     # Add more versions as they become available:
     # "0.14.1",
     # "0.13.0",
@@ -57,7 +58,7 @@ VERSION_FALLBACK_MAP = {
     "0.15.0": "0.15.2",
     "0.15.1": "0.15.2",
 
-    # 0.14.x series -> 0.15.2 (close enough, minor changes)
+    # 0.14.x series -> 0.15.2 (closer standard library APIs)
     "0.14.0": "0.15.2",
     "0.14.1": "0.15.2",
 
@@ -112,7 +113,7 @@ def detect_zig_version(project_dir=None, verbose=False):
     if not script_path.exists():
         # Fallback: assume latest if detection script doesn't exist
         return {
-            "version": "0.15.2",
+            "version": "0.16.0",
             "confidence": "low",
             "source": "default_fallback"
         }
@@ -143,7 +144,7 @@ def detect_zig_version(project_dir=None, verbose=False):
             print(f"stderr: {e.stderr}", file=sys.stderr)
         # Fallback to default
         return {
-            "version": "0.15.2",
+            "version": "0.16.0",
             "confidence": "low",
             "source": "detection_failed"
         }
@@ -151,7 +152,7 @@ def detect_zig_version(project_dir=None, verbose=False):
         if verbose:
             print(f"Error parsing detect_version.py output: {e}", file=sys.stderr)
         return {
-            "version": "0.15.2",
+            "version": "0.16.0",
             "confidence": "low",
             "source": "parse_error"
         }
@@ -162,7 +163,7 @@ def get_reference_path_for_version(version: str, verbose: bool = False):
     Get the appropriate reference path for a given Zig version.
 
     Args:
-        version: Zig version string (e.g., "0.15.2", "0.14.1")
+        version: Zig version string (e.g., "0.16.0", "0.15.2")
         verbose: Print verbose debugging information
 
     Returns:
@@ -203,13 +204,13 @@ def get_reference_path_for_version(version: str, verbose: bool = False):
                 warnings.append("Note: For loop syntax differs from 0.13+. See references/version-differences.md")
             elif version.startswith("0.10") or version.startswith("0.9"):
                 warnings.append("Warning: Major differences (async/await removed in 0.11+, build API changed)")
-                warnings.append("Strongly recommend upgrading to 0.15.2. See references/version-differences.md")
+                warnings.append("Strongly recommend upgrading to 0.16.0. See references/version-differences.md")
             elif version.startswith("0.8") or int(version.split('.')[1]) < 9:
                 warnings.append("Warning: Very old version. References may not be applicable.")
-                warnings.append("Highly recommend upgrading to 0.15.2")
+                warnings.append("Highly recommend upgrading to 0.16.0")
         else:
             # No fallback mapping, use latest
-            reference_version = "0.15.2"  # Default to current stable
+            reference_version = "0.16.0"  # Default to current stable
             fallback = True
             fallback_reason = f"Unknown version {version}, defaulting to {reference_version}"
             warnings.append(fallback_reason)
@@ -252,7 +253,7 @@ Examples:
   python get_references.py
 
   # Specify version explicitly
-  python get_references.py --version 0.15.2
+  python get_references.py --version 0.16.0
 
   # JSON output for scripting
   python get_references.py --json
@@ -267,7 +268,7 @@ Examples:
 
     parser.add_argument(
         "--version",
-        help="Zig version to get references for (e.g., '0.15.2'). If not specified, auto-detects."
+        help="Zig version to get references for (e.g., '0.16.0'). If not specified, auto-detects."
     )
 
     parser.add_argument(

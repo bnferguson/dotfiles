@@ -117,7 +117,7 @@ The skill activates automatically when:
 ## Version Support
 
 The skill supports the following Zig versions:
-- Current stable: 0.15.2 (default)
+- Current stable: 0.16.0 (default)
 - Recent versions: 0.14.1, 0.13.0, 0.12.1, 0.11.0
 - Legacy versions: 0.10.1, 0.9.1, 0.8.1, 0.7.1, 0.6.0, 0.3.0, 0.2.0
 - Development: master
@@ -169,7 +169,8 @@ You can also explicitly specify your version in conversation or in your project'
 zig-programming/
 ├── SKILL.md                    # Main skill instructions
 ├── references/                 # Version-specific documentation
-│   ├── v0.15.2/               # References for Zig 0.15.2 (19 files)
+│   ├── v0.16.0/               # References for Zig 0.16.0, including std.Io
+│   ├── v0.15.2/               # References for Zig 0.15.2
 │   │   ├── core-language.md
 │   │   ├── control-flow.md
 │   │   ├── functions-errors.md
@@ -184,7 +185,7 @@ zig-programming/
 │   │   ├── testing-quality.md
 │   │   ├── quick-reference.md
 │   │   └── [6 more files]
-│   ├── latest -> v0.15.2      # Symlink to current stable
+│   ├── latest/                # Copy of the current stable references
 │   └── version-differences.md # Migration guides (shared)
 ├── assets/
 │   └── templates/             # 6+ Zig code templates
@@ -259,7 +260,7 @@ If the file doesn't exist, reinstall the skill.
 Add to your project's CLAUDE.md:
 ```markdown
 # CLAUDE.md
-This project targets Zig 0.15.2
+This project targets Zig 0.16.0
 ```
 
 **Run detection script**:

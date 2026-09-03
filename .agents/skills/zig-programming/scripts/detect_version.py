@@ -13,7 +13,7 @@ Usage:
 
 Output:
     JSON with detected version, confidence level, and detection source
-    Example: {"version": "0.15.2", "confidence": "high", "source": "zig_command"}
+    Example: {"version": "0.16.0", "confidence": "high", "source": "zig_command"}
 """
 
 import argparse
@@ -33,7 +33,7 @@ class ZigVersionDetector:
     SUPPORTED_VERSIONS = [
         '0.2.0', '0.3.0', '0.6.0', '0.7.1', '0.8.1',
         '0.9.1', '0.10.1', '0.11.0', '0.12.1',
-        '0.13.0', '0.14.1', '0.15.2', 'master'
+        '0.13.0', '0.14.1', '0.15.2', '0.16.0', 'master'
     ]
 
     # Detection confidence levels
@@ -76,9 +76,9 @@ class ZigVersionDetector:
             return result
 
         # Default fallback
-        self.log("No version detected, defaulting to 0.15.2")
+        self.log("No version detected, defaulting to 0.16.0")
         return {
-            "version": "0.15.2",
+            "version": "0.16.0",
             "confidence": self.CONFIDENCE_LOW,
             "source": "default",
             "note": "No detection markers found, using current stable version"
@@ -163,9 +163,9 @@ class ZigVersionDetector:
 
             if has_std_build or has_b_path or has_struct_literal_add:
                 self.log("Detected modern build API (0.11+)")
-                # Could be 0.11-0.15, default to current stable
+                # Could be 0.11 or later, so use the current stable references.
                 return {
-                    "version": "0.15.2",
+                    "version": "0.16.0",
                     "confidence": self.CONFIDENCE_MEDIUM,
                     "source": "build.zig_modern_api",
                     "note": "Detected 0.11+ API, exact version unknown"
@@ -197,6 +197,7 @@ class ZigVersionDetector:
 
         has_modern_for_loop = False
         has_async_await = False
+        has_io_interface = False
 
         for zig_file in zig_files:
             try:
@@ -207,8 +208,12 @@ class ZigVersionDetector:
                     has_modern_for_loop = True
                     self.log(f"Found modern for loop in {zig_file.name}")
 
+                if re.search(r'\bstd\.(?:Io|process\.Init)\b', content):
+                    has_io_interface = True
+                    self.log(f"Found Zig 0.16 I/O API in {zig_file.name}")
+
                 # Async/await (0.9-0.10)
-                if re.search(r'\b(async|await)\b', content):
+                if re.search(r'(?<!\.)\b(async|await)\b', content):
                     has_async_await = True
                     self.log(f"Found async/await in {zig_file.name}")
 
@@ -216,12 +221,12 @@ class ZigVersionDetector:
                 self.log(f"Error reading {zig_file}: {e}")
 
         # Determine version from markers
-        if has_modern_for_loop:
+        if has_io_interface:
             return {
-                "version": "0.13.0",
+                "version": "0.16.0",
                 "confidence": self.CONFIDENCE_MEDIUM,
-                "source": "source_syntax_for_loop",
-                "note": "Detected modern for loop syntax (0.13+)"
+                "source": "source_std_io",
+                "note": "Detected the std.Io or std.process.Init API (0.16+)"
             }
 
         if has_async_await:
@@ -230,6 +235,14 @@ class ZigVersionDetector:
                 "confidence": self.CONFIDENCE_MEDIUM,
                 "source": "source_syntax_async",
                 "note": "Detected async/await keywords (0.9-0.10)"
+            }
+
+        if has_modern_for_loop:
+            return {
+                "version": "0.16.0",
+                "confidence": self.CONFIDENCE_LOW,
+                "source": "source_syntax_for_loop",
+                "note": "Detected 0.13+ syntax; exact version unknown, using current stable"
             }
 
         return None
