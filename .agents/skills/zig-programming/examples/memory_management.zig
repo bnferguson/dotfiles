@@ -29,7 +29,7 @@ fn demonstrateGPA() !void {
     std.debug.print("\n=== GeneralPurposeAllocator (GPA) ===\n", .{});
     std.debug.print("Use case: General-purpose allocations with safety checks\n\n", .{});
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -58,7 +58,7 @@ fn demonstrateArena() !void {
     std.debug.print("\n=== ArenaAllocator ===\n", .{});
     std.debug.print("Use case: Many allocations freed all at once\n\n", .{});
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
 
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
@@ -129,7 +129,7 @@ fn demonstrateDefer() !void {
     std.debug.print("\n=== Defer and Errdefer ===\n", .{});
     std.debug.print("Use case: Automatic cleanup on scope exit\n\n", .{});
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -148,17 +148,17 @@ fn demonstrateErrdefer() !void {
     std.debug.print("\n=== Errdefer Example ===\n", .{});
     std.debug.print("Use case: Cleanup only on error path\n\n", .{});
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Simulate a function that might fail after allocation
+    // Simulate a function that might fail after allocation.
     const data = try allocator.alloc(i32, 100);
-    errdefer allocator.free(data); // Only called if an error occurs after this point
-
-    // If this line failed, data would be freed by errdefer
-    // Since it succeeds, caller is responsible for freeing
-    defer allocator.free(data); // Normal cleanup on success
+    // Registering `errdefer` and `defer` on the same allocation would free it
+    // twice on an error path: both run, in reverse registration order. Use
+    // `errdefer` only while ownership is still in flight; once this scope keeps
+    // the value, `defer` is the whole cleanup story.
+    defer allocator.free(data);
 
     for (data, 0..) |*item, i| {
         item.* = @intCast(i);
@@ -199,7 +199,7 @@ test "DynamicArray with GPA" {
 }
 
 test "ArenaAllocator frees all" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
 
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
@@ -250,9 +250,7 @@ test "defer and errdefer behavior" {
     // errdefer only runs on error
     const result = blk: {
         const data = try allocator.alloc(i32, 10);
-        errdefer allocator.free(data); // Would run if we returned error
-
-        defer allocator.free(data); // Always runs
+        defer allocator.free(data); // Always runs, error or not
         break :blk data.len;
     };
 

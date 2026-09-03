@@ -1,6 +1,6 @@
 # WebAssembly Recipes
 
-*6 tested recipes for Zig 0.15.2*
+*6 recipes, all compiled against Zig 0.16.0*
 
 ## Quick Reference
 
@@ -2709,14 +2709,14 @@ These allocators are not thread-safe. For multi-threaded WASM:
 Example with mutex:
 
 ```zig
-const Mutex = std.Thread.Mutex;
+const Mutex = std.Io.Mutex;
 
-var allocator_mutex = Mutex{};
+var allocator_mutex = std.Io.Mutex.init;
 var global_alloc = BumpAllocator.init(&heap);
 
-export fn threadSafeAlloc(size: usize) ?[*]u8 {
-    allocator_mutex.lock();
-    defer allocator_mutex.unlock();
+export fn threadSafeAlloc(io: std.Io, size: usize) ?[*]u8 {
+    try allocator_mutex.lock(io);
+    defer allocator_mutex.unlock(io);
 
     return global_alloc.allocator().alloc(u8, size) catch null;
 }
@@ -3135,7 +3135,7 @@ Include additional debugging information:
 var last_panic_message: [256]u8 = undefined;
 var last_panic_len: usize = 0;
 
-pub fn enhancedPanic(msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
+pub fn enhancedPanic(io: std.Io, msg: []const u8, error_return_trace: ?*std.builtin.StackTrace, ret_addr: ?usize) noreturn {
     _ = error_return_trace;
 
     // Store panic message
@@ -3147,8 +3147,8 @@ pub fn enhancedPanic(msg: []const u8, error_return_trace: ?*std.builtin.StackTra
 
     // Build context message
     var buffer: [512]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     writer.print("PANIC: {s}", .{msg}) catch {};
 
@@ -3156,7 +3156,7 @@ pub fn enhancedPanic(msg: []const u8, error_return_trace: ?*std.builtin.StackTra
         writer.print(" (address: 0x{x})", .{addr}) catch {};
     }
 
-    const context = fbs.getWritten();
+    const context = fbs.buffered();
     jsLogPanic(context.ptr, context.len);
 
     while (true) {}
@@ -3572,8 +3572,8 @@ pub fn enhancedPanic(msg: []const u8, error_return_trace: ?*std.builtin.StackTra
 
     // Build context message
     var buffer: [512]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     writer.print("PANIC: {s}", .{msg}) catch {};
 
@@ -3581,7 +3581,7 @@ pub fn enhancedPanic(msg: []const u8, error_return_trace: ?*std.builtin.StackTra
         writer.print(" (address: 0x{x})", .{addr}) catch {};
     }
 
-    const context = fbs.getWritten();
+    const context = fbs.buffered();
     jsLogPanic(context.ptr, context.len);
 
     while (true) {}

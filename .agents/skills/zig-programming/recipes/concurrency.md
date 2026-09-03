@@ -1,6 +1,6 @@
 # Concurrency & Threading Recipes
 
-*8 tested recipes for Zig 0.15.2*
+*8 recipes, all compiled against Zig 0.16.0*
 
 ## Quick Reference
 
@@ -88,7 +88,7 @@ When threads need to share mutable state, protect it with a mutex:
 ```zig
 const Counter = struct {
     value: usize,
-    mutex: Thread.Mutex,
+    mutex: std.Io.Mutex,
 
     fn init() Counter {
         return .{
@@ -97,9 +97,9 @@ const Counter = struct {
         };
     }
 
-    fn increment(self: *Counter) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn increment(self: *Counter, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         self.value += 1;
     }
 };
@@ -139,11 +139,11 @@ thread.join();
 
 ### Timing and Sleep
 
-Use `Thread.sleep()` to pause execution. Time is specified in nanoseconds:
+Use `try io.sleep(.fromNanoseconds()` to pause execution. Time is specified in nanoseconds:
 
 ```zig
 fn sleepWorker(ms: u64) void {
-    Thread.sleep(ms * time.ns_per_ms);
+    Thread.sleep(ms * time.ns_per_ms), .awake);
 }
 ```
 
@@ -168,19 +168,19 @@ Use a simple channel pattern to communicate results:
 ```zig
 const ResultChannel = struct {
     result: ?i32,
-    mutex: Thread.Mutex,
+    mutex: std.Io.Mutex,
     ready: bool,
 
-    fn send(self: *ResultChannel, value: i32) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn send(self: *ResultChannel, io: std.Io, value: i32) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         self.result = value;
         self.ready = true;
     }
 
-    fn receive(self: *ResultChannel) ?i32 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn receive(self: *ResultChannel, io: std.Io) !?i32 {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         if (self.ready) return self.result;
         return null;
     }
@@ -307,28 +307,29 @@ fn workerWithId(id: usize) void {
 // ANCHOR: shared_counter
 const Counter = struct {
     value: usize,
-    mutex: Thread.Mutex,
+    mutex: std.Io.Mutex,
 
     fn init() Counter {
         return .{
             .value = 0,
-            .mutex = .{},
+            .mutex = .init,
         };
     }
 
-    fn increment(self: *Counter) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn increment(self: *Counter, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         self.value += 1;
     }
 };
 
 test "threads with shared state" {
+    const io = std.testing.io;
     var counter = Counter.init();
     var threads: [4]Thread = undefined;
 
     for (&threads) |*thread| {
-        thread.* = try Thread.spawn(.{}, incrementCounter, .{&counter});
+        thread.* = try Thread.spawn(.{}, incrementCounter, .{ io, &counter });
     }
 
     for (threads) |thread| {
@@ -338,24 +339,25 @@ test "threads with shared state" {
     try testing.expectEqual(@as(usize, 4), counter.value);
 }
 
-fn incrementCounter(counter: *Counter) void {
-    counter.increment();
+fn incrementCounter(io: std.Io, counter: *Counter) !void {
+    try counter.increment(io);
 }
 // ANCHOR_END: shared_counter
 
 // ANCHOR: thread_sleep
 test "thread sleep and timing" {
-    const start = time.milliTimestamp();
+    const io = std.testing.io;
+    const start = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms)));
 
-    const thread = try Thread.spawn(.{}, sleepWorker, .{100});
+    const thread = try Thread.spawn(.{}, sleepWorker, .{ io, 100 });
     thread.join();
 
-    const elapsed = time.milliTimestamp() - start;
+    const elapsed = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms))) - start;
     try testing.expect(elapsed >= 100);
 }
 
-fn sleepWorker(ms: u64) void {
-    Thread.sleep(ms * time.ns_per_ms);
+fn sleepWorker(io: std.Io, ms: u64) !void {
+    try io.sleep(.fromNanoseconds(ms * time.ns_per_ms), .awake);
 }
 // ANCHOR_END: thread_sleep
 
@@ -397,27 +399,27 @@ fn errorWorker(result: *?WorkerError) void {
 // ANCHOR: thread_result_channel
 const ResultChannel = struct {
     result: ?i32,
-    mutex: Thread.Mutex,
+    mutex: std.Io.Mutex,
     ready: bool,
 
     fn init() ResultChannel {
         return .{
             .result = null,
-            .mutex = .{},
+            .mutex = .init,
             .ready = false,
         };
     }
 
-    fn send(self: *ResultChannel, value: i32) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn send(self: *ResultChannel, io: std.Io, value: i32) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         self.result = value;
         self.ready = true;
     }
 
-    fn receive(self: *ResultChannel) ?i32 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn receive(self: *ResultChannel, io: std.Io) !?i32 {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         if (self.ready) {
             return self.result;
         }
@@ -426,13 +428,14 @@ const ResultChannel = struct {
 };
 
 test "thread result via channel" {
+    const io = std.testing.io;
     var channel = ResultChannel.init();
 
-    const thread = try Thread.spawn(.{}, computeWorker, .{&channel});
+    const thread = try Thread.spawn(.{}, computeWorker, .{ io, &channel });
 
     // Wait for result
-    while (channel.receive() == null) {
-        Thread.sleep(time.ns_per_ms);
+    while (try channel.receive(io) == null) {
+        try io.sleep(.fromNanoseconds(time.ns_per_ms), .awake);
     }
 
     thread.join();
@@ -440,9 +443,9 @@ test "thread result via channel" {
     try testing.expectEqual(@as(i32, 42), channel.result.?);
 }
 
-fn computeWorker(channel: *ResultChannel) void {
-    Thread.sleep(10 * time.ns_per_ms);
-    channel.send(42);
+fn computeWorker(io: std.Io, channel: *ResultChannel) !void {
+    try io.sleep(.fromNanoseconds(10 * time.ns_per_ms), .awake);
+    try channel.send(io, 42);
 }
 // ANCHOR_END: thread_result_channel
 
@@ -563,12 +566,13 @@ Use `std.Thread.Mutex` to create critical sections where only one thread can exe
 
 ```zig
 test "basic mutex usage" {
-    var mutex = Mutex{};
+    const io = std.testing.io;
+    var mutex = std.Io.Mutex.init;
     var counter: i32 = 0;
 
-    mutex.lock();
+    try mutex.lock(io);
     counter += 1;
-    mutex.unlock();
+    mutex.unlock(io);
 
     try testing.expectEqual(@as(i32, 1), counter);
 }
@@ -580,12 +584,13 @@ Always use `defer` to ensure the mutex is unlocked, even if an error occurs:
 
 ```zig
 test "defer for automatic unlock" {
-    var mutex = Mutex{};
+    const io = std.testing.io;
+    var mutex = std.Io.Mutex.init;
     var value: i32 = 0;
 
     {
-        mutex.lock();
-        defer mutex.unlock();
+        try mutex.lock(io);
+        defer mutex.unlock(io);
         value = 42;
         // mutex automatically unlocks when scope exits
     }
@@ -610,15 +615,15 @@ const BankAccount = struct {
         };
     }
 
-    fn deposit(self: *BankAccount, amount: i64) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn deposit(self: *BankAccount, io: std.Io, amount: i64) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         self.balance += amount;
     }
 
-    fn withdraw(self: *BankAccount, amount: i64) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn withdraw(self: *BankAccount, io: std.Io, amount: i64) !bool {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         if (self.balance >= amount) {
             self.balance -= amount;
@@ -627,9 +632,9 @@ const BankAccount = struct {
         return false;
     }
 
-    fn getBalance(self: *BankAccount) i64 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn getBalance(self: *BankAccount, io: std.Io) !i64 {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         return self.balance;
     }
 };
@@ -649,9 +654,9 @@ const SharedBuffer = struct {
     write_index: usize,
     mutex: Mutex,
 
-    fn append(self: *SharedBuffer, value: u8) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn append(self: *SharedBuffer, io: std.Io, value: u8) !bool {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         // Critical section: only one thread at a time
         if (self.write_index >= self.data.len) {
@@ -670,12 +675,12 @@ const SharedBuffer = struct {
 When an operation involves multiple objects, you must lock all of them to ensure atomicity:
 
 ```zig
-fn transfer(from: *BankAccount, to: *BankAccount, amount: i64) !void {
-    from.mutex.lock();
-    defer from.mutex.unlock();
+fn transfer(io: std.Io, from: *BankAccount, to: *BankAccount, amount: i64) !void {
+    from.mutex.lock(io);
+    defer from.mutex.unlock(io);
 
-    to.mutex.lock();
-    defer to.mutex.unlock();
+    to.mutex.lock(io);
+    defer to.mutex.unlock(io);
 
     if (from.balance < amount) {
         return error.InsufficientFunds;
@@ -693,22 +698,20 @@ However, this approach can deadlock if two threads try to transfer in opposite d
 Always acquire locks in a consistent order. One approach is to order by memory address:
 
 ```zig
-fn safeConcurrentTransfer(
-    account1: *BankAccount,
+fn safeConcurrentTransfer(io: std.Io, account1: *BankAccount,
     account2: *BankAccount,
-    amount: i64,
-) !void {
+    amount: i64,) !void {
     // Lock accounts in consistent order based on memory address
     const first = if (@intFromPtr(account1) < @intFromPtr(account2))
         account1 else account2;
     const second = if (@intFromPtr(account1) < @intFromPtr(account2))
         account2 else account1;
 
-    first.mutex.lock();
-    defer first.mutex.unlock();
+    first.mutex.lock(io);
+    defer first.mutex.unlock(io);
 
-    second.mutex.lock();
-    defer second.mutex.unlock();
+    second.mutex.lock(io);
+    defer second.mutex.unlock(io);
 
     if (account1.balance < amount) {
         return error.InsufficientFunds;
@@ -727,9 +730,9 @@ Don't call a locked method from another locked method of the same object - this 
 
 ```zig
 // WRONG: This deadlocks!
-fn incrementBy(self: *Counter, amount: i32) void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+fn incrementBy(self: *Counter, io: std.Io, amount: i32) !void {
+    try self.mutex.lock(io);
+    defer self.mutex.unlock(io);
 
     var i: i32 = 0;
     while (i < amount) : (i += 1) {
@@ -738,9 +741,9 @@ fn incrementBy(self: *Counter, amount: i32) void {
 }
 
 // RIGHT: Duplicate logic or use internal unlocked methods
-fn incrementBy(self: *Counter, amount: i32) void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+fn incrementBy(self: *Counter, io: std.Io, amount: i32) !void {
+    try self.mutex.lock(io);
+    defer self.mutex.unlock(io);
     self.value += amount;
 }
 ```
@@ -759,12 +762,12 @@ const ConcurrentHashMap = struct {
         mutex: Mutex,
     };
 
-    fn put(self: *ConcurrentHashMap, key: u32, value: i32) !void {
+    fn put(self: *ConcurrentHashMap, io: std.Io, key: u32, value: i32) !void {
         const bucket_index = key % self.buckets.len;
         var bucket = &self.buckets[bucket_index];
 
-        bucket.mutex.lock();
-        defer bucket.mutex.unlock();
+        bucket.mutex.lock(io);
+        defer bucket.mutex.unlock(io);
 
         // Only this bucket is locked, not the entire map
         try bucket.items.append(self.allocator, .{ .key = key, .value = value });
@@ -780,7 +783,7 @@ Mutexes use default initialization with empty braces:
 
 ```zig
 // Standalone mutex
-var mutex = Mutex{};
+var mutex = std.Io.Mutex.init;
 
 // Embedded in struct with default field syntax
 const Data = struct {
@@ -798,15 +801,15 @@ const SafeCounter = struct {
     value: i32,
     mutex: Mutex,
 
-    fn add(self: *SafeCounter, amount: i32) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn add(self: *SafeCounter, io: std.Io, amount: i32) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         self.value += amount;
     }
 
-    fn get(self: *SafeCounter) i32 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn get(self: *SafeCounter, io: std.Io) !i32 {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         return self.value;
     }
 };
@@ -837,16 +840,17 @@ Mutex contention slows down concurrent programs. To minimize contention:
 const std = @import("std");
 const testing = std.testing;
 const Thread = std.Thread;
-const Mutex = Thread.Mutex;
+const Mutex = std.Io.Mutex;
 
 // ANCHOR: basic_mutex
 test "basic mutex usage" {
-    var mutex = Mutex{};
+    const io = std.testing.io;
+    var mutex = std.Io.Mutex.init;
     var counter: i32 = 0;
 
-    mutex.lock();
+    try mutex.lock(io);
     counter += 1;
-    mutex.unlock();
+    mutex.unlock(io);
 
     try testing.expectEqual(@as(i32, 1), counter);
 }
@@ -854,12 +858,13 @@ test "basic mutex usage" {
 
 // ANCHOR: defer_unlock
 test "defer for automatic unlock" {
-    var mutex = Mutex{};
+    const io = std.testing.io;
+    var mutex = std.Io.Mutex.init;
     var value: i32 = 0;
 
     {
-        mutex.lock();
-        defer mutex.unlock();
+        try mutex.lock(io);
+        defer mutex.unlock(io);
         value = 42;
         // mutex automatically unlocks when scope exits
     }
@@ -876,19 +881,19 @@ const BankAccount = struct {
     fn init(initial_balance: i64) BankAccount {
         return .{
             .balance = initial_balance,
-            .mutex = .{},
+            .mutex = .init,
         };
     }
 
-    fn deposit(self: *BankAccount, amount: i64) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn deposit(self: *BankAccount, io: std.Io, amount: i64) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         self.balance += amount;
     }
 
-    fn withdraw(self: *BankAccount, amount: i64) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn withdraw(self: *BankAccount, io: std.Io, amount: i64) !bool {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         if (self.balance >= amount) {
             self.balance -= amount;
@@ -897,45 +902,46 @@ const BankAccount = struct {
         return false;
     }
 
-    fn getBalance(self: *BankAccount) i64 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn getBalance(self: *BankAccount, io: std.Io) !i64 {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         return self.balance;
     }
 };
 
 test "protecting shared data with mutex" {
+    const io = std.testing.io;
     var account = BankAccount.init(1000);
 
     var threads: [10]Thread = undefined;
 
     // Spawn threads that deposit money
     for (&threads) |*thread| {
-        thread.* = try Thread.spawn(.{}, depositWorker, .{&account});
+        thread.* = try Thread.spawn(.{}, depositWorker, .{ io, &account });
     }
 
     for (threads) |thread| {
         thread.join();
     }
 
-    try testing.expectEqual(@as(i64, 1100), account.getBalance());
+    try testing.expectEqual(@as(i64, 1100), account.getBalance(io));
 }
 
-fn depositWorker(account: *BankAccount) void {
-    account.deposit(10);
+fn depositWorker(io: std.Io, account: *BankAccount) !void {
+    try account.deposit(io, 10);
 }
 // ANCHOR_END: protecting_shared_data
 
 // ANCHOR: multiple_operations
 const TransferError = error{InsufficientFunds};
 
-fn transfer(from: *BankAccount, to: *BankAccount, amount: i64) TransferError!void {
+fn transfer(io: std.Io, from: *BankAccount, to: *BankAccount, amount: i64) (TransferError || std.Io.Cancelable)!void {
     // Lock both accounts to ensure atomic transfer
-    from.mutex.lock();
-    defer from.mutex.unlock();
+    try from.mutex.lock(io);
+    defer from.mutex.unlock(io);
 
-    to.mutex.lock();
-    defer to.mutex.unlock();
+    try to.mutex.lock(io);
+    defer to.mutex.unlock(io);
 
     if (from.balance < amount) {
         return TransferError.InsufficientFunds;
@@ -946,13 +952,14 @@ fn transfer(from: *BankAccount, to: *BankAccount, amount: i64) TransferError!voi
 }
 
 test "atomic transfer between accounts" {
+    const io = std.testing.io;
     var account1 = BankAccount.init(1000);
     var account2 = BankAccount.init(500);
 
-    try transfer(&account1, &account2, 300);
+    try transfer(io, &account1, &account2, 300);
 
-    try testing.expectEqual(@as(i64, 700), account1.getBalance());
-    try testing.expectEqual(@as(i64, 800), account2.getBalance());
+    try testing.expectEqual(@as(i64, 700), account1.getBalance(io));
+    try testing.expectEqual(@as(i64, 800), account2.getBalance(io));
 }
 // ANCHOR_END: multiple_operations
 
@@ -966,13 +973,13 @@ const SharedBuffer = struct {
         return .{
             .data = [_]u8{0} ** 100,
             .write_index = 0,
-            .mutex = .{},
+            .mutex = .init,
         };
     }
 
-    fn append(self: *SharedBuffer, value: u8) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn append(self: *SharedBuffer, io: std.Io, value: u8) !bool {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         // Critical section: only one thread can execute this at a time
         if (self.write_index >= self.data.len) {
@@ -984,30 +991,31 @@ const SharedBuffer = struct {
         return true;
     }
 
-    fn size(self: *SharedBuffer) usize {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn size(self: *SharedBuffer, io: std.Io) !usize {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         return self.write_index;
     }
 };
 
 test "critical section protection" {
+    const io = std.testing.io;
     var buffer = SharedBuffer.init();
 
     var threads: [10]Thread = undefined;
     for (&threads, 0..) |*thread, i| {
-        thread.* = try Thread.spawn(.{}, appendWorker, .{ &buffer, @as(u8, @intCast(i)) });
+        thread.* = try Thread.spawn(.{}, appendWorker, .{ io, &buffer, @as(u8, @intCast(i)) });
     }
 
     for (threads) |thread| {
         thread.join();
     }
 
-    try testing.expectEqual(@as(usize, 10), buffer.size());
+    try testing.expectEqual(@as(usize, 10), try buffer.size(io));
 }
 
-fn appendWorker(buffer: *SharedBuffer, value: u8) void {
-    _ = buffer.append(value);
+fn appendWorker(io: std.Io, buffer: *SharedBuffer, value: u8) !void {
+    _ = try buffer.append(io, value);
 }
 // ANCHOR_END: critical_section
 
@@ -1019,21 +1027,21 @@ const NestedCounter = struct {
     fn init() NestedCounter {
         return .{
             .value = 0,
-            .mutex = .{},
+            .mutex = .init,
         };
     }
 
-    fn increment(self: *NestedCounter) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn increment(self: *NestedCounter, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         self.value += 1;
     }
 
-    fn incrementBy(self: *NestedCounter, amount: i32) void {
-        // Don't call increment() here - it would try to lock again (deadlock)
+    fn incrementBy(self: *NestedCounter, io: std.Io, amount: i32) !void {
+        // Don't call increment(io) here - it would try to lock again (deadlock)
         // Instead, duplicate the logic or restructure
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         self.value += amount;
     }
 
@@ -1047,28 +1055,27 @@ const NestedCounter = struct {
 };
 
 test "avoiding nested locking" {
+    const io = std.testing.io;
     var counter = NestedCounter.init();
-    counter.incrementBy(5);
+    try counter.incrementBy(io, 5);
     try testing.expectEqual(@as(i32, 5), counter.value);
 }
 // ANCHOR_END: nested_locking_safe
 
 // ANCHOR: lock_ordering
 // Always lock mutexes in the same order to avoid deadlock
-fn safeConcurrentTransfer(
-    account1: *BankAccount,
+fn safeConcurrentTransfer(io: std.Io, account1: *BankAccount,
     account2: *BankAccount,
-    amount: i64,
-) TransferError!void {
+    amount: i64,) (TransferError || std.Io.Cancelable)!void {
     // Lock accounts in consistent order based on memory address
     const first = if (@intFromPtr(account1) < @intFromPtr(account2)) account1 else account2;
     const second = if (@intFromPtr(account1) < @intFromPtr(account2)) account2 else account1;
 
-    first.mutex.lock();
-    defer first.mutex.unlock();
+    try first.mutex.lock(io);
+    defer first.mutex.unlock(io);
 
-    second.mutex.lock();
-    defer second.mutex.unlock();
+    try second.mutex.lock(io);
+    defer second.mutex.unlock(io);
 
     if (account1.balance < amount) {
         return TransferError.InsufficientFunds;
@@ -1079,11 +1086,12 @@ fn safeConcurrentTransfer(
 }
 
 test "lock ordering prevents deadlock" {
+    const io = std.testing.io;
     var account1 = BankAccount.init(1000);
     var account2 = BankAccount.init(500);
 
-    try safeConcurrentTransfer(&account1, &account2, 100);
-    try safeConcurrentTransfer(&account2, &account1, 50);
+    try safeConcurrentTransfer(io, &account1, &account2, 100);
+    try safeConcurrentTransfer(io, &account2, &account1, 50);
 
     try testing.expectEqual(@as(i64, 950), account1.balance);
     try testing.expectEqual(@as(i64, 550), account2.balance);
@@ -1112,8 +1120,8 @@ const ConcurrentHashMap = struct {
         };
         for (&map.buckets) |*bucket| {
             bucket.* = .{
-                .items = std.ArrayList(Entry){},
-                .mutex = .{},
+                .items = std.ArrayList(Entry).empty,
+                .mutex = .init,
             };
         }
         return map;
@@ -1125,12 +1133,12 @@ const ConcurrentHashMap = struct {
         }
     }
 
-    fn put(self: *ConcurrentHashMap, key: u32, value: i32) !void {
+    fn put(self: *ConcurrentHashMap, io: std.Io, key: u32, value: i32) !void {
         const bucket_index = key % self.buckets.len;
         var bucket = &self.buckets[bucket_index];
 
-        bucket.mutex.lock();
-        defer bucket.mutex.unlock();
+        try bucket.mutex.lock(io);
+        defer bucket.mutex.unlock(io);
 
         // Check if key exists
         for (bucket.items.items) |*entry| {
@@ -1144,12 +1152,12 @@ const ConcurrentHashMap = struct {
         try bucket.items.append(self.allocator, .{ .key = key, .value = value });
     }
 
-    fn get(self: *ConcurrentHashMap, key: u32) ?i32 {
+    fn get(self: *ConcurrentHashMap, io: std.Io, key: u32) !?i32 {
         const bucket_index = key % self.buckets.len;
         var bucket = &self.buckets[bucket_index];
 
-        bucket.mutex.lock();
-        defer bucket.mutex.unlock();
+        try bucket.mutex.lock(io);
+        defer bucket.mutex.unlock(io);
 
         for (bucket.items.items) |entry| {
             if (entry.key == key) {
@@ -1161,33 +1169,35 @@ const ConcurrentHashMap = struct {
 };
 
 test "granular locking with multiple mutexes" {
+    const io = std.testing.io;
     var map = ConcurrentHashMap.init(testing.allocator);
     defer map.deinit();
 
-    try map.put(1, 100);
-    try map.put(17, 200); // Same bucket as 1 (1 % 16 == 17 % 16)
+    try map.put(io, 1, 100);
+    try map.put(io, 17, 200); // Same bucket as 1 (1 % 16 == 17 % 16)
 
-    try testing.expectEqual(@as(i32, 100), map.get(1).?);
-    try testing.expectEqual(@as(i32, 200), map.get(17).?);
+    try testing.expectEqual(@as(i32, 100), (try map.get(io, 1)).?);
+    try testing.expectEqual(@as(i32, 200), (try map.get(io, 17)).?);
 }
 // ANCHOR_END: granular_locking
 
 // ANCHOR: mutex_initialization
 test "mutex initialization patterns" {
+    const io = std.testing.io;
     // Default initialization
-    var mutex1 = Mutex{};
-    mutex1.lock();
-    mutex1.unlock();
+    var mutex1 = std.Io.Mutex.init;
+    try mutex1.lock(io);
+    mutex1.unlock(io);
 
     // Struct with embedded mutex
     const Data = struct {
         value: i32,
-        lock: Mutex = .{},
+        lock: Mutex = .init,
     };
 
     var data = Data{ .value = 42 };
-    data.lock.lock();
-    defer data.lock.unlock();
+    try data.lock.lock(io);
+    defer data.lock.unlock(io);
     try testing.expectEqual(@as(i32, 42), data.value);
 }
 // ANCHOR_END: mutex_initialization
@@ -1200,48 +1210,50 @@ const SafeCounter = struct {
     fn init() SafeCounter {
         return .{
             .value = 0,
-            .mutex = .{},
+            .mutex = .init,
         };
     }
 
-    fn add(self: *SafeCounter, amount: i32) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn add(self: *SafeCounter, io: std.Io, amount: i32) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         self.value += amount;
     }
 
-    fn get(self: *SafeCounter) i32 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn get(self: *SafeCounter, io: std.Io) !i32 {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         return self.value;
     }
 };
 
 test "scoped mutex access" {
+    const io = std.testing.io;
     var counter = SafeCounter.init();
-    counter.add(10);
+    try counter.add(io, 10);
 
-    const result = counter.get();
+    const result = counter.get(io);
     try testing.expectEqual(@as(i32, 10), result);
 }
 // ANCHOR_END: scoped_access
 
 // ANCHOR: benchmarking_contention
 test "mutex contention stress test" {
+    const io = std.testing.io;
     var counter = SafeCounter.init();
     var threads: [100]Thread = undefined;
 
-    const start = std.time.milliTimestamp();
+    const start = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms)));
 
     for (&threads) |*thread| {
-        thread.* = try Thread.spawn(.{}, stressWorker, .{&counter});
+        thread.* = try Thread.spawn(.{}, stressWorker, .{ io, &counter });
     }
 
     for (threads) |thread| {
         thread.join();
     }
 
-    const elapsed = std.time.milliTimestamp() - start;
+    const elapsed = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms))) - start;
 
     // Each thread increments 100 times
     try testing.expectEqual(@as(i32, 10000), counter.value);
@@ -1249,10 +1261,10 @@ test "mutex contention stress test" {
     std.debug.print("Mutex contention test: {} threads, {}ms\n", .{ threads.len, elapsed });
 }
 
-fn stressWorker(counter: *SafeCounter) void {
+fn stressWorker(io: std.Io, counter: *SafeCounter) !void {
     var i: usize = 0;
     while (i < 100) : (i += 1) {
-        counter.add(1);
+        try counter.add(io, 1);
     }
 }
 // ANCHOR_END: benchmarking_contention
@@ -1488,15 +1500,15 @@ const LazyInit = struct {
     mutex: Mutex,
     value: ?i32,
 
-    fn getValue(self: *LazyInit) i32 {
+    fn getValue(self: *LazyInit, io: std.Io) !i32 {
         // Fast path: already initialized
         if (self.initialized.load(.acquire)) {
             return self.value.?;
         }
 
         // Slow path: acquire lock and initialize
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         // Double check after acquiring lock
         if (!self.initialized.load(.monotonic)) {
@@ -1663,7 +1675,7 @@ const LockFreeStack = struct {
         };
     }
 
-    fn push(self: *LockFreeStack, node: *Node) void {
+    fn push(self: *LockFreeStack, node: *Node) !void {
         var current_head = self.head.load(.monotonic);
 
         while (true) {
@@ -1685,7 +1697,7 @@ const LockFreeStack = struct {
         }
     }
 
-    fn pop(self: *LockFreeStack) ?*Node {
+    fn pop(self: *LockFreeStack) !?*Node {
         var current_head = self.head.load(.monotonic);
 
         while (current_head) |head| {
@@ -1717,14 +1729,14 @@ test "lock-free stack" {
     var node2 = LockFreeStack.Node{ .value = 2, .next = null };
     var node3 = LockFreeStack.Node{ .value = 3, .next = null };
 
-    stack.push(&node1);
-    stack.push(&node2);
-    stack.push(&node3);
+    try stack.push(&node1);
+    try stack.push(&node2);
+    try stack.push(&node3);
 
-    try testing.expectEqual(@as(i32, 3), stack.pop().?.value);
-    try testing.expectEqual(@as(i32, 2), stack.pop().?.value);
-    try testing.expectEqual(@as(i32, 1), stack.pop().?.value);
-    try testing.expect(stack.pop() == null);
+    try testing.expectEqual(@as(i32, 3), (try stack.pop()).?.value);
+    try testing.expectEqual(@as(i32, 2), (try stack.pop()).?.value);
+    try testing.expectEqual(@as(i32, 1), (try stack.pop()).?.value);
+    try testing.expect((try stack.pop()) == null);
 }
 // ANCHOR_END: lock_free_stack
 
@@ -1880,13 +1892,14 @@ test "atomic pointer operations" {
 
 // ANCHOR: wait_notify
 test "atomic wait and notify" {
+    const io = std.testing.io;
     var ready = Atomic(u32).init(0);
     var result: i32 = 0;
 
-    const worker_thread = try Thread.spawn(.{}, waitWorker, .{ &ready, &result });
+    const worker_thread = try Thread.spawn(.{}, waitWorker, .{ io, &ready, &result });
 
     // Give worker time to start waiting
-    Thread.sleep(10 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(10 * std.time.ns_per_ms), .awake);
 
     // Do some work
     result = 42;
@@ -1899,10 +1912,10 @@ test "atomic wait and notify" {
     try testing.expectEqual(@as(i32, 42), result);
 }
 
-fn waitWorker(ready: *Atomic(u32), result: *i32) void {
+fn waitWorker(io: std.Io, ready: *Atomic(u32), result: *i32) !void {
     // Wait for signal (simple spin)
     while (ready.load(.acquire) == 0) {
-        Thread.sleep(std.time.ns_per_ms);
+        try io.sleep(.fromNanoseconds(std.time.ns_per_ms), .awake);
     }
 
     // Process result
@@ -1913,26 +1926,26 @@ fn waitWorker(ready: *Atomic(u32), result: *i32) void {
 // ANCHOR: double_checked_locking
 const LazyInit = struct {
     initialized: Atomic(bool),
-    mutex: Thread.Mutex,
+    mutex: std.Io.Mutex,
     value: ?i32,
 
     fn init() LazyInit {
         return .{
             .initialized = Atomic(bool).init(false),
-            .mutex = .{},
+            .mutex = .init,
             .value = null,
         };
     }
 
-    fn getValue(self: *LazyInit) i32 {
+    fn getValue(self: *LazyInit, io: std.Io) !i32 {
         // First check without lock (fast path)
         if (self.initialized.load(.acquire)) {
             return self.value.?;
         }
 
         // Slow path: acquire lock and initialize
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         // Double check after acquiring lock
         if (!self.initialized.load(.monotonic)) {
@@ -1949,13 +1962,14 @@ fn expensiveComputation() i32 {
 }
 
 test "double-checked locking pattern" {
+    const io = std.testing.io;
     var lazy = LazyInit.init();
 
     var threads: [4]Thread = undefined;
     var results: [4]i32 = undefined;
 
     for (&threads, 0..) |*thread, i| {
-        thread.* = try Thread.spawn(.{}, getLazyValue, .{ &lazy, &results[i] });
+        thread.* = try Thread.spawn(.{}, getLazyValue, .{ io, &lazy, &results[i] });
     }
 
     for (threads) |thread| {
@@ -1968,8 +1982,8 @@ test "double-checked locking pattern" {
     }
 }
 
-fn getLazyValue(lazy: *LazyInit, result: *i32) void {
-    result.* = lazy.getValue();
+fn getLazyValue(io: std.Io, lazy: *LazyInit, result: *i32) void {
+    result.* = lazy.getValue(io) catch unreachable;
 }
 // ANCHOR_END: double_checked_locking
 ```
@@ -2160,18 +2174,18 @@ For dynamic task distribution, use a thread-safe queue:
 ```zig
 const WorkQueue = struct {
     items: std.ArrayList(i32),
-    mutex: Thread.Mutex,
+    mutex: std.Io.Mutex,
     allocator: std.mem.Allocator,
 
-    fn push(self: *WorkQueue, item: i32) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn push(self: *WorkQueue, io: std.Io, item: i32) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         try self.items.append(self.allocator, item);
     }
 
-    fn pop(self: *WorkQueue) ?i32 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn pop(self: *WorkQueue, io: std.Io) !?i32 {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         if (self.items.items.len == 0) return null;
         return self.items.pop();
     }
@@ -2412,13 +2426,13 @@ test "parallel sum" {
 // ANCHOR: work_queue
 const WorkQueue = struct {
     items: std.ArrayList(i32),
-    mutex: Thread.Mutex,
+    mutex: std.Io.Mutex,
     allocator: std.mem.Allocator,
 
     fn init(allocator: std.mem.Allocator) WorkQueue {
         return .{
-            .items = std.ArrayList(i32){},
-            .mutex = .{},
+            .items = std.ArrayList(i32).empty,
+            .mutex = .init,
             .allocator = allocator,
         };
     }
@@ -2427,33 +2441,34 @@ const WorkQueue = struct {
         self.items.deinit(self.allocator);
     }
 
-    fn push(self: *WorkQueue, item: i32) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn push(self: *WorkQueue, io: std.Io, item: i32) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         try self.items.append(self.allocator, item);
     }
 
-    fn pop(self: *WorkQueue) ?i32 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn pop(self: *WorkQueue, io: std.Io) !?i32 {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         if (self.items.items.len == 0) return null;
         return self.items.pop();
     }
 };
 
-fn queueWorker(queue: *WorkQueue, result: *std.atomic.Value(i32)) void {
-    while (queue.pop()) |item| {
+fn queueWorker(io: std.Io, queue: *WorkQueue, result: *std.atomic.Value(i32)) !void {
+    while (try queue.pop(io)) |item| {
         _ = result.fetchAdd(@as(i32, item), .monotonic);
     }
 }
 
 test "work queue with multiple workers" {
+    const io = std.testing.io;
     var queue = WorkQueue.init(testing.allocator);
     defer queue.deinit();
 
     // Add work items
     for (1..11) |i| {
-        try queue.push(@intCast(i));
+        try queue.push(io, @intCast(i));
     }
 
     var result = std.atomic.Value(i32).init(0);
@@ -2461,7 +2476,7 @@ test "work queue with multiple workers" {
 
     // Spawn workers
     for (&threads) |*thread| {
-        thread.* = try Thread.spawn(.{}, queueWorker, .{ &queue, &result });
+        thread.* = try Thread.spawn(.{}, queueWorker, .{ io, &queue, &result });
     }
 
     // Wait for completion
@@ -2584,9 +2599,9 @@ const BoundedQueue = struct {
         allocator.free(self.buffer);
     }
 
-    fn push(self: *BoundedQueue, item: i32) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn push(self: *BoundedQueue, io: std.Io, item: i32) !bool {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         if (self.count >= self.capacity) {
             return false; // Queue full
@@ -2598,9 +2613,9 @@ const BoundedQueue = struct {
         return true;
     }
 
-    fn pop(self: *BoundedQueue) ?i32 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn pop(self: *BoundedQueue, io: std.Io) !?i32 {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         if (self.count == 0) {
             return null; // Queue empty
@@ -2612,9 +2627,9 @@ const BoundedQueue = struct {
         return item;
     }
 
-    fn size(self: *BoundedQueue) usize {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn size(self: *BoundedQueue, io: std.Io) !usize {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         return self.count;
     }
 };
@@ -2628,10 +2643,10 @@ test "bounded queue basic operations" {
     try testing.expect(queue.push(3));
 
     try testing.expectEqual(@as(usize, 3), queue.size());
-    try testing.expectEqual(@as(i32, 1), queue.pop().?);
-    try testing.expectEqual(@as(i32, 2), queue.pop().?);
-    try testing.expectEqual(@as(i32, 3), queue.pop().?);
-    try testing.expect(queue.pop() == null);
+    try testing.expectEqual(@as(i32, 1), (try queue.pop()).?);
+    try testing.expectEqual(@as(i32, 2), (try queue.pop()).?);
+    try testing.expectEqual(@as(i32, 3), (try queue.pop()).?);
+    try testing.expect((try queue.pop()) == null);
 }
 ```
 
@@ -2644,16 +2659,16 @@ The bounded queue prevents unbounded memory growth and provides backpressure whe
 Classic pattern for dividing work:
 
 ```zig
-fn producer(queue: *BoundedQueue, count: i32) void {
+fn producer(io: std.Io, queue: *BoundedQueue, count: i32) !void {
     var i: i32 = 0;
     while (i < count) : (i += 1) {
         while (!queue.push(i)) {
-            Thread.sleep(std.time.ns_per_ms); // Wait if queue full
+            try io.sleep(.fromNanoseconds(std.time.ns_per_ms), .awake); // Wait if queue full
         }
     }
 }
 
-fn consumer(queue: *BoundedQueue, result: *std.atomic.Value(i32)) void {
+fn consumer(io: std.Io, queue: *BoundedQueue, result: *std.atomic.Value(i32)) !void {
     var sum: i32 = 0;
     var received: i32 = 0;
 
@@ -2662,7 +2677,7 @@ fn consumer(queue: *BoundedQueue, result: *std.atomic.Value(i32)) void {
             sum += value;
             received += 1;
         } else {
-            Thread.sleep(std.time.ns_per_ms); // Wait if queue empty
+            try io.sleep(.fromNanoseconds(std.time.ns_per_ms), .awake); // Wait if queue empty
         }
     }
 
@@ -2682,15 +2697,15 @@ const MPSCQueue = struct {
     mutex: Mutex,
     allocator: std.mem.Allocator,
 
-    fn send(self: *MPSCQueue, value: i32) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn send(self: *MPSCQueue, io: std.Io, value: i32) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         try self.items.append(self.allocator, value);
     }
 
-    fn receive(self: *MPSCQueue) ?i32 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn receive(self: *MPSCQueue, io: std.Io) !?i32 {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         if (self.items.items.len == 0) return null;
         return self.items.orderedRemove(0);
     }
@@ -2714,11 +2729,11 @@ const Channel = struct {
     closed: bool,
     // ... other fields
 
-    fn send(self: *Channel, item: i32) !void {
+    fn send(self: *Channel, io: std.Io, item: i32) !void {
         while (true) {
-            self.mutex.lock();
+            try self.mutex.lock(io);
             if (self.closed) {
-                self.mutex.unlock();
+                self.mutex.unlock(io);
                 return error.ChannelClosed;
             }
 
@@ -2726,18 +2741,18 @@ const Channel = struct {
                 self.buffer[self.tail] = item;
                 self.tail = (self.tail + 1) % self.capacity;
                 self.count += 1;
-                self.mutex.unlock();
+                self.mutex.unlock(io);
                 return;
             }
 
-            self.mutex.unlock();
-            Thread.sleep(std.time.ns_per_ms);
+            self.mutex.unlock(io);
+            try io.sleep(.fromNanoseconds(std.time.ns_per_ms), .awake);
         }
     }
 
-    fn close(self: *Channel) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn close(self: *Channel, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         self.closed = true;
     }
 };
@@ -2754,9 +2769,9 @@ const PriorityQueue = struct {
     items: std.ArrayList(PriorityItem),
     mutex: Mutex,
 
-    fn push(self: *PriorityQueue, value: i32, priority: u8) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn push(self: *PriorityQueue, io: std.Io, value: i32, priority: u8) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         const item = PriorityItem{ .value = value, .priority = priority };
 
@@ -2875,7 +2890,7 @@ source -> queue -> [worker1, worker2, worker3]
 const std = @import("std");
 const testing = std.testing;
 const Thread = std.Thread;
-const Mutex = Thread.Mutex;
+const Mutex = std.Io.Mutex;
 
 // ANCHOR: bounded_queue
 const BoundedQueue = struct {
@@ -2893,7 +2908,7 @@ const BoundedQueue = struct {
             .head = 0,
             .tail = 0,
             .count = 0,
-            .mutex = .{},
+            .mutex = .init,
             .capacity = capacity,
         };
     }
@@ -2902,9 +2917,9 @@ const BoundedQueue = struct {
         allocator.free(self.buffer);
     }
 
-    fn push(self: *BoundedQueue, item: i32) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn push(self: *BoundedQueue, io: std.Io, item: i32) !bool {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         if (self.count >= self.capacity) {
             return false; // Queue full
@@ -2916,9 +2931,9 @@ const BoundedQueue = struct {
         return true;
     }
 
-    fn pop(self: *BoundedQueue) ?i32 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn pop(self: *BoundedQueue, io: std.Io) !?i32 {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         if (self.count == 0) {
             return null; // Queue empty
@@ -2930,49 +2945,50 @@ const BoundedQueue = struct {
         return item;
     }
 
-    fn size(self: *BoundedQueue) usize {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn size(self: *BoundedQueue, io: std.Io) !usize {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         return self.count;
     }
 };
 
 test "bounded queue basic operations" {
+    const io = std.testing.io;
     var queue = try BoundedQueue.init(testing.allocator, 10);
     defer queue.deinit(testing.allocator);
 
-    try testing.expect(queue.push(1));
-    try testing.expect(queue.push(2));
-    try testing.expect(queue.push(3));
+    try testing.expect(try queue.push(io, 1));
+    try testing.expect(try queue.push(io, 2));
+    try testing.expect(try queue.push(io, 3));
 
-    try testing.expectEqual(@as(usize, 3), queue.size());
-    try testing.expectEqual(@as(i32, 1), queue.pop().?);
-    try testing.expectEqual(@as(i32, 2), queue.pop().?);
-    try testing.expectEqual(@as(i32, 3), queue.pop().?);
-    try testing.expect(queue.pop() == null);
+    try testing.expectEqual(@as(usize, 3), queue.size(io));
+    try testing.expectEqual(@as(i32, 1), (try queue.pop(io)).?);
+    try testing.expectEqual(@as(i32, 2), (try queue.pop(io)).?);
+    try testing.expectEqual(@as(i32, 3), (try queue.pop(io)).?);
+    try testing.expect((try queue.pop(io)) == null);
 }
 // ANCHOR_END: bounded_queue
 
 // ANCHOR: producer_consumer
-fn producer(queue: *BoundedQueue, count: i32) void {
+fn producer(io: std.Io, queue: *BoundedQueue, count: i32) !void {
     var i: i32 = 0;
     while (i < count) : (i += 1) {
-        while (!queue.push(i)) {
-            Thread.sleep(std.time.ns_per_ms);
+        while (!try queue.push(io, i)) {
+            try io.sleep(.fromNanoseconds(std.time.ns_per_ms), .awake);
         }
     }
 }
 
-fn consumer(queue: *BoundedQueue, result: *std.atomic.Value(i32)) void {
+fn consumer(io: std.Io, queue: *BoundedQueue, result: *std.atomic.Value(i32)) !void {
     var sum: i32 = 0;
     var received: i32 = 0;
 
     while (received < 100) {
-        if (queue.pop()) |value| {
+        if (try queue.pop(io)) |value| {
             sum += value;
             received += 1;
         } else {
-            Thread.sleep(std.time.ns_per_ms);
+            try io.sleep(.fromNanoseconds(std.time.ns_per_ms), .awake);
         }
     }
 
@@ -2980,13 +2996,14 @@ fn consumer(queue: *BoundedQueue, result: *std.atomic.Value(i32)) void {
 }
 
 test "producer-consumer pattern" {
+    const io = std.testing.io;
     var queue = try BoundedQueue.init(testing.allocator, 20);
     defer queue.deinit(testing.allocator);
 
     var result = std.atomic.Value(i32).init(0);
 
-    const producer_thread = try Thread.spawn(.{}, producer, .{ &queue, 100 });
-    const consumer_thread = try Thread.spawn(.{}, consumer, .{ &queue, &result });
+    const producer_thread = try Thread.spawn(.{}, producer, .{ io, &queue, 100 });
+    const consumer_thread = try Thread.spawn(.{}, consumer, .{ io, &queue, &result });
 
     producer_thread.join();
     consumer_thread.join();
@@ -3004,8 +3021,8 @@ const MPSCQueue = struct {
 
     fn init(allocator: std.mem.Allocator) MPSCQueue {
         return .{
-            .items = std.ArrayList(i32){},
-            .mutex = .{},
+            .items = std.ArrayList(i32).empty,
+            .mutex = .init,
             .allocator = allocator,
         };
     }
@@ -3014,40 +3031,41 @@ const MPSCQueue = struct {
         self.items.deinit(self.allocator);
     }
 
-    fn send(self: *MPSCQueue, value: i32) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn send(self: *MPSCQueue, io: std.Io, value: i32) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         try self.items.append(self.allocator, value);
     }
 
-    fn receive(self: *MPSCQueue) ?i32 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn receive(self: *MPSCQueue, io: std.Io) !?i32 {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         if (self.items.items.len == 0) return null;
         return self.items.orderedRemove(0);
     }
 };
 
-fn mpscProducer(queue: *MPSCQueue, id: i32, count: i32) void {
+fn mpscProducer(io: std.Io, queue: *MPSCQueue, id: i32, count: i32) void {
     var i: i32 = 0;
     while (i < count) : (i += 1) {
-        queue.send(id * 1000 + i) catch {};
+        queue.send(io, id * 1000 + i) catch {};
     }
 }
 
-fn mpscConsumer(queue: *MPSCQueue, total: *std.atomic.Value(i32)) void {
+fn mpscConsumer(io: std.Io, queue: *MPSCQueue, total: *std.atomic.Value(i32)) !void {
     var received: usize = 0;
     while (received < 300) {
-        if (queue.receive()) |_| {
+        if (try queue.receive(io)) |_| {
             _ = total.fetchAdd(@as(i32, 1), .monotonic);
             received += 1;
         } else {
-            Thread.sleep(std.time.ns_per_ms);
+            try io.sleep(.fromNanoseconds(std.time.ns_per_ms), .awake);
         }
     }
 }
 
 test "multiple producer single consumer" {
+    const io = std.testing.io;
     var queue = MPSCQueue.init(testing.allocator);
     defer queue.deinit();
 
@@ -3055,10 +3073,10 @@ test "multiple producer single consumer" {
 
     var producers: [3]Thread = undefined;
     for (&producers, 0..) |*thread, i| {
-        thread.* = try Thread.spawn(.{}, mpscProducer, .{ &queue, @as(i32, @intCast(i)), 100 });
+        thread.* = try Thread.spawn(.{}, mpscProducer, .{ io, &queue, @as(i32, @intCast(i)), 100 });
     }
 
-    const consumer_thread = try Thread.spawn(.{}, mpscConsumer, .{ &queue, &total });
+    const consumer_thread = try Thread.spawn(.{}, mpscConsumer, .{ io, &queue, &total });
 
     for (producers) |thread| {
         thread.join();
@@ -3086,7 +3104,7 @@ const Channel = struct {
             .head = 0,
             .tail = 0,
             .count = 0,
-            .mutex = .{},
+            .mutex = .init,
             .capacity = capacity,
             .closed = false,
         };
@@ -3096,11 +3114,11 @@ const Channel = struct {
         allocator.free(self.buffer);
     }
 
-    fn send(self: *Channel, item: i32) !void {
+    fn send(self: *Channel, io: std.Io, item: i32) !void {
         while (true) {
-            self.mutex.lock();
+            try self.mutex.lock(io);
             if (self.closed) {
-                self.mutex.unlock();
+                self.mutex.unlock(io);
                 return error.ChannelClosed;
             }
 
@@ -3108,68 +3126,69 @@ const Channel = struct {
                 self.buffer[self.tail] = item;
                 self.tail = (self.tail + 1) % self.capacity;
                 self.count += 1;
-                self.mutex.unlock();
+                self.mutex.unlock(io);
                 return;
             }
 
-            self.mutex.unlock();
-            Thread.sleep(std.time.ns_per_ms);
+            self.mutex.unlock(io);
+            try io.sleep(.fromNanoseconds(std.time.ns_per_ms), .awake);
         }
     }
 
-    fn receive(self: *Channel) ?i32 {
+    fn receive(self: *Channel, io: std.Io) !?i32 {
         while (true) {
-            self.mutex.lock();
+            try self.mutex.lock(io);
 
             if (self.count > 0) {
                 const item = self.buffer[self.head];
                 self.head = (self.head + 1) % self.capacity;
                 self.count -= 1;
-                self.mutex.unlock();
+                self.mutex.unlock(io);
                 return item;
             }
 
             if (self.closed) {
-                self.mutex.unlock();
+                self.mutex.unlock(io);
                 return null;
             }
 
-            self.mutex.unlock();
-            Thread.sleep(std.time.ns_per_ms);
+            self.mutex.unlock(io);
+            try io.sleep(.fromNanoseconds(std.time.ns_per_ms), .awake);
         }
     }
 
-    fn close(self: *Channel) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn close(self: *Channel, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         self.closed = true;
     }
 };
 
-fn channelSender(ch: *Channel) void {
+fn channelSender(io: std.Io, ch: *Channel) !void {
     var i: i32 = 0;
     while (i < 50) : (i += 1) {
-        ch.send(i) catch break;
+        ch.send(io, i) catch break;
     }
-    ch.close();
+    try ch.close(io);
 }
 
-fn channelReceiver(ch: *Channel, sum: *std.atomic.Value(i32)) void {
+fn channelReceiver(io: std.Io, ch: *Channel, sum: *std.atomic.Value(i32)) !void {
     var total: i32 = 0;
-    while (ch.receive()) |value| {
+    while (try ch.receive(io)) |value| {
         total += value;
     }
     _ = sum.fetchAdd(@as(i32, total), .monotonic);
 }
 
 test "channel send and receive" {
+    const io = std.testing.io;
     var channel = try Channel.init(testing.allocator, 10);
     defer channel.deinit(testing.allocator);
 
     var sum = std.atomic.Value(i32).init(0);
 
-    const sender = try Thread.spawn(.{}, channelSender, .{&channel});
-    const receiver = try Thread.spawn(.{}, channelReceiver, .{ &channel, &sum });
+    const sender = try Thread.spawn(.{}, channelSender, .{ io, &channel });
+    const receiver = try Thread.spawn(.{}, channelReceiver, .{ io, &channel, &sum });
 
     sender.join();
     receiver.join();
@@ -3192,8 +3211,8 @@ const PriorityQueue = struct {
 
     fn init(allocator: std.mem.Allocator) PriorityQueue {
         return .{
-            .items = std.ArrayList(PriorityItem){},
-            .mutex = .{},
+            .items = std.ArrayList(PriorityItem).empty,
+            .mutex = .init,
             .allocator = allocator,
         };
     }
@@ -3202,9 +3221,9 @@ const PriorityQueue = struct {
         self.items.deinit(self.allocator);
     }
 
-    fn push(self: *PriorityQueue, value: i32, priority: u8) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn push(self: *PriorityQueue, io: std.Io, value: i32, priority: u8) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         const item = PriorityItem{ .value = value, .priority = priority };
 
@@ -3218,9 +3237,9 @@ const PriorityQueue = struct {
         try self.items.insert(self.allocator, insert_pos, item);
     }
 
-    fn pop(self: *PriorityQueue) ?PriorityItem {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn pop(self: *PriorityQueue, io: std.Io) !?PriorityItem {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         if (self.items.items.len == 0) return null;
         return self.items.orderedRemove(0);
@@ -3228,24 +3247,25 @@ const PriorityQueue = struct {
 };
 
 test "priority queue ordering" {
+    const io = std.testing.io;
     var queue = PriorityQueue.init(testing.allocator);
     defer queue.deinit();
 
-    try queue.push(1, 1);
-    try queue.push(2, 3);
-    try queue.push(3, 2);
-    try queue.push(4, 3);
+    try queue.push(io, 1, 1);
+    try queue.push(io, 2, 3);
+    try queue.push(io, 3, 2);
+    try queue.push(io, 4, 3);
 
-    const item1 = queue.pop().?;
+    const item1 = (try queue.pop(io)).?;
     try testing.expectEqual(@as(u8, 3), item1.priority);
 
-    const item2 = queue.pop().?;
+    const item2 = (try queue.pop(io)).?;
     try testing.expectEqual(@as(u8, 3), item2.priority);
 
-    const item3 = queue.pop().?;
+    const item3 = (try queue.pop(io)).?;
     try testing.expectEqual(@as(u8, 2), item3.priority);
 
-    const item4 = queue.pop().?;
+    const item4 = (try queue.pop(io)).?;
     try testing.expectEqual(@as(u8, 1), item4.priority);
 }
 // ANCHOR_END: priority_queue
@@ -3342,15 +3362,15 @@ const BroadcastChannel = struct {
     }
 };
 
-fn broadcaster(ch: *BroadcastChannel) void {
+fn broadcaster(io: std.Io, ch: *BroadcastChannel) !void {
     var i: i32 = 1;
     while (i <= 10) : (i += 1) {
         ch.broadcast(i);
-        Thread.sleep(5 * std.time.ns_per_ms);
+        try io.sleep(.fromNanoseconds(5 * std.time.ns_per_ms), .awake);
     }
 }
 
-fn broadcastReceiver(ch: *BroadcastChannel, count: *std.atomic.Value(i32)) void {
+fn broadcastReceiver(io: std.Io, ch: *BroadcastChannel, count: *std.atomic.Value(i32)) !void {
     var last_version: u64 = 0;
     var received: i32 = 0;
 
@@ -3358,7 +3378,7 @@ fn broadcastReceiver(ch: *BroadcastChannel, count: *std.atomic.Value(i32)) void 
         if (ch.receive(&last_version)) |_| {
             received += 1;
         } else {
-            Thread.sleep(std.time.ns_per_ms);
+            try io.sleep(.fromNanoseconds(std.time.ns_per_ms), .awake);
         }
     }
 
@@ -3366,14 +3386,15 @@ fn broadcastReceiver(ch: *BroadcastChannel, count: *std.atomic.Value(i32)) void 
 }
 
 test "broadcast to multiple receivers" {
+    const io = std.testing.io;
     var channel = BroadcastChannel.init();
     var count = std.atomic.Value(i32).init(0);
 
-    const sender = try Thread.spawn(.{}, broadcaster, .{&channel});
+    const sender = try Thread.spawn(.{}, broadcaster, .{ io, &channel });
 
     var receivers: [3]Thread = undefined;
     for (&receivers) |*thread| {
-        thread.* = try Thread.spawn(.{}, broadcastReceiver, .{ &channel, &count });
+        thread.* = try Thread.spawn(.{}, broadcastReceiver, .{ io, &channel, &count });
     }
 
     sender.join();
@@ -3424,18 +3445,18 @@ const WaitNotify = struct {
         };
     }
 
-    fn wait(self: *WaitNotify) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn wait(self: *WaitNotify, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         while (!self.ready) {
             self.condition.wait(&self.mutex);
         }
     }
 
-    fn notify(self: *WaitNotify) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn notify(self: *WaitNotify, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         self.ready = true;
         self.condition.signal();
@@ -3447,17 +3468,18 @@ fn waiter(wn: *WaitNotify, result: *i32) void {
     result.* = 42;
 }
 
-fn notifier(wn: *WaitNotify) void {
-    Thread.sleep(10 * std.time.ns_per_ms);
+fn notifier(io: std.Io, wn: *WaitNotify) !void {
+    try io.sleep(.fromNanoseconds(10 * std.time.ns_per_ms), .awake);
     wn.notify();
 }
 
 test "basic wait and notify" {
+    const io = std.testing.io;
     var wn = WaitNotify.init();
     var result: i32 = 0;
 
     const wait_thread = try Thread.spawn(.{}, waiter, .{ &wn, &result });
-    const notify_thread = try Thread.spawn(.{}, notifier, .{&wn});
+    const notify_thread = try Thread.spawn(.{}, notifier, .{ io, &wn });
 
     wait_thread.join();
     notify_thread.join();
@@ -3481,9 +3503,9 @@ const BlockingQueue = struct {
     mutex: Mutex,
     // ... buffer fields
 
-    fn push(self: *BlockingQueue, item: i32) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn push(self: *BlockingQueue, io: std.Io, item: i32) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         while (self.count >= self.capacity) {
             self.not_full.wait(&self.mutex); // Block until space
@@ -3493,9 +3515,9 @@ const BlockingQueue = struct {
         self.not_empty.signal(); // Wake consumer
     }
 
-    fn pop(self: *BlockingQueue) i32 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn pop(self: *BlockingQueue, io: std.Io) !i32 {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         while (self.count == 0) {
             self.not_empty.wait(&self.mutex); // Block until data
@@ -3520,9 +3542,9 @@ const Semaphore = struct {
     mutex: Mutex,
     condition: Condition,
 
-    fn acquire(self: *Semaphore) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn acquire(self: *Semaphore, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         while (self.count == 0) {
             self.condition.wait(&self.mutex);
@@ -3531,9 +3553,9 @@ const Semaphore = struct {
         self.count -= 1;
     }
 
-    fn release(self: *Semaphore) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn release(self: *Semaphore, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         self.count += 1;
         self.condition.signal();
@@ -3555,9 +3577,9 @@ const Barrier = struct {
     mutex: Mutex,
     condition: Condition,
 
-    fn wait(self: *Barrier) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn wait(self: *Barrier, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         const gen = self.generation;
         self.waiting += 1;
@@ -3589,18 +3611,18 @@ const Latch = struct {
     mutex: Mutex,
     condition: Condition,
 
-    fn countDown(self: *Latch) void {
+    fn countDown(self: *Latch, io: std.Io) !void {
         const old = self.count.fetchSub(1, .release);
         if (old == 1) {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+            try self.mutex.lock(io);
+            defer self.mutex.unlock(io);
             self.condition.broadcast();
         }
     }
 
-    fn wait(self: *Latch) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn wait(self: *Latch, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         while (self.count.load(.acquire) > 0) {
             self.condition.wait(&self.mutex);
@@ -3617,9 +3639,9 @@ Useful for waiting on parallel initialization.
 - **`broadcast()`** - Wakes all waiting threads
 
 ```zig
-fn broadcast(self: *BroadcastSignal) void {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+fn broadcast(self: *BroadcastSignal, io: std.Io) !void {
+    try self.mutex.lock(io);
+    defer self.mutex.unlock(io);
 
     self.flag = true;
     self.condition.broadcast(); // Wake ALL waiters
@@ -3638,19 +3660,19 @@ const Event = struct {
     mutex: Mutex,
     condition: Condition,
 
-    fn wait(self: *Event) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn wait(self: *Event, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         while (!self.signaled.load(.acquire)) {
             self.condition.wait(&self.mutex);
         }
     }
 
-    fn set(self: *Event) void {
+    fn set(self: *Event, io: std.Io) !void {
         self.signaled.store(true, .release);
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
         self.condition.broadcast();
     }
 
@@ -3672,9 +3694,9 @@ const TimedWait = struct {
     mutex: Mutex,
     condition: Condition,
 
-    fn waitFor(self: *TimedWait, timeout_ms: u64) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn waitFor(self: *TimedWait, io: std.Io, timeout_ms: u64) !bool {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         const timeout_ns = timeout_ms * std.time.ns_per_ms;
 
@@ -3742,8 +3764,8 @@ Spurious wakeups can occur - the thread wakes but condition isn't met.
 const std = @import("std");
 const testing = std.testing;
 const Thread = std.Thread;
-const Mutex = Thread.Mutex;
-const Condition = Thread.Condition;
+const Mutex = std.Io.Mutex;
+const Condition = std.Io.Condition;
 
 // ANCHOR: basic_condition
 const WaitNotify = struct {
@@ -3754,45 +3776,46 @@ const WaitNotify = struct {
     fn init() WaitNotify {
         return .{
             .ready = false,
-            .mutex = .{},
-            .condition = .{},
+            .mutex = .init,
+            .condition = .init,
         };
     }
 
-    fn wait(self: *WaitNotify) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn wait(self: *WaitNotify, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         while (!self.ready) {
-            self.condition.wait(&self.mutex);
+            try self.condition.wait(io, &self.mutex);
         }
     }
 
-    fn notify(self: *WaitNotify) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn notify(self: *WaitNotify, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         self.ready = true;
-        self.condition.signal();
+        self.condition.signal(io);
     }
 };
 
-fn waiter(wn: *WaitNotify, result: *i32) void {
-    wn.wait();
+fn waiter(io: std.Io, wn: *WaitNotify, result: *i32) !void {
+    try wn.wait(io);
     result.* = 42;
 }
 
-fn notifier(wn: *WaitNotify) void {
-    Thread.sleep(10 * std.time.ns_per_ms);
-    wn.notify();
+fn notifier(io: std.Io, wn: *WaitNotify) !void {
+    try io.sleep(.fromNanoseconds(10 * std.time.ns_per_ms), .awake);
+    try wn.notify(io);
 }
 
 test "basic wait and notify" {
+    const io = std.testing.io;
     var wn = WaitNotify.init();
     var result: i32 = 0;
 
-    const wait_thread = try Thread.spawn(.{}, waiter, .{ &wn, &result });
-    const notify_thread = try Thread.spawn(.{}, notifier, .{&wn});
+    const wait_thread = try Thread.spawn(.{}, waiter, .{ io, &wn, &result });
+    const notify_thread = try Thread.spawn(.{}, notifier, .{ io, &wn });
 
     wait_thread.join();
     notify_thread.join();
@@ -3819,9 +3842,9 @@ const BlockingQueue = struct {
             .head = 0,
             .tail = 0,
             .count = 0,
-            .mutex = .{},
-            .not_empty = .{},
-            .not_full = .{},
+            .mutex = .init,
+            .not_empty = .init,
+            .not_full = .init,
             .capacity = capacity,
         };
     }
@@ -3830,63 +3853,64 @@ const BlockingQueue = struct {
         allocator.free(self.buffer);
     }
 
-    fn push(self: *BlockingQueue, item: i32) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn push(self: *BlockingQueue, io: std.Io, item: i32) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         while (self.count >= self.capacity) {
-            self.not_full.wait(&self.mutex);
+            try self.not_full.wait(io, &self.mutex);
         }
 
         self.buffer[self.tail] = item;
         self.tail = (self.tail + 1) % self.capacity;
         self.count += 1;
 
-        self.not_empty.signal();
+        self.not_empty.signal(io);
     }
 
-    fn pop(self: *BlockingQueue) i32 {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn pop(self: *BlockingQueue, io: std.Io) !i32 {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         while (self.count == 0) {
-            self.not_empty.wait(&self.mutex);
+            try self.not_empty.wait(io, &self.mutex);
         }
 
         const item = self.buffer[self.head];
         self.head = (self.head + 1) % self.capacity;
         self.count -= 1;
 
-        self.not_full.signal();
+        self.not_full.signal(io);
 
         return item;
     }
 };
 
-fn blockingProducer(queue: *BlockingQueue) void {
+fn blockingProducer(io: std.Io, queue: *BlockingQueue) !void {
     var i: i32 = 0;
     while (i < 20) : (i += 1) {
-        queue.push(i);
+        try queue.push(io, i);
     }
 }
 
-fn blockingConsumer(queue: *BlockingQueue, sum: *i32) void {
+fn blockingConsumer(io: std.Io, queue: *BlockingQueue, sum: *i32) !void {
     var total: i32 = 0;
     var i: i32 = 0;
     while (i < 20) : (i += 1) {
-        total += queue.pop();
+        total += try queue.pop(io);
     }
     sum.* = total;
 }
 
 test "blocking queue with conditions" {
+    const io = std.testing.io;
     var queue = try BlockingQueue.init(testing.allocator, 5);
     defer queue.deinit(testing.allocator);
 
     var sum: i32 = 0;
 
-    const producer_thread = try Thread.spawn(.{}, blockingProducer, .{&queue});
-    const consumer_thread = try Thread.spawn(.{}, blockingConsumer, .{ &queue, &sum });
+    const producer_thread = try Thread.spawn(.{}, blockingProducer, .{ io, &queue });
+    const consumer_thread = try Thread.spawn(.{}, blockingConsumer, .{ io, &queue, &sum });
 
     producer_thread.join();
     consumer_thread.join();
@@ -3905,47 +3929,48 @@ const Semaphore = struct {
     fn init(initial_count: usize) Semaphore {
         return .{
             .count = initial_count,
-            .mutex = .{},
-            .condition = .{},
+            .mutex = .init,
+            .condition = .init,
         };
     }
 
-    fn acquire(self: *Semaphore) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn acquire(self: *Semaphore, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         while (self.count == 0) {
-            self.condition.wait(&self.mutex);
+            try self.condition.wait(io, &self.mutex);
         }
 
         self.count -= 1;
     }
 
-    fn release(self: *Semaphore) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn release(self: *Semaphore, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         self.count += 1;
-        self.condition.signal();
+        self.condition.signal(io);
     }
 };
 
-fn semWorker(sem: *Semaphore, counter: *std.atomic.Value(i32)) void {
-    sem.acquire();
-    defer sem.release();
+fn semWorker(io: std.Io, sem: *Semaphore, counter: *std.atomic.Value(i32)) !void {
+    try sem.acquire(io);
+    defer sem.release(io) catch {};
 
     // Critical section
     _ = counter.fetchAdd(@as(i32, 1), .monotonic);
-    Thread.sleep(5 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(5 * std.time.ns_per_ms), .awake);
 }
 
 test "semaphore limits concurrency" {
+    const io = std.testing.io;
     var sem = Semaphore.init(2); // Max 2 concurrent
     var counter = std.atomic.Value(i32).init(0);
 
     var threads: [5]Thread = undefined;
     for (&threads) |*thread| {
-        thread.* = try Thread.spawn(.{}, semWorker, .{ &sem, &counter });
+        thread.* = try Thread.spawn(.{}, semWorker, .{ io, &sem, &counter });
     }
 
     for (threads) |thread| {
@@ -3969,14 +3994,14 @@ const Barrier = struct {
             .count = count,
             .waiting = 0,
             .generation = 0,
-            .mutex = .{},
-            .condition = .{},
+            .mutex = .init,
+            .condition = .init,
         };
     }
 
-    fn wait(self: *Barrier) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn wait(self: *Barrier, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         const gen = self.generation;
         self.waiting += 1;
@@ -3985,34 +4010,35 @@ const Barrier = struct {
             // Last thread arrives
             self.waiting = 0;
             self.generation += 1;
-            self.condition.broadcast();
+            self.condition.broadcast(io);
         } else {
             // Wait for others
             while (gen == self.generation) {
-                self.condition.wait(&self.mutex);
+                try self.condition.wait(io, &self.mutex);
             }
         }
     }
 };
 
-fn barrierWorker(barrier: *Barrier, id: usize, results: []usize, phase: *std.atomic.Value(usize)) void {
+fn barrierWorker(io: std.Io, barrier: *Barrier, id: usize, results: []usize, phase: *std.atomic.Value(usize)) !void {
     // Phase 1
     results[id] = id * 2;
 
-    barrier.wait(); // Sync point
+    try barrier.wait(io); // Sync point
 
     // Phase 2 - all threads have completed phase 1
     _ = phase.fetchAdd(@as(usize, 1), .monotonic);
 }
 
 test "barrier synchronization" {
+    const io = std.testing.io;
     var barrier = Barrier.init(4);
     var results: [4]usize = undefined;
     var phase = std.atomic.Value(usize).init(0);
 
     var threads: [4]Thread = undefined;
     for (&threads, 0..) |*thread, i| {
-        thread.* = try Thread.spawn(.{}, barrierWorker, .{ &barrier, i, &results, &phase });
+        thread.* = try Thread.spawn(.{}, barrierWorker, .{ io, &barrier, i, &results, &phase });
     }
 
     for (threads) |thread| {
@@ -4039,44 +4065,45 @@ const Latch = struct {
     fn init(count: usize) Latch {
         return .{
             .count = std.atomic.Value(usize).init(count),
-            .mutex = .{},
-            .condition = .{},
+            .mutex = .init,
+            .condition = .init,
         };
     }
 
-    fn countDown(self: *Latch) void {
+    fn countDown(self: *Latch, io: std.Io) !void {
         const old = self.count.fetchSub(@as(usize, 1), .release);
         if (old == 1) {
-            self.mutex.lock();
-            defer self.mutex.unlock();
-            self.condition.broadcast();
+            try self.mutex.lock(io);
+            defer self.mutex.unlock(io);
+            self.condition.broadcast(io);
         }
     }
 
-    fn wait(self: *Latch) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn wait(self: *Latch, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         while (self.count.load(.acquire) > 0) {
-            self.condition.wait(&self.mutex);
+            try self.condition.wait(io, &self.mutex);
         }
     }
 };
 
-fn latchWorker(latch: *Latch) void {
-    Thread.sleep(10 * std.time.ns_per_ms);
-    latch.countDown();
+fn latchWorker(io: std.Io, latch: *Latch) !void {
+    try io.sleep(.fromNanoseconds(10 * std.time.ns_per_ms), .awake);
+    try latch.countDown(io);
 }
 
 test "latch waits for all events" {
+    const io = std.testing.io;
     var latch = Latch.init(3);
 
     var threads: [3]Thread = undefined;
     for (&threads) |*thread| {
-        thread.* = try Thread.spawn(.{}, latchWorker, .{&latch});
+        thread.* = try Thread.spawn(.{}, latchWorker, .{ io, &latch });
     }
 
-    latch.wait(); // Block until all threads count down
+    try latch.wait(io); // Block until all threads count down
 
     for (threads) |thread| {
         thread.join();
@@ -4095,45 +4122,46 @@ const BroadcastSignal = struct {
     fn init() BroadcastSignal {
         return .{
             .flag = false,
-            .mutex = .{},
-            .condition = .{},
+            .mutex = .init,
+            .condition = .init,
         };
     }
 
-    fn wait(self: *BroadcastSignal) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn wait(self: *BroadcastSignal, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         while (!self.flag) {
-            self.condition.wait(&self.mutex);
+            try self.condition.wait(io, &self.mutex);
         }
     }
 
-    fn broadcast(self: *BroadcastSignal) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn broadcast(self: *BroadcastSignal, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         self.flag = true;
-        self.condition.broadcast(); // Wake all waiters
+        self.condition.broadcast(io); // Wake all waiters
     }
 };
 
-fn broadcastWaiter(signal: *BroadcastSignal, counter: *std.atomic.Value(i32)) void {
-    signal.wait();
+fn broadcastWaiter(io: std.Io, signal: *BroadcastSignal, counter: *std.atomic.Value(i32)) !void {
+    try signal.wait(io);
     _ = counter.fetchAdd(@as(i32, 1), .monotonic);
 }
 
 test "broadcast wakes all waiters" {
+    const io = std.testing.io;
     var signal = BroadcastSignal.init();
     var counter = std.atomic.Value(i32).init(0);
 
     var threads: [5]Thread = undefined;
     for (&threads) |*thread| {
-        thread.* = try Thread.spawn(.{}, broadcastWaiter, .{ &signal, &counter });
+        thread.* = try Thread.spawn(.{}, broadcastWaiter, .{ io, &signal, &counter });
     }
 
-    Thread.sleep(20 * std.time.ns_per_ms);
-    signal.broadcast();
+    try io.sleep(.fromNanoseconds(20 * std.time.ns_per_ms), .awake);
+    try signal.broadcast(io);
 
     for (threads) |thread| {
         thread.join();
@@ -4152,57 +4180,60 @@ const TimedWait = struct {
     fn init() TimedWait {
         return .{
             .ready = false,
-            .mutex = .{},
-            .condition = .{},
+            .mutex = .init,
+            .condition = .init,
         };
     }
 
-    fn waitFor(self: *TimedWait, timeout_ms: u64) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn waitFor(self: *TimedWait, io: std.Io, timeout_ms: u64) !bool {
+        // 0.16 has no timed condition wait, so the deadline is explicit.
+        const deadline = std.Io.Timestamp.now(io, .awake)
+            .addDuration(.fromMilliseconds(@intCast(timeout_ms)));
 
-        const timeout_ns = timeout_ms * std.time.ns_per_ms;
+        while (true) {
+            try self.mutex.lock(io);
+            const ready = self.ready;
+            self.mutex.unlock(io);
+            if (ready) return true;
 
-        while (!self.ready) {
-            // Use native timedWait which returns error.Timeout if time expires
-            self.condition.timedWait(&self.mutex, timeout_ns) catch {
-                return false; // Timeout
-            };
+            const remaining = std.Io.Timestamp.now(io, .awake).durationTo(deadline);
+            if (remaining.toNanoseconds() <= 0) return false;
+            try io.sleep(.fromMilliseconds(1), .awake);
         }
-
-        return true;
     }
 
-    fn signal(self: *TimedWait) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn signal(self: *TimedWait, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         self.ready = true;
-        self.condition.signal();
+        self.condition.signal(io);
     }
 };
 
 test "timed wait timeout" {
+    const io = std.testing.io;
     var tw = TimedWait.init();
 
-    const timed_out = !tw.waitFor(50);
+    const timed_out = !try tw.waitFor(io, 50);
     try testing.expect(timed_out);
 }
 
 test "timed wait success" {
+    const io = std.testing.io;
     var tw = TimedWait.init();
 
-    const thread = try Thread.spawn(.{}, timedSignaler, .{&tw});
+    const thread = try Thread.spawn(.{}, timedSignaler, .{ io, &tw });
 
-    const success = tw.waitFor(100);
+    const success = try tw.waitFor(io, 100);
     try testing.expect(success);
 
     thread.join();
 }
 
-fn timedSignaler(tw: *TimedWait) void {
-    Thread.sleep(20 * std.time.ns_per_ms);
-    tw.signal();
+fn timedSignaler(io: std.Io, tw: *TimedWait) !void {
+    try io.sleep(.fromNanoseconds(20 * std.time.ns_per_ms), .awake);
+    try tw.signal(io);
 }
 // ANCHOR_END: timed_wait
 
@@ -4215,26 +4246,26 @@ const Event = struct {
     fn init() Event {
         return .{
             .signaled = std.atomic.Value(bool).init(false),
-            .mutex = .{},
-            .condition = .{},
+            .mutex = .init,
+            .condition = .init,
         };
     }
 
-    fn wait(self: *Event) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    fn wait(self: *Event, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         while (!self.signaled.load(.acquire)) {
-            self.condition.wait(&self.mutex);
+            try self.condition.wait(io, &self.mutex);
         }
     }
 
-    fn set(self: *Event) void {
+    fn set(self: *Event, io: std.Io) !void {
         self.signaled.store(true, .release);
 
-        self.mutex.lock();
-        defer self.mutex.unlock();
-        self.condition.broadcast();
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
+        self.condition.broadcast(io);
     }
 
     fn reset(self: *Event) void {
@@ -4242,19 +4273,20 @@ const Event = struct {
     }
 };
 
-fn eventWaiter(event: *Event, result: *i32) void {
-    event.wait();
+fn eventWaiter(io: std.Io, event: *Event, result: *i32) !void {
+    try event.wait(io);
     result.* = 100;
 }
 
 test "event signaling" {
+    const io = std.testing.io;
     var event = Event.init();
     var result: i32 = 0;
 
-    const thread = try Thread.spawn(.{}, eventWaiter, .{ &event, &result });
+    const thread = try Thread.spawn(.{}, eventWaiter, .{ io, &event, &result });
 
-    Thread.sleep(10 * std.time.ns_per_ms);
-    event.set();
+    try io.sleep(.fromNanoseconds(10 * std.time.ns_per_ms), .awake);
+    try event.set(io);
 
     thread.join();
 
@@ -4297,20 +4329,21 @@ const SharedData = struct {
         };
     }
 
-    fn read(self: *SharedData) i32 {
-        self.lock.lockShared();
-        defer self.lock.unlockShared();
+    fn read(self: *SharedData, io: std.Io) !i32 {
+        try self.lock.lockShared(io);
+        defer self.lock.unlockShared(io);
         return self.value;
     }
 
-    fn write(self: *SharedData, value: i32) void {
-        self.lock.lock();
-        defer self.lock.unlock();
+    fn write(self: *SharedData, io: std.Io, value: i32) void {
+        self.lock.lock(io);
+        defer self.lock.unlock(io);
         self.value = value;
     }
 };
 
 test "read-write lock basic usage" {
+    const io = std.testing.io;
     var data = SharedData.init();
 
     data.write(42);
@@ -4331,15 +4364,15 @@ const Cache = struct {
     data: std.StringHashMap([]const u8),
     lock: RwLock,
 
-    fn get(self: *Cache, key: []const u8) ?[]const u8 {
-        self.lock.lockShared(); // Shared read
-        defer self.lock.unlockShared();
+    fn get(self: *Cache, io: std.Io, key: []const u8) !?[]const u8 {
+        try self.lock.lockShared(io); // Shared read
+        defer self.lock.unlockShared(io);
         return self.data.get(key);
     }
 
-    fn put(self: *Cache, key: []const u8, value: []const u8) !void {
-        self.lock.lock(); // Exclusive write
-        defer self.lock.unlock();
+    fn put(self: *Cache, io: std.Io, key: []const u8, value: []const u8) !void {
+        self.lock.lock(io); // Exclusive write
+        defer self.lock.unlock(io);
         try self.data.put(key, value);
     }
 };
@@ -4365,8 +4398,8 @@ Lookups don't block each other, only updates.
 const std = @import("std");
 const testing = std.testing;
 const Thread = std.Thread;
-const Mutex = Thread.Mutex;
-const RwLock = Thread.RwLock;
+const Mutex = std.Io.Mutex;
+const RwLock = std.Io.RwLock;
 
 // ANCHOR: basic_rwlock
 const SharedData = struct {
@@ -4376,64 +4409,66 @@ const SharedData = struct {
     fn init() SharedData {
         return .{
             .value = 0,
-            .lock = .{},
+            .lock = .init,
         };
     }
 
-    fn read(self: *SharedData) i32 {
-        self.lock.lockShared();
-        defer self.lock.unlockShared();
+    fn read(self: *SharedData, io: std.Io) !i32 {
+        try self.lock.lockShared(io);
+        defer self.lock.unlockShared(io);
         return self.value;
     }
 
-    fn write(self: *SharedData, value: i32) void {
-        self.lock.lock();
-        defer self.lock.unlock();
+    fn write(self: *SharedData, io: std.Io, value: i32) !void {
+        try self.lock.lock(io);
+        defer self.lock.unlock(io);
         self.value = value;
     }
 };
 
 test "read-write lock basic usage" {
+    const io = std.testing.io;
     var data = SharedData.init();
 
-    data.write(42);
-    const value = data.read();
+    try data.write(io, 42);
+    const value = data.read(io);
 
     try testing.expectEqual(@as(i32, 42), value);
 }
 // ANCHOR_END: basic_rwlock
 
 // ANCHOR: concurrent_readers
-fn reader(data: *SharedData, sum: *std.atomic.Value(i32)) void {
+fn reader(io: std.Io, data: *SharedData, sum: *std.atomic.Value(i32)) !void {
     var total: i32 = 0;
     var i: usize = 0;
     while (i < 100) : (i += 1) {
-        total += data.read();
-        Thread.sleep(std.time.ns_per_ms);
+        total += try data.read(io);
+        try io.sleep(.fromNanoseconds(std.time.ns_per_ms), .awake);
     }
     _ = sum.fetchAdd(@as(i32, total), .monotonic);
 }
 
-fn writer(data: *SharedData) void {
+fn writer(io: std.Io, data: *SharedData) !void {
     var i: i32 = 1;
     while (i <= 10) : (i += 1) {
-        data.write(i);
-        Thread.sleep(10 * std.time.ns_per_ms);
+        try data.write(io, i);
+        try io.sleep(.fromNanoseconds(10 * std.time.ns_per_ms), .awake);
     }
 }
 
 test "multiple concurrent readers" {
+    const io = std.testing.io;
     var data = SharedData.init();
-    data.write(5);
+    try data.write(io, 5);
 
     var sum = std.atomic.Value(i32).init(0);
 
     var readers: [4]Thread = undefined;
     for (&readers) |*thread| {
-        thread.* = try Thread.spawn(.{}, reader, .{ &data, &sum });
+        thread.* = try Thread.spawn(.{}, reader, .{ io, &data, &sum });
     }
 
-    const writer_thread = try Thread.spawn(.{}, writer, .{&data});
+    const writer_thread = try Thread.spawn(.{}, writer, .{ io, &data });
 
     for (readers) |thread| {
         thread.join();
@@ -4454,7 +4489,7 @@ const Cache = struct {
     fn init(allocator: std.mem.Allocator) Cache {
         return .{
             .data = std.StringHashMap([]const u8).init(allocator),
-            .lock = .{},
+            .lock = .init,
             .allocator = allocator,
         };
     }
@@ -4463,28 +4498,29 @@ const Cache = struct {
         self.data.deinit();
     }
 
-    fn get(self: *Cache, key: []const u8) ?[]const u8 {
-        self.lock.lockShared();
-        defer self.lock.unlockShared();
+    fn get(self: *Cache, io: std.Io, key: []const u8) !?[]const u8 {
+        try self.lock.lockShared(io);
+        defer self.lock.unlockShared(io);
         return self.data.get(key);
     }
 
-    fn put(self: *Cache, key: []const u8, value: []const u8) !void {
-        self.lock.lock();
-        defer self.lock.unlock();
+    fn put(self: *Cache, io: std.Io, key: []const u8, value: []const u8) !void {
+        try self.lock.lock(io);
+        defer self.lock.unlock(io);
         try self.data.put(key, value);
     }
 };
 
 test "cache with read-write lock" {
+    const io = std.testing.io;
     var cache = Cache.init(testing.allocator);
     defer cache.deinit();
 
-    try cache.put("key1", "value1");
-    try cache.put("key2", "value2");
+    try cache.put(io, "key1", "value1");
+    try cache.put(io, "key2", "value2");
 
-    const value1 = cache.get("key1");
-    try testing.expect(value1 != null);
+    const value1 = try cache.get(io, "key1");
+    try testing.expect((value1) != null);
     try testing.expectEqualStrings("value1", value1.?);
 }
 // ANCHOR_END: cache_example
@@ -4497,48 +4533,49 @@ const Counter = struct {
     fn init() Counter {
         return .{
             .value = 0,
-            .lock = .{},
+            .lock = .init,
         };
     }
 
-    fn increment(self: *Counter) void {
-        self.lock.lock();
-        defer self.lock.unlock();
+    fn increment(self: *Counter, io: std.Io) !void {
+        try self.lock.lock(io);
+        defer self.lock.unlock(io);
         self.value += 1;
     }
 
-    fn decrement(self: *Counter) void {
-        self.lock.lock();
-        defer self.lock.unlock();
+    fn decrement(self: *Counter, io: std.Io) void {
+        self.lock.lock(io);
+        defer self.lock.unlock(io);
         self.value -= 1;
     }
 
-    fn get(self: *Counter) i32 {
-        self.lock.lockShared();
-        defer self.lock.unlockShared();
+    fn get(self: *Counter, io: std.Io) !i32 {
+        try self.lock.lockShared(io);
+        defer self.lock.unlockShared(io);
         return self.value;
     }
 };
 
-fn incrementWorker(counter: *Counter) void {
+fn incrementWorker(io: std.Io, counter: *Counter) !void {
     var i: usize = 0;
     while (i < 100) : (i += 1) {
-        counter.increment();
+        try counter.increment(io);
     }
 }
 
-fn readWorker(counter: *Counter, samples: *std.atomic.Value(i32)) void {
+fn readWorker(io: std.Io, counter: *Counter, samples: *std.atomic.Value(i32)) !void {
     var i: usize = 0;
     while (i < 100) : (i += 1) {
-        const value = counter.get();
+        const value = try counter.get(io);
         if (value > 0) {
             _ = samples.fetchAdd(@as(i32, 1), .monotonic);
         }
-        Thread.sleep(std.time.ns_per_ms / 10);
+        try io.sleep(.fromNanoseconds(std.time.ns_per_ms / 10), .awake);
     }
 }
 
 test "read-write patterns" {
+    const io = std.testing.io;
     var counter = Counter.init();
     var samples = std.atomic.Value(i32).init(0);
 
@@ -4546,11 +4583,11 @@ test "read-write patterns" {
     var readers: [4]Thread = undefined;
 
     for (&writers) |*thread| {
-        thread.* = try Thread.spawn(.{}, incrementWorker, .{&counter});
+        thread.* = try Thread.spawn(.{}, incrementWorker, .{ io, &counter });
     }
 
     for (&readers) |*thread| {
-        thread.* = try Thread.spawn(.{}, readWorker, .{ &counter, &samples });
+        thread.* = try Thread.spawn(.{}, readWorker, .{ io, &counter, &samples });
     }
 
     for (writers) |thread| {
@@ -4560,7 +4597,7 @@ test "read-write patterns" {
         thread.join();
     }
 
-    try testing.expectEqual(@as(i32, 200), counter.get());
+    try testing.expectEqual(@as(i32, 200), counter.get(io));
 }
 // ANCHOR_END: read_write_patterns
 ```
@@ -4587,32 +4624,27 @@ You're spawning multiple threads and need to wait for all of them to complete. M
 Use `std.Thread.WaitGroup` to track and wait for parallel tasks.
 
 ```zig
-const WaitGroup = Thread.WaitGroup;
+// 0.16 replaces Thread.WaitGroup with std.Io.Group: work is added with
+// `async` and the group is joined with `await`, so a task no longer signals
+// its own completion.
+const WaitGroup = std.Io.Group;
 
-fn worker(wg: *WaitGroup, id: usize) void {
-    defer wg.finish();
-
+fn worker(io: std.Io, id: usize) !void {
     std.debug.print("Worker {} starting\n", .{id});
-    Thread.sleep(10 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(10 * std.time.ns_per_ms), .awake);
     std.debug.print("Worker {} done\n", .{id});
 }
 
 test "wait group basic usage" {
-    var wg: WaitGroup = .{};
+    const io = std.testing.io;
+    var wg: WaitGroup = .init;
+    defer wg.cancel(io);
 
-    wg.start();
-    wg.start();
-    wg.start();
+    wg.async(io, worker, .{ io, 1 });
+    wg.async(io, worker, .{ io, 2 });
+    wg.async(io, worker, .{ io, 3 });
 
-    const t1 = try Thread.spawn(.{}, worker, .{ &wg, 1 });
-    const t2 = try Thread.spawn(.{}, worker, .{ &wg, 2 });
-    const t3 = try Thread.spawn(.{}, worker, .{ &wg, 3 });
-
-    wg.wait(); // Wait for all to finish
-
-    t1.join();
-    t2.join();
-    t3.join();
+    try wg.await(io); // Wait for all to finish
 }
 ```
 
@@ -4623,7 +4655,7 @@ WaitGroups provide a clean pattern for parallel task completion. Call `start()` 
 ### Parallel Tasks
 
 ```zig
-var wg: WaitGroup = .{};
+var wg: WaitGroup = .init;
 var results: [5]i32 = undefined;
 
 for (0..5) |i| {
@@ -4637,7 +4669,7 @@ wg.wait(); // All tasks complete
 ### Dynamic Spawning
 
 ```zig
-var wg: WaitGroup = .{};
+var wg: WaitGroup = .init;
 
 for (work_items) |item| {
     wg.start();
@@ -4653,7 +4685,7 @@ wg.wait();
 fn outerWorker(wg: *WaitGroup) void {
     defer wg.finish();
 
-    var inner_wg: WaitGroup = .{};
+    var inner_wg: WaitGroup = .init;
     // Spawn sub-tasks...
     inner_wg.wait();
 }
@@ -4667,39 +4699,32 @@ const testing = std.testing;
 const Thread = std.Thread;
 
 // ANCHOR: wait_group
-const WaitGroup = Thread.WaitGroup;
+// 0.16 replaces Thread.WaitGroup with std.Io.Group: work is added with
+// `async` and the group is joined with `await`, so a task no longer signals
+// its own completion.
+const WaitGroup = std.Io.Group;
 
-fn worker(wg: *WaitGroup, id: usize) void {
-    defer wg.finish();
-
+fn worker(io: std.Io, id: usize) !void {
     std.debug.print("Worker {} starting\n", .{id});
-    Thread.sleep(10 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(10 * std.time.ns_per_ms), .awake);
     std.debug.print("Worker {} done\n", .{id});
 }
 
 test "wait group basic usage" {
-    var wg: WaitGroup = .{};
+    const io = std.testing.io;
+    var wg: WaitGroup = .init;
+    defer wg.cancel(io);
 
-    wg.start();
-    wg.start();
-    wg.start();
+    wg.async(io, worker, .{ io, 1 });
+    wg.async(io, worker, .{ io, 2 });
+    wg.async(io, worker, .{ io, 3 });
 
-    const t1 = try Thread.spawn(.{}, worker, .{ &wg, 1 });
-    const t2 = try Thread.spawn(.{}, worker, .{ &wg, 2 });
-    const t3 = try Thread.spawn(.{}, worker, .{ &wg, 3 });
-
-    wg.wait(); // Wait for all to finish
-
-    t1.join();
-    t2.join();
-    t3.join();
+    try wg.await(io); // Wait for all to finish
 }
 // ANCHOR_END: wait_group
 
 // ANCHOR: parallel_tasks
-fn parallelTask(wg: *WaitGroup, id: usize, result: []i32) void {
-    defer wg.finish();
-
+fn parallelTask(id: usize, result: []i32) void {
     var sum: i32 = 0;
     var i: i32 = 0;
     while (i < 100) : (i += 1) {
@@ -4710,20 +4735,16 @@ fn parallelTask(wg: *WaitGroup, id: usize, result: []i32) void {
 }
 
 test "wait for parallel tasks" {
-    var wg: WaitGroup = .{};
+    const io = std.testing.io;
+    var wg: WaitGroup = .init;
+    defer wg.cancel(io);
     var results: [5]i32 = undefined;
 
-    var threads: [5]Thread = undefined;
-    for (&threads, 0..) |*thread, i| {
-        wg.start();
-        thread.* = try Thread.spawn(.{}, parallelTask, .{ &wg, i, &results });
+    for (0..results.len) |i| {
+        wg.async(io, parallelTask, .{ i, &results });
     }
 
-    wg.wait();
-
-    for (threads) |thread| {
-        thread.join();
-    }
+    try wg.await(io);
 
     // Sum of 0..99 = 4950
     for (results) |result| {
@@ -4733,75 +4754,56 @@ test "wait for parallel tasks" {
 // ANCHOR_END: parallel_tasks
 
 // ANCHOR: dynamic_spawning
-fn dynamicWorker(wg: *WaitGroup, counter: *std.atomic.Value(i32)) void {
-    defer wg.finish();
-
+fn dynamicWorker(io: std.Io, counter: *std.atomic.Value(i32)) !void {
     _ = counter.fetchAdd(@as(i32, 1), .monotonic);
-    Thread.sleep(5 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(5 * std.time.ns_per_ms), .awake);
 }
 
 test "dynamic task spawning" {
-    var wg: WaitGroup = .{};
+    const io = std.testing.io;
+    var wg: WaitGroup = .init;
+    defer wg.cancel(io);
     var counter = std.atomic.Value(i32).init(0);
 
-    var threads: [10]Thread = undefined;
-
-    // Dynamically spawn tasks
-    for (&threads) |*thread| {
-        wg.start();
-        thread.* = try Thread.spawn(.{}, dynamicWorker, .{ &wg, &counter });
+    // Dynamically add tasks
+    for (0..10) |_| {
+        wg.async(io, dynamicWorker, .{ io, &counter });
     }
 
-    wg.wait(); // Wait for all
-
-    for (threads) |thread| {
-        thread.join();
-    }
+    try wg.await(io); // Wait for all
 
     try testing.expectEqual(@as(i32, 10), counter.load(.monotonic));
 }
 // ANCHOR_END: dynamic_spawning
 
 // ANCHOR: nested_wait_groups
-fn outerWorker(wg: *WaitGroup, id: usize) void {
-    defer wg.finish();
+fn outerWorker(io: std.Io, id: usize) void {
+    // A group can nest: the outer task owns its own inner group.
+    var inner_wg: WaitGroup = .init;
+    defer inner_wg.cancel(io);
 
-    var inner_wg: WaitGroup = .{};
-
-    // Spawn sub-tasks
-    var threads: [3]Thread = undefined;
-    for (&threads, 0..) |*thread, i| {
-        inner_wg.start();
-        thread.* = Thread.spawn(.{}, innerWorker, .{ &inner_wg, id * 10 + i }) catch unreachable;
+    for (0..3) |i| {
+        inner_wg.async(io, innerWorker, .{ io, id * 10 + i });
     }
 
-    inner_wg.wait();
-
-    for (threads) |thread| {
-        thread.join();
-    }
+    inner_wg.await(io) catch {};
 }
 
-fn innerWorker(wg: *WaitGroup, id: usize) void {
-    defer wg.finish();
+fn innerWorker(io: std.Io, id: usize) !void {
     std.debug.print("Inner worker {}\n", .{id});
-    Thread.sleep(5 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(5 * std.time.ns_per_ms), .awake);
 }
 
 test "nested wait groups" {
-    var wg: WaitGroup = .{};
+    const io = std.testing.io;
+    var wg: WaitGroup = .init;
+    defer wg.cancel(io);
 
-    var threads: [2]Thread = undefined;
-    for (&threads, 0..) |*thread, i| {
-        wg.start();
-        thread.* = try Thread.spawn(.{}, outerWorker, .{ &wg, i });
+    for (0..2) |i| {
+        wg.async(io, outerWorker, .{ io, i });
     }
 
-    wg.wait();
-
-    for (threads) |thread| {
-        thread.join();
-    }
+    try wg.await(io);
 }
 // ANCHOR_END: nested_wait_groups
 ```

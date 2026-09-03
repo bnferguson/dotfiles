@@ -1,6 +1,6 @@
 # Data Encoding (CSV, JSON, XML) Recipes
 
-*9 tested recipes for Zig 0.15.2*
+*9 recipes, all compiled against Zig 0.16.0*
 
 ## Quick Reference
 
@@ -35,10 +35,10 @@ You need to read and write CSV (Comma-Separated Values) files, handling quoted f
 ```zig
 /// CSV Writer
 pub const CsvWriter = struct {
-    writer: std.io.AnyWriter,
+    writer: *std.Io.Writer,
     delimiter: u8 = ',',
 
-    pub fn init(writer: std.io.AnyWriter) CsvWriter {
+    pub fn init(writer: *std.Io.Writer) CsvWriter {
         return .{ .writer = writer };
     }
 
@@ -84,11 +84,11 @@ pub const CsvWriter = struct {
 /// CSV Reader
 pub const CsvReader = struct {
     allocator: std.mem.Allocator,
-    reader: std.io.AnyReader,
+    reader: *std.Io.Reader,
     delimiter: u8 = ',',
     buffer: std.ArrayList(u8),
 
-    pub fn init(allocator: std.mem.Allocator, reader: std.io.AnyReader) CsvReader {
+    pub fn init(allocator: std.mem.Allocator, reader: *std.Io.Reader) CsvReader {
         return .{
             .allocator = allocator,
             .reader = reader,
@@ -101,7 +101,7 @@ pub const CsvReader = struct {
     }
 
     pub fn readRow(self: *CsvReader, allocator: std.mem.Allocator) !?[][]u8 {
-        var fields: std.ArrayList([]u8) = .{};
+        var fields: std.ArrayList([]u8) = .empty;
         errdefer {
             for (fields.items) |field| allocator.free(field);
             fields.deinit(allocator);
@@ -112,7 +112,7 @@ pub const CsvReader = struct {
         self.buffer.clearRetainingCapacity();
 
         while (true) {
-            const byte = self.reader.readByte() catch |err| switch (err) {
+            const byte = self.reader.takeByte() catch |err| switch (err) {
                 error.EndOfStream => {
                     if (self.buffer.items.len > 0 or fields.items.len > 0) {
                         const field = try allocator.dupe(u8, self.buffer.items[field_start..]);
@@ -121,17 +121,15 @@ pub const CsvReader = struct {
                     }
                     return null;
                 },
-                else => return err,
             };
 
             if (in_quotes) {
                 if (byte == '"') {
-                    const next = self.reader.readByte() catch |err| switch (err) {
+                    const next = self.reader.takeByte() catch |err| switch (err) {
                         error.EndOfStream => {
                             in_quotes = false;
                             continue;
                         },
-                        else => return err,
                     };
 
                     if (next == '"') {
@@ -179,7 +177,7 @@ pub const CsvReader = struct {
 
 ```zig
 /// Write TSV (tab-separated values)
-pub fn writeTsv(writer: std.io.AnyWriter, rows: []const []const []const u8) !void {
+pub fn writeTsv(writer: *std.Io.Writer, rows: []const []const []const u8) !void {
     var csv = CsvWriter.init(writer);
     csv.delimiter = '\t';
 
@@ -205,10 +203,10 @@ Basic CSV writer implementation:
 
 ```zig
 pub const CsvWriter = struct {
-    writer: std.io.AnyWriter,
+    writer: *std.Io.Writer,
     delimiter: u8 = ',',
 
-    pub fn init(writer: std.io.AnyWriter) CsvWriter {
+    pub fn init(writer: *std.Io.Writer) CsvWriter {
         return .{ .writer = writer };
     }
 
@@ -255,15 +253,15 @@ CSV reader with proper parsing:
 ```zig
 pub const CsvReader = struct {
     allocator: std.mem.Allocator,
-    reader: std.io.AnyReader,
+    reader: *std.Io.Reader,
     delimiter: u8 = ',',
     buffer: std.ArrayList(u8),
 
-    pub fn init(allocator: std.mem.Allocator, reader: std.io.AnyReader) CsvReader {
+    pub fn init(allocator: std.mem.Allocator, reader: *std.Io.Reader) CsvReader {
         return .{
             .allocator = allocator,
             .reader = reader,
-            .buffer = std.ArrayList(u8).init(allocator),
+            .buffer = std.ArrayList(u8).empty,
         };
     }
 
@@ -272,7 +270,7 @@ pub const CsvReader = struct {
     }
 
     pub fn readRow(self: *CsvReader, allocator: std.mem.Allocator) !?[][]u8 {
-        var fields: std.ArrayList([]u8) = .{};
+        var fields: std.ArrayList([]u8) = .empty;
         errdefer {
             for (fields.items) |field| allocator.free(field);
             fields.deinit(allocator);
@@ -283,7 +281,7 @@ pub const CsvReader = struct {
         self.buffer.clearRetainingCapacity();
 
         while (true) {
-            const byte = self.reader.readByte() catch |err| switch (err) {
+            const byte = self.reader.takeByte() catch |err| switch (err) {
                 error.EndOfStream => {
                     if (self.buffer.items.len > 0 or fields.items.len > 0) {
                         const field = try allocator.dupe(u8, self.buffer.items[field_start..]);
@@ -292,18 +290,16 @@ pub const CsvReader = struct {
                     }
                     return null;
                 },
-                else => return err,
             };
 
             if (in_quotes) {
                 if (byte == '"') {
                     // Check for escaped quote
-                    const next = self.reader.readByte() catch |err| switch (err) {
+                    const next = self.reader.takeByte() catch |err| switch (err) {
                         error.EndOfStream => {
                             in_quotes = false;
                             continue;
                         },
-                        else => return err,
                     };
 
                     if (next == '"') {
@@ -355,7 +351,7 @@ Parse CSV with header row:
 ```zig
 pub fn readCsvWithHeaders(
     allocator: std.mem.Allocator,
-    reader: std.io.AnyReader,
+    reader: *std.Io.Reader,
 ) !struct {
     headers: [][]u8,
     rows: [][][]u8,
@@ -371,7 +367,7 @@ pub fn readCsvWithHeaders(
     }
 
     // Read data rows
-    var rows: std.ArrayList([][]u8) = .{};
+    var rows: std.ArrayList([][]u8) = .empty;
     errdefer {
         for (rows.items) |row| {
             for (row) |field| allocator.free(field);
@@ -398,7 +394,7 @@ Convert structs to CSV rows:
 ```zig
 pub fn writeStructs(
     comptime T: type,
-    writer: std.io.AnyWriter,
+    writer: *std.Io.Writer,
     items: []const T,
     allocator: std.mem.Allocator,
 ) !void {
@@ -432,7 +428,7 @@ pub fn writeStructs(
 Support TSV (tab-separated) and other formats:
 
 ```zig
-pub fn writeTsv(writer: std.io.AnyWriter, rows: []const []const []const u8) !void {
+pub fn writeTsv(writer: *std.Io.Writer, rows: []const []const []const u8) !void {
     var csv = CsvWriter.init(writer);
     csv.delimiter = '\t';
 
@@ -447,18 +443,16 @@ pub fn writeTsv(writer: std.io.AnyWriter, rows: []const []const []const u8) !voi
 Process CSV files without loading entire file into memory:
 
 ```zig
-pub fn processLargeCsv(
-    allocator: std.mem.Allocator,
+pub fn processLargeCsv(io: std.Io, allocator: std.mem.Allocator,
     path: []const u8,
-    processor: *const fn ([][]const u8) anyerror!void,
-) !void {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+    processor: *const fn ([][]const u8) anyerror!void,) !void {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     var reader_buffer: [8192]u8 = undefined;
-    var file_reader = file.reader(&reader_buffer);
+    var file_reader = file.reader(io, &reader_buffer);
 
-    var csv_reader = CsvReader.init(allocator, file_reader.any());
+    var csv_reader = CsvReader.init(allocator, file_reader);
     defer csv_reader.deinit();
 
     while (try csv_reader.readRow(allocator)) |row| {
@@ -560,7 +554,7 @@ pub fn parsePerson(row: []const []const u8) !Person {
 ```zig
 pub fn exportQueryToCsv(
     query_results: []const QueryRow,
-    writer: std.io.AnyWriter,
+    writer: *std.Io.Writer,
 ) !void {
     var csv = CsvWriter.init(writer);
 
@@ -620,10 +614,10 @@ const std = @import("std");
 // ANCHOR: csv_writer
 /// CSV Writer
 pub const CsvWriter = struct {
-    writer: std.io.AnyWriter,
+    writer: *std.Io.Writer,
     delimiter: u8 = ',',
 
-    pub fn init(writer: std.io.AnyWriter) CsvWriter {
+    pub fn init(writer: *std.Io.Writer) CsvWriter {
         return .{ .writer = writer };
     }
 
@@ -667,15 +661,15 @@ pub const CsvWriter = struct {
 /// CSV Reader
 pub const CsvReader = struct {
     allocator: std.mem.Allocator,
-    reader: std.io.AnyReader,
+    reader: *std.Io.Reader,
     delimiter: u8 = ',',
     buffer: std.ArrayList(u8),
 
-    pub fn init(allocator: std.mem.Allocator, reader: std.io.AnyReader) CsvReader {
+    pub fn init(allocator: std.mem.Allocator, reader: *std.Io.Reader) CsvReader {
         return .{
             .allocator = allocator,
             .reader = reader,
-            .buffer = .{},
+            .buffer = .empty,
         };
     }
 
@@ -684,7 +678,7 @@ pub const CsvReader = struct {
     }
 
     pub fn readRow(self: *CsvReader, allocator: std.mem.Allocator) !?[][]u8 {
-        var fields: std.ArrayList([]u8) = .{};
+        var fields: std.ArrayList([]u8) = .empty;
         errdefer {
             for (fields.items) |field| allocator.free(field);
             fields.deinit(allocator);
@@ -695,7 +689,7 @@ pub const CsvReader = struct {
         self.buffer.clearRetainingCapacity();
 
         while (true) {
-            const byte = self.reader.readByte() catch |err| switch (err) {
+            const byte = self.reader.takeByte() catch |err| switch (err) {
                 error.EndOfStream => {
                     if (self.buffer.items.len > 0 or fields.items.len > 0) {
                         const field = try allocator.dupe(u8, self.buffer.items[field_start..]);
@@ -709,7 +703,7 @@ pub const CsvReader = struct {
 
             if (in_quotes) {
                 if (byte == '"') {
-                    const next = self.reader.readByte() catch |err| switch (err) {
+                    const next = self.reader.takeByte() catch |err| switch (err) {
                         error.EndOfStream => {
                             in_quotes = false;
                             continue;
@@ -760,7 +754,7 @@ pub const CsvReader = struct {
 
 // ANCHOR: tsv_variant
 /// Write TSV (tab-separated values)
-pub fn writeTsv(writer: std.io.AnyWriter, rows: []const []const []const u8) !void {
+pub fn writeTsv(writer: *std.Io.Writer, rows: []const []const []const u8) !void {
     var csv = CsvWriter.init(writer);
     csv.delimiter = '\t';
 
@@ -774,15 +768,15 @@ pub fn writeTsv(writer: std.io.AnyWriter, rows: []const []const []const u8) !voi
 
 test "write simple csv" {
     var buffer: [1024]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    var stream = std.Io.Writer.fixed(&buffer);
 
-    var csv = CsvWriter.init(stream.writer().any());
+    var csv = CsvWriter.init(&stream);
 
     try csv.writeRow(&.{ "Name", "Age", "City" });
     try csv.writeRow(&.{ "Alice", "30", "New York" });
     try csv.writeRow(&.{ "Bob", "25", "San Francisco" });
 
-    const result = stream.getWritten();
+    const result = stream.buffered();
     try std.testing.expectEqualStrings(
         "Name,Age,City\nAlice,30,New York\nBob,25,San Francisco\n",
         result,
@@ -791,14 +785,14 @@ test "write simple csv" {
 
 test "write csv with quotes" {
     var buffer: [1024]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    var stream = std.Io.Writer.fixed(&buffer);
 
-    var csv = CsvWriter.init(stream.writer().any());
+    var csv = CsvWriter.init(&stream);
 
     try csv.writeRow(&.{ "Name", "Description" });
     try csv.writeRow(&.{ "Item", "Contains, comma" });
 
-    const result = stream.getWritten();
+    const result = stream.buffered();
     try std.testing.expectEqualStrings(
         "Name,Description\nItem,\"Contains, comma\"\n",
         result,
@@ -807,14 +801,14 @@ test "write csv with quotes" {
 
 test "write csv with escaped quotes" {
     var buffer: [1024]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    var stream = std.Io.Writer.fixed(&buffer);
 
-    var csv = CsvWriter.init(stream.writer().any());
+    var csv = CsvWriter.init(&stream);
 
     try csv.writeRow(&.{ "Title", "Quote" });
     try csv.writeRow(&.{ "Book", "He said \"Hello\"" });
 
-    const result = stream.getWritten();
+    const result = stream.buffered();
     try std.testing.expectEqualStrings(
         "Title,Quote\nBook,\"He said \"\"Hello\"\"\"\n",
         result,
@@ -823,14 +817,14 @@ test "write csv with escaped quotes" {
 
 test "write csv with newlines" {
     var buffer: [1024]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    var stream = std.Io.Writer.fixed(&buffer);
 
-    var csv = CsvWriter.init(stream.writer().any());
+    var csv = CsvWriter.init(&stream);
 
     try csv.writeRow(&.{ "Field", "Value" });
     try csv.writeRow(&.{ "Multi", "Line\nValue" });
 
-    const result = stream.getWritten();
+    const result = stream.buffered();
     try std.testing.expectEqualStrings(
         "Field,Value\nMulti,\"Line\nValue\"\n",
         result,
@@ -839,14 +833,14 @@ test "write csv with newlines" {
 
 test "write empty fields" {
     var buffer: [1024]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    var stream = std.Io.Writer.fixed(&buffer);
 
-    var csv = CsvWriter.init(stream.writer().any());
+    var csv = CsvWriter.init(&stream);
 
     try csv.writeRow(&.{ "A", "", "C" });
     try csv.writeRow(&.{ "", "B", "" });
 
-    const result = stream.getWritten();
+    const result = stream.buffered();
     try std.testing.expectEqualStrings(
         "A,,C\n,B,\n",
         result,
@@ -855,10 +849,10 @@ test "write empty fields" {
 
 test "read simple csv" {
     const data = "Name,Age,City\nAlice,30,New York\nBob,25,San Francisco\n";
-    var stream = std.io.fixedBufferStream(data);
+    var stream = std.Io.Reader.fixed(data);
 
     const allocator = std.testing.allocator;
-    var csv = CsvReader.init(allocator, stream.reader().any());
+    var csv = CsvReader.init(allocator, &stream);
     defer csv.deinit();
 
     // Read header
@@ -898,10 +892,10 @@ test "read simple csv" {
 
 test "read csv with quoted fields" {
     const data = "Name,Description\nItem,\"Contains, comma\"\n";
-    var stream = std.io.fixedBufferStream(data);
+    var stream = std.Io.Reader.fixed(data);
 
     const allocator = std.testing.allocator;
-    var csv = CsvReader.init(allocator, stream.reader().any());
+    var csv = CsvReader.init(allocator, &stream);
     defer csv.deinit();
 
     // Skip header
@@ -923,10 +917,10 @@ test "read csv with quoted fields" {
 
 test "read csv with escaped quotes" {
     const data = "Title,Quote\nBook,\"He said \"\"Hello\"\"\"\n";
-    var stream = std.io.fixedBufferStream(data);
+    var stream = std.Io.Reader.fixed(data);
 
     const allocator = std.testing.allocator;
-    var csv = CsvReader.init(allocator, stream.reader().any());
+    var csv = CsvReader.init(allocator, &stream);
     defer csv.deinit();
 
     // Skip header
@@ -948,10 +942,10 @@ test "read csv with escaped quotes" {
 
 test "read csv with newlines in quotes" {
     const data = "Field,Value\nMulti,\"Line\nValue\"\n";
-    var stream = std.io.fixedBufferStream(data);
+    var stream = std.Io.Reader.fixed(data);
 
     const allocator = std.testing.allocator;
-    var csv = CsvReader.init(allocator, stream.reader().any());
+    var csv = CsvReader.init(allocator, &stream);
     defer csv.deinit();
 
     // Skip header
@@ -973,10 +967,10 @@ test "read csv with newlines in quotes" {
 
 test "read empty csv" {
     const data = "";
-    var stream = std.io.fixedBufferStream(data);
+    var stream = std.Io.Reader.fixed(data);
 
     const allocator = std.testing.allocator;
-    var csv = CsvReader.init(allocator, stream.reader().any());
+    var csv = CsvReader.init(allocator, &stream);
     defer csv.deinit();
 
     const row = try csv.readRow(allocator);
@@ -985,10 +979,10 @@ test "read empty csv" {
 
 test "read csv with empty fields" {
     const data = "A,,C\n,B,\n";
-    var stream = std.io.fixedBufferStream(data);
+    var stream = std.Io.Reader.fixed(data);
 
     const allocator = std.testing.allocator;
-    var csv = CsvReader.init(allocator, stream.reader().any());
+    var csv = CsvReader.init(allocator, &stream);
     defer csv.deinit();
 
     const row1 = (try csv.readRow(allocator)).?;
@@ -1005,16 +999,16 @@ test "read csv with empty fields" {
 
 test "write tsv" {
     var buffer: [1024]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    var stream = std.Io.Writer.fixed(&buffer);
 
     const rows = [_][]const []const u8{
         &.{ "Name", "Age" },
         &.{ "Alice", "30" },
     };
 
-    try writeTsv(stream.writer().any(), &rows);
+    try writeTsv(&stream, &rows);
 
-    const result = stream.getWritten();
+    const result = stream.buffered();
     try std.testing.expectEqualStrings("Name\tAge\nAlice\t30\n", result);
 }
 
@@ -1023,17 +1017,17 @@ test "roundtrip csv" {
 
     // Write CSV
     var write_buffer: [1024]u8 = undefined;
-    var write_stream = std.io.fixedBufferStream(&write_buffer);
+    var write_stream = std.Io.Writer.fixed(&write_buffer);
 
-    var writer = CsvWriter.init(write_stream.writer().any());
+    var writer = CsvWriter.init(&write_stream);
     try writer.writeRow(&.{ "Name", "Value" });
     try writer.writeRow(&.{ "Test", "Data" });
 
-    const written = write_stream.getWritten();
+    const written = write_stream.buffered();
 
     // Read CSV back
-    var read_stream = std.io.fixedBufferStream(written);
-    var reader = CsvReader.init(allocator, read_stream.reader().any());
+    var read_stream = std.Io.Reader.fixed(written);
+    var reader = CsvReader.init(allocator, &read_stream);
     defer reader.deinit();
 
     const row1 = (try reader.readRow(allocator)).?;
@@ -1054,21 +1048,21 @@ test "roundtrip csv" {
 
 test "single field csv" {
     var buffer: [128]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    var stream = std.Io.Writer.fixed(&buffer);
 
-    var csv = CsvWriter.init(stream.writer().any());
+    var csv = CsvWriter.init(&stream);
     try csv.writeRow(&.{"Single"});
 
-    const result = stream.getWritten();
+    const result = stream.buffered();
     try std.testing.expectEqualStrings("Single\n", result);
 }
 
 test "read single field csv" {
     const data = "Single\n";
-    var stream = std.io.fixedBufferStream(data);
+    var stream = std.Io.Reader.fixed(data);
 
     const allocator = std.testing.allocator;
-    var csv = CsvReader.init(allocator, stream.reader().any());
+    var csv = CsvReader.init(allocator, &stream);
     defer csv.deinit();
 
     const row = (try csv.readRow(allocator)).?;
@@ -1083,13 +1077,13 @@ test "read single field csv" {
 
 test "csv with unicode" {
     var buffer: [1024]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    var stream = std.Io.Writer.fixed(&buffer);
 
-    var csv = CsvWriter.init(stream.writer().any());
+    var csv = CsvWriter.init(&stream);
     try csv.writeRow(&.{ "Name", "Nom", "名前" });
     try csv.writeRow(&.{ "Hello", "Bonjour", "こんにちは" });
 
-    const result = stream.getWritten();
+    const result = stream.buffered();
     try std.testing.expect(std.mem.indexOf(u8, result, "名前") != null);
     try std.testing.expect(std.mem.indexOf(u8, result, "こんにちは") != null);
 }
@@ -1131,7 +1125,7 @@ pub fn stringifyAlloc(allocator: std.mem.Allocator, value: anytype) ![]u8 {
 }
 
 /// Pretty print JSON
-pub fn prettyPrint(value: anytype, writer: std.io.AnyWriter) !void {
+pub fn prettyPrint(value: anytype, writer: *std.Io.Writer) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -1169,7 +1163,6 @@ pub fn parseJsonSafe(
             std.debug.print("Invalid JSON syntax\n", .{});
             return error.InvalidJson;
         },
-        else => return err,
     };
 }
 ```
@@ -1217,25 +1210,27 @@ test "parse user" {
 Serialize structs to JSON:
 
 ```zig
-pub fn stringifyToBuffer(value: anytype, buffer: []u8) ![]const u8 {
-    var stream = std.io.fixedBufferStream(buffer);
-    try std.json.stringify(value, .{}, stream.writer());
-    return stream.getWritten();
+pub fn stringifyToBuffer(io: std.Io, value: anytype, buffer: []u8) ![]const u8 {
+    var stream = std.Io.Writer.fixed(&buffer);
+    try std.json.stringify(value, .{}, &stream);
+    return stream.buffered();
 }
 
 pub fn stringifyAlloc(allocator: std.mem.Allocator, value: anytype) ![]u8 {
-    var list: std.ArrayList(u8) = .{};
+    var list: std.ArrayList(u8) = .empty;
     errdefer list.deinit(allocator);
 
-    try std.json.stringify(value, .{}, list.writer(allocator));
+    var list_aw: std.Io.Writer.Allocating = .fromArrayList(allocator, &list);
+    try std.json.stringify(value, .{}, &list_aw.writer);
     return try list.toOwnedSlice(allocator);
 }
 
 test "stringify to buffer" {
+    const io = std.testing.io;
     const data = .{ .x = 10, .y = 20 };
 
     var buffer: [128]u8 = undefined;
-    const result = try stringifyToBuffer(data, &buffer);
+    const result = try stringifyToBuffer(io, data, &buffer);
 
     try std.testing.expect(std.mem.indexOf(u8, result, "10") != null);
     try std.testing.expect(std.mem.indexOf(u8, result, "20") != null);
@@ -1249,7 +1244,7 @@ Format JSON with indentation:
 ```zig
 pub fn prettyPrint(
     value: anytype,
-    writer: std.io.AnyWriter,
+    writer: *std.Io.Writer,
 ) !void {
     try std.json.stringify(value, .{
         .whitespace = .indent_2,
@@ -1257,17 +1252,18 @@ pub fn prettyPrint(
 }
 
 test "pretty print" {
+    const io = std.testing.io;
     const data = .{
         .name = "Test",
         .items = .{ 1, 2, 3 },
     };
 
     var buffer: [256]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    var stream = std.Io.Writer.fixed(&buffer);
 
-    try prettyPrint(data, stream.writer().any());
+    try prettyPrint(data, &stream);
 
-    const result = stream.getWritten();
+    const result = stream.buffered();
     // Should contain newlines and indentation
     try std.testing.expect(std.mem.indexOf(u8, result, "\n") != null);
 }
@@ -1416,14 +1412,15 @@ const Point = struct {
 };
 
 test "custom serialization" {
+    const io = std.testing.io;
     const point = Point{ .x = 10.5, .y = 20.3 };
 
     var buffer: [128]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    var stream = std.Io.Writer.fixed(&buffer);
 
-    try std.json.stringify(point, .{}, stream.writer());
+    try std.json.stringify(point, .{}, &stream);
 
-    const result = stream.getWritten();
+    const result = stream.buffered();
     try std.testing.expect(std.mem.indexOf(u8, result, "10.5") != null);
 }
 ```
@@ -1443,7 +1440,6 @@ const Color = struct {
         source: anytype,
         options: std.json.ParseOptions,
     ) !Color {
-        _ = allocator;
         _ = options;
 
         const value = try std.json.innerParse(std.json.Value, allocator, source, options);
@@ -1473,7 +1469,7 @@ Parse large JSON files incrementally:
 ```zig
 pub fn parseJsonStream(
     allocator: std.mem.Allocator,
-    reader: std.io.AnyReader,
+    reader: *std.Io.Reader,
 ) !std.json.Parsed(std.json.Value) {
     const json_text = try reader.readAllAlloc(allocator, 1024 * 1024);
     defer allocator.free(json_text);
@@ -1510,7 +1506,6 @@ pub fn parseJsonSafe(
             std.debug.print("Unexpected JSON token\n", .{});
             return error.InvalidJson;
         },
-        else => return err,
     };
 }
 ```
@@ -1607,17 +1602,18 @@ JSON automatically handles escaping:
 
 ```zig
 test "special characters" {
+    const io = std.testing.io;
     const data = .{
         .message = "Line 1\nLine 2\tTabbed",
         .quote = "He said \"Hello\"",
     };
 
     var buffer: [256]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    var stream = std.Io.Writer.fixed(&buffer);
 
-    try std.json.stringify(data, .{}, stream.writer());
+    try std.json.stringify(data, .{}, &stream);
 
-    const result = stream.getWritten();
+    const result = stream.buffered();
     try std.testing.expect(std.mem.indexOf(u8, result, "\\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, result, "\\\"") != null);
 }
@@ -1651,11 +1647,13 @@ const p2 = try std.json.parseFromSlice(T, allocator, json, .{}); // Leak!
 
 **Configuration files:**
 ```zig
-pub fn loadConfig(allocator: std.mem.Allocator, path: []const u8) !Config {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn loadConfig(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !Config {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    const json_text = try file.readToEndAlloc(allocator, 1024 * 1024);
+    var json_text_buffer: [4096]u8 = undefined;
+    var json_text_reader = file.reader(io, &json_text_buffer);
+    const json_text = try json_text_reader.interface.allocRemaining(allocator, .limited(1024 * 1024));
     defer allocator.free(json_text);
 
     const parsed = try std.json.parseFromSlice(Config, allocator, json_text, .{});
@@ -1693,7 +1691,7 @@ pub fn parseJsonLines(
     allocator: std.mem.Allocator,
     text: []const u8,
 ) ![]T {
-    var results: std.ArrayList(T) = .{};
+    var results: std.ArrayList(T) = .empty;
     errdefer results.deinit(allocator);
 
     var lines = std.mem.splitScalar(u8, text, '\n');
@@ -1795,7 +1793,7 @@ pub fn stringifyAlloc(allocator: std.mem.Allocator, value: anytype) ![]u8 {
 }
 
 /// Pretty print JSON
-pub fn prettyPrint(value: anytype, writer: std.io.AnyWriter) !void {
+pub fn prettyPrint(value: anytype, writer: *std.Io.Writer) !void {
     var arena = std.heap.ArenaAllocator.init(std.heap.page_allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -1919,11 +1917,11 @@ test "pretty print json" {
     };
 
     var buffer: [256]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buffer);
+    var stream = std.Io.Writer.fixed(&buffer);
 
-    try prettyPrint(data, stream.writer().any());
+    try prettyPrint(data, &stream);
 
-    const result = stream.getWritten();
+    const result = stream.buffered();
     try std.testing.expect(std.mem.indexOf(u8, result, "\n") != null);
 }
 
@@ -2339,7 +2337,7 @@ pub fn findAllElements(
     xml: []const u8,
     tag: []const u8,
 ) ![][]const u8 {
-    var results: std.ArrayList([]const u8) = .{};
+    var results: std.ArrayList([]const u8) = .empty;
     errdefer results.deinit(allocator);
 
     const open_tag = try std.fmt.allocPrint(allocator, "<{s}", .{tag});
@@ -2470,7 +2468,7 @@ pub fn findAllElements(
     xml: []const u8,
     tag: []const u8,
 ) ![][]const u8 {
-    var results: std.ArrayList([]const u8) = .{};
+    var results: std.ArrayList([]const u8) = .empty;
     errdefer results.deinit(allocator);
 
     const open_tag = try std.fmt.allocPrint(allocator, "<{s}", .{tag});
@@ -2559,7 +2557,7 @@ Handle XML entities:
 
 ```zig
 pub fn unescapeXml(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;
@@ -2641,28 +2639,29 @@ test "validate xml" {
 Load and parse XML files:
 
 ```zig
-pub fn parseXmlFile(
-    allocator: std.mem.Allocator,
-    path: []const u8,
-) ![]u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn parseXmlFile(io: std.Io, allocator: std.mem.Allocator,
+    path: []const u8,) ![]u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    const xml_content = try file.readToEndAlloc(allocator, 10 * 1024 * 1024);
+    var xml_content_buffer: [4096]u8 = undefined;
+    var xml_content_reader = file.reader(io, &xml_content_buffer);
+    const xml_content = try xml_content_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024));
     return xml_content;
 }
 
 test "read xml file" {
+    const io = std.testing.io;
     const xml_content = "<test>content</test>";
 
     // Create temporary file
     const tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    var tmp_file = try tmp_dir.dir.createFile("test.xml", .{});
-    defer tmp_file.close();
+    var tmp_file = try tmp_dir.dir.createFile(io, "test.xml", .{});
+    defer tmp_file.close(io);
 
-    try tmp_file.writeAll(xml_content);
+    try tmp_file.writeStreamingAll(io, xml_content);
 
     // Read it back
     const path = try std.fs.path.join(
@@ -2671,7 +2670,7 @@ test "read xml file" {
     );
     defer std.testing.allocator.free(path);
 
-    const content = try parseXmlFile(std.testing.allocator, path);
+    const content = try parseXmlFile(io, std.testing.allocator, path);
     defer std.testing.allocator.free(content);
 
     try std.testing.expectEqualStrings(xml_content, content);
@@ -2786,7 +2785,7 @@ pub fn extractData(allocator: std.mem.Allocator, xml: []const u8) ![]Data {
     const items = try findAllElements(allocator, xml, "item");
     defer allocator.free(items);
 
-    var results: std.ArrayList(Data) = .{};
+    var results: std.ArrayList(Data) = .empty;
     errdefer results.deinit(allocator);
 
     for (items) |item| {
@@ -2990,7 +2989,7 @@ pub fn findAllElements(
     xml: []const u8,
     tag: []const u8,
 ) ![][]const u8 {
-    var results: std.ArrayList([]const u8) = .{};
+    var results: std.ArrayList([]const u8) = .empty;
     errdefer results.deinit(allocator);
 
     const open_tag = try std.fmt.allocPrint(allocator, "<{s}", .{tag});
@@ -3031,7 +3030,7 @@ pub fn findAllElements(
 
 /// Unescape XML entities
 pub fn unescapeXml(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;
@@ -3088,14 +3087,14 @@ pub fn isWellFormed(xml: []const u8) bool {
 }
 
 /// Read XML from file
-pub fn parseXmlFile(
-    allocator: std.mem.Allocator,
-    path: []const u8,
-) ![]u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn parseXmlFile(io: std.Io, allocator: std.mem.Allocator,
+    path: []const u8,) ![]u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    const xml_content = try file.readToEndAlloc(allocator, 10 * 1024 * 1024);
+    var xml_content_buffer: [4096]u8 = undefined;
+    var xml_content_reader = file.reader(io, &xml_content_buffer);
+    const xml_content = try xml_content_reader.interface.allocRemaining(allocator, .limited(10 * 1024 * 1024));
     return xml_content;
 }
 
@@ -3309,28 +3308,32 @@ test "validate xml with declaration" {
 }
 
 test "read xml file" {
+    const io = std.testing.io;
     const xml_content = "<test>content</test>";
 
     // Create temporary file
     var tmp_dir = std.testing.tmpDir(.{});
     defer tmp_dir.cleanup();
 
-    var tmp_file = try tmp_dir.dir.createFile("test.xml", .{});
-    try tmp_file.writeAll(xml_content);
-    tmp_file.close();
+    var tmp_file = try tmp_dir.dir.createFile(io, "test.xml", .{});
+    try tmp_file.writeStreamingAll(io, xml_content);
+    tmp_file.close(io);
 
     // Read it back using the tmp_dir
-    const file = try tmp_dir.dir.openFile("test.xml", .{});
-    defer file.close();
+    const file = try tmp_dir.dir.openFile(io, "test.xml", .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(std.testing.allocator, 10 * 1024 * 1024);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(std.testing.allocator, .limited(10 * 1024 * 1024));
     defer std.testing.allocator.free(content);
 
     try std.testing.expectEqualStrings(xml_content, content);
 }
 
 test "read xml file not found" {
-    const result = parseXmlFile(std.testing.allocator, "nonexistent.xml");
+    const io = std.testing.io;
+    const result = parseXmlFile(io, std.testing.allocator, "nonexistent.xml");
     try std.testing.expectError(error.FileNotFound, result);
 }
 
@@ -3506,12 +3509,12 @@ You need to parse very large XML files that don't fit comfortably in memory, or 
 ```zig
 /// Streaming XML parser for processing large files
 pub const StreamingXmlParser = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     buffer: [4096]u8,
     pos: usize,
     end: usize,
 
-    pub fn init(file: std.fs.File) StreamingXmlParser {
+    pub fn init(file: std.Io.File) StreamingXmlParser {
         return .{
             .file = file,
             .buffer = undefined,
@@ -3520,12 +3523,12 @@ pub const StreamingXmlParser = struct {
         };
     }
 
-    pub fn next(self: *StreamingXmlParser, allocator: std.mem.Allocator) !XmlEvent {
+    pub fn next(self: *StreamingXmlParser, io: std.Io, allocator: std.mem.Allocator) !XmlEvent {
         while (true) {
             // Refill buffer if needed
             if (self.pos >= self.end) {
-                self.end = try self.file.read(&self.buffer);
-                self.pos = 0;
+                self.end = try self.file.readPositionalAll(io, &self.buffer, 0);
+                self.end = 0;
                 if (self.end == 0) {
                     return XmlEvent.eof;
                 }
@@ -3614,7 +3617,7 @@ pub const StreamingXmlParser = struct {
 
 ```zig
 /// Process large XML file counting elements
-pub fn processLargeXml(file: std.fs.File, allocator: std.mem.Allocator) !usize {
+pub fn processLargeXml(file: std.Io.File, allocator: std.mem.Allocator) !usize {
     var parser = StreamingXmlParser.init(file);
     var count: usize = 0;
 
@@ -3645,12 +3648,12 @@ pub fn processLargeXml(file: std.fs.File, allocator: std.mem.Allocator) !usize {
 ```zig
 /// Extract text content from specific elements
 pub fn extractElements(
-    file: std.fs.File,
+    file: std.Io.File,
     allocator: std.mem.Allocator,
     target_name: []const u8,
 ) !std.ArrayList([]const u8) {
     var parser = StreamingXmlParser.init(file);
-    var results = std.ArrayList([]const u8){};
+    var results = std.ArrayList([]const u8).empty;
     errdefer {
         for (results.items) |item| {
             allocator.free(item);
@@ -3690,6 +3693,7 @@ pub fn extractElements(
 }
 ```
 
+```zig
             if (self.pos >= self.end) continue;
 
             // Check for tag start
@@ -3750,16 +3754,16 @@ pub fn extractElements(
 };
 
 test "streaming XML parser" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const xml_data = "<root><item>value</item></root>";
 
-    const file = try std.fs.cwd().createFile("/tmp/test_stream.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_stream.xml") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_stream.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_stream.xml") catch {};
 
-    try file.writeAll(xml_data);
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, xml_data);
 
     var parser = StreamingXmlParser.init(file);
 
@@ -3785,7 +3789,7 @@ test "streaming XML parser" {
 Memory-efficient processing:
 
 ```zig
-pub fn processLargeXml(file: std.fs.File, allocator: std.mem.Allocator) !usize {
+pub fn processLargeXml(file: std.Io.File, allocator: std.mem.Allocator) !usize {
     var parser = StreamingXmlParser.init(file);
     var count: usize = 0;
 
@@ -3811,14 +3815,14 @@ pub fn processLargeXml(file: std.fs.File, allocator: std.mem.Allocator) !usize {
 }
 
 test "process large XML" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const file = try std.fs.cwd().createFile("/tmp/large.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/large.xml") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/large.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/large.xml") catch {};
 
-    try file.writeAll("<root><a/><b/><c/></root>");
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, "<root><a/><b/><c/></root>");
 
     const count = try processLargeXml(file, allocator);
     try std.testing.expectEqual(@as(usize, 4), count);
@@ -3831,12 +3835,12 @@ Filter while parsing:
 
 ```zig
 pub fn extractElements(
-    file: std.fs.File,
+    file: std.Io.File,
     allocator: std.mem.Allocator,
     target_name: []const u8,
 ) !std.ArrayList([]const u8) {
     var parser = StreamingXmlParser.init(file);
-    var results = std.ArrayList([]const u8){};
+    var results = std.ArrayList([]const u8).empty;
     errdefer {
         for (results.items) |item| {
             allocator.free(item);
@@ -3876,14 +3880,14 @@ pub fn extractElements(
 }
 
 test "extract specific elements" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const file = try std.fs.cwd().createFile("/tmp/extract.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/extract.xml") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/extract.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/extract.xml") catch {};
 
-    try file.writeAll("<root><item>A</item><other>B</other><item>C</item></root>");
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, "<root><item>A</item><other>B</other><item>C</item></root>");
 
     var results = try extractElements(file, allocator, "item");
     defer {
@@ -3903,7 +3907,7 @@ Process without storing:
 
 ```zig
 pub fn countElements(
-    file: std.fs.File,
+    file: std.Io.File,
     allocator: std.mem.Allocator,
     element_name: []const u8,
 ) !usize {
@@ -3934,14 +3938,14 @@ pub fn countElements(
 }
 
 test "count elements" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const file = try std.fs.cwd().createFile("/tmp/count.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/count.xml") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/count.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/count.xml") catch {};
 
-    try file.writeAll("<root><item/><item/><item/></root>");
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, "<root><item/><item/><item/></root>");
 
     const count = try countElements(file, allocator, "item");
     try std.testing.expectEqual(@as(usize, 3), count);
@@ -3957,14 +3961,14 @@ pub fn StreamingXmlParserBuffered(comptime buffer_size: usize) type {
     return struct {
         const Self = @This();
 
-        reader: std.fs.File.Reader,
+        reader: std.Io.File.Reader,
         buffer: [buffer_size]u8,
         pos: usize,
         end: usize,
 
-        pub fn init(file: std.fs.File) Self {
+        pub fn init(io: std.Io, file: std.Io.File) Self {
             return .{
-                .reader = file.reader(),
+                .reader = file.reader(io),
                 .buffer = undefined,
                 .pos = 0,
                 .end = 0,
@@ -3973,7 +3977,6 @@ pub fn StreamingXmlParserBuffered(comptime buffer_size: usize) type {
 
         pub fn next(self: *Self, allocator: std.mem.Allocator) !XmlEvent {
             // Same implementation as StreamingXmlParser
-            _ = allocator;
             _ = self;
             return XmlEvent.eof;
         }
@@ -3981,10 +3984,11 @@ pub fn StreamingXmlParserBuffered(comptime buffer_size: usize) type {
 }
 
 test "buffered parser" {
-    const Parser = StreamingXmlParserBuffered(8192);
-    const file = try std.fs.cwd().createFile("/tmp/buffered.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/buffered.xml") catch {};
+    const io = std.testing.io;
+    const Parser = StreamingXmlParserBuffered(io, 8192);
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/buffered.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/buffered.xml") catch {};
 
     var parser = Parser.init(file);
     _ = parser;
@@ -4027,14 +4031,14 @@ pub fn processXmlChunk(
 }
 
 test "process in chunks" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const file = try std.fs.cwd().createFile("/tmp/chunks.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/chunks.xml") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/chunks.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/chunks.xml") catch {};
 
-    try file.writeAll("<root><a/><b/><c/></root>");
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, "<root><a/><b/><c/></root>");
 
     var parser = StreamingXmlParser.init(file);
 
@@ -4052,7 +4056,7 @@ test "process in chunks" {
 
 **Error handling:**
 ```zig
-pub fn safeProcessXml(file: std.fs.File, allocator: std.mem.Allocator) !void {
+pub fn safeProcessXml(file: std.Io.File, allocator: std.mem.Allocator) !void {
     var parser = StreamingXmlParser.init(file);
 
     while (true) {
@@ -4121,12 +4125,12 @@ pub const XmlEvent = union(enum) {
 // ANCHOR: streaming_parser
 /// Streaming XML parser for processing large files
 pub const StreamingXmlParser = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     buffer: [4096]u8,
     pos: usize,
     end: usize,
 
-    pub fn init(file: std.fs.File) StreamingXmlParser {
+    pub fn init(file: std.Io.File) StreamingXmlParser {
         return .{
             .file = file,
             .buffer = undefined,
@@ -4135,12 +4139,12 @@ pub const StreamingXmlParser = struct {
         };
     }
 
-    pub fn next(self: *StreamingXmlParser, allocator: std.mem.Allocator) !XmlEvent {
+    pub fn next(self: *StreamingXmlParser, io: std.Io, allocator: std.mem.Allocator) !XmlEvent {
         while (true) {
             // Refill buffer if needed
             if (self.pos >= self.end) {
-                self.end = try self.file.read(&self.buffer);
-                self.pos = 0;
+                self.end = try self.file.readPositionalAll(io, &self.buffer, 0);
+                self.end = 0;
                 if (self.end == 0) {
                     return XmlEvent.eof;
                 }
@@ -4227,12 +4231,12 @@ pub const StreamingXmlParser = struct {
 
 // ANCHOR: process_large_xml
 /// Process large XML file counting elements
-pub fn processLargeXml(file: std.fs.File, allocator: std.mem.Allocator) !usize {
+pub fn processLargeXml(io: std.Io, file: std.Io.File, allocator: std.mem.Allocator) !usize {
     var parser = StreamingXmlParser.init(file);
     var count: usize = 0;
 
     while (true) {
-        const event = try parser.next(allocator);
+        const event = try parser.next(io, allocator);
 
         switch (event) {
             .start_element => |elem| {
@@ -4255,13 +4259,11 @@ pub fn processLargeXml(file: std.fs.File, allocator: std.mem.Allocator) !usize {
 
 // ANCHOR: extract_elements
 /// Extract text content from specific elements
-pub fn extractElements(
-    file: std.fs.File,
+pub fn extractElements(io: std.Io, file: std.Io.File,
     allocator: std.mem.Allocator,
-    target_name: []const u8,
-) !std.ArrayList([]const u8) {
+    target_name: []const u8,) !std.ArrayList([]const u8) {
     var parser = StreamingXmlParser.init(file);
-    var results = std.ArrayList([]const u8){};
+    var results = std.ArrayList([]const u8).empty;
     errdefer {
         for (results.items) |item| {
             allocator.free(item);
@@ -4272,7 +4274,7 @@ pub fn extractElements(
     var in_target = false;
 
     while (true) {
-        const event = try parser.next(allocator);
+        const event = try parser.next(io, allocator);
 
         switch (event) {
             .start_element => |elem| {
@@ -4302,16 +4304,14 @@ pub fn extractElements(
 // ANCHOR_END: extract_elements
 
 /// Count occurrences of specific element
-pub fn countElements(
-    file: std.fs.File,
+pub fn countElements(io: std.Io, file: std.Io.File,
     allocator: std.mem.Allocator,
-    element_name: []const u8,
-) !usize {
+    element_name: []const u8,) !usize {
     var parser = StreamingXmlParser.init(file);
     var count: usize = 0;
 
     while (true) {
-        const event = try parser.next(allocator);
+        const event = try parser.next(io, allocator);
 
         switch (event) {
             .start_element => |elem| {
@@ -4338,12 +4338,12 @@ pub fn StreamingXmlParserBuffered(comptime buffer_size: usize) type {
     return struct {
         const Self = @This();
 
-        file: std.fs.File,
+        file: std.Io.File,
         buffer: [buffer_size]u8,
         pos: usize,
         end: usize,
 
-        pub fn init(file: std.fs.File) Self {
+        pub fn init(file: std.Io.File) Self {
             return .{
                 .file = file,
                 .buffer = undefined,
@@ -4352,12 +4352,12 @@ pub fn StreamingXmlParserBuffered(comptime buffer_size: usize) type {
             };
         }
 
-        pub fn next(self: *Self, allocator: std.mem.Allocator) !XmlEvent {
+        pub fn next(self: *Self, io: std.Io, allocator: std.mem.Allocator) !XmlEvent {
             while (true) {
                 // Refill buffer if needed
                 if (self.pos >= self.end) {
-                    self.end = try self.file.read(&self.buffer);
-                    self.pos = 0;
+                    self.end = try self.file.readPositionalAll(io, &self.buffer, 0);
+                    self.end = 0;
                     if (self.end == 0) {
                         return XmlEvent.eof;
                     }
@@ -4443,15 +4443,13 @@ pub fn StreamingXmlParserBuffered(comptime buffer_size: usize) type {
 }
 
 /// Process XML in chunks
-pub fn processXmlChunk(
-    parser: *StreamingXmlParser,
+pub fn processXmlChunk(io: std.Io, parser: *StreamingXmlParser,
     allocator: std.mem.Allocator,
-    max_events: usize,
-) !usize {
+    max_events: usize,) !usize {
     var processed: usize = 0;
 
     while (processed < max_events) {
-        const event = try parser.next(allocator);
+        const event = try parser.next(io, allocator);
 
         switch (event) {
             .start_element => |elem| {
@@ -4474,11 +4472,11 @@ pub fn processXmlChunk(
 }
 
 /// Safe XML processing with error handling
-pub fn safeProcessXml(file: std.fs.File, allocator: std.mem.Allocator) !void {
+pub fn safeProcessXml(io: std.Io, file: std.Io.File, allocator: std.mem.Allocator) !void {
     var parser = StreamingXmlParser.init(file);
 
     while (true) {
-        const event = parser.next(allocator) catch |err| {
+        const event = parser.next(io, allocator) catch |err| {
             std.log.err("XML parsing error: {}", .{err});
             return err;
         };
@@ -4502,58 +4500,58 @@ pub fn safeProcessXml(file: std.fs.File, allocator: std.mem.Allocator) !void {
 // Tests
 
 test "streaming XML parser" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const xml_data = "<root><item>value</item></root>";
 
-    const file = try std.fs.cwd().createFile("/tmp/test_stream.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_stream.xml") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_stream.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_stream.xml") catch {};
 
-    try file.writeAll(xml_data);
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, xml_data);
 
     var parser = StreamingXmlParser.init(file);
 
-    const event1 = try parser.next(allocator);
+    const event1 = try parser.next(io, allocator);
     defer if (event1 == .start_element) allocator.free(event1.start_element.name);
     try std.testing.expect(event1 == .start_element);
     try std.testing.expectEqualStrings("root", event1.start_element.name);
 
-    const event2 = try parser.next(allocator);
+    const event2 = try parser.next(io, allocator);
     defer if (event2 == .start_element) allocator.free(event2.start_element.name);
     try std.testing.expect(event2 == .start_element);
 
-    const event3 = try parser.next(allocator);
+    const event3 = try parser.next(io, allocator);
     defer if (event3 == .text) allocator.free(event3.text.content);
     try std.testing.expect(event3 == .text);
 }
 
 test "process large XML" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const file = try std.fs.cwd().createFile("/tmp/large.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/large.xml") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/large.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/large.xml") catch {};
 
-    try file.writeAll("<root><a/><b/><c/></root>");
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, "<root><a/><b/><c/></root>");
 
-    const count = try processLargeXml(file, allocator);
+    const count = try processLargeXml(io, file, allocator);
     try std.testing.expectEqual(@as(usize, 4), count);
 }
 
 test "extract specific elements" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const file = try std.fs.cwd().createFile("/tmp/extract.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/extract.xml") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/extract.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/extract.xml") catch {};
 
-    try file.writeAll("<root><item>A</item><other>B</other><item>C</item></root>");
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, "<root><item>A</item><other>B</other><item>C</item></root>");
 
-    var results = try extractElements(file, allocator, "item");
+    var results = try extractElements(io, file, allocator, "item");
     defer {
         for (results.items) |item| {
             allocator.free(item);
@@ -4567,142 +4565,142 @@ test "extract specific elements" {
 }
 
 test "count elements" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const file = try std.fs.cwd().createFile("/tmp/count.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/count.xml") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/count.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/count.xml") catch {};
 
-    try file.writeAll("<root><item/><item/><item/></root>");
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, "<root><item/><item/><item/></root>");
 
-    const count = try countElements(file, allocator, "item");
+    const count = try countElements(io, file, allocator, "item");
     try std.testing.expectEqual(@as(usize, 3), count);
 }
 
 test "buffered parser" {
+    const io = std.testing.io;
     const Parser = StreamingXmlParserBuffered(8192);
-    const file = try std.fs.cwd().createFile("/tmp/buffered.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/buffered.xml") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/buffered.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/buffered.xml") catch {};
 
-    try file.writeAll("<root><item/></root>");
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, "<root><item/></root>");
 
     var parser = Parser.init(file);
     const allocator = std.testing.allocator;
 
-    const event = try parser.next(allocator);
+    const event = try parser.next(io, allocator);
     defer if (event == .start_element) allocator.free(event.start_element.name);
 
     try std.testing.expect(event == .start_element);
 }
 
 test "process in chunks" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const file = try std.fs.cwd().createFile("/tmp/chunks.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/chunks.xml") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/chunks.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/chunks.xml") catch {};
 
-    try file.writeAll("<root><a/><b/><c/></root>");
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, "<root><a/><b/><c/></root>");
 
     var parser = StreamingXmlParser.init(file);
 
-    const chunk1 = try processXmlChunk(&parser, allocator, 3);
+    const chunk1 = try processXmlChunk(io, &parser, allocator, 3);
     try std.testing.expect(chunk1 > 0);
 }
 
 test "empty XML" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const file = try std.fs.cwd().createFile("/tmp/empty.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/empty.xml") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/empty.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/empty.xml") catch {};
 
-    try file.writeAll("");
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, "");
 
     var parser = StreamingXmlParser.init(file);
-    const event = try parser.next(allocator);
+    const event = try parser.next(io, allocator);
 
     try std.testing.expect(event == .eof);
 }
 
 test "nested elements" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const file = try std.fs.cwd().createFile("/tmp/nested.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/nested.xml") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/nested.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/nested.xml") catch {};
 
-    try file.writeAll("<root><parent><child>text</child></parent></root>");
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, "<root><parent><child>text</child></parent></root>");
 
     var parser = StreamingXmlParser.init(file);
 
     // root start
-    const e1 = try parser.next(allocator);
+    const e1 = try parser.next(io, allocator);
     defer if (e1 == .start_element) allocator.free(e1.start_element.name);
     try std.testing.expect(e1 == .start_element);
 
     // parent start
-    const e2 = try parser.next(allocator);
+    const e2 = try parser.next(io, allocator);
     defer if (e2 == .start_element) allocator.free(e2.start_element.name);
     try std.testing.expect(e2 == .start_element);
 
     // child start
-    const e3 = try parser.next(allocator);
+    const e3 = try parser.next(io, allocator);
     defer if (e3 == .start_element) allocator.free(e3.start_element.name);
     try std.testing.expect(e3 == .start_element);
 }
 
 test "self-closing tags" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const file = try std.fs.cwd().createFile("/tmp/selfclose.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/selfclose.xml") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/selfclose.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/selfclose.xml") catch {};
 
-    try file.writeAll("<root><item/></root>");
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, "<root><item/></root>");
 
-    const count = try processLargeXml(file, allocator);
+    const count = try processLargeXml(io, file, allocator);
     try std.testing.expectEqual(@as(usize, 2), count);
 }
 
 test "XML with attributes" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const file = try std.fs.cwd().createFile("/tmp/attrs.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/attrs.xml") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/attrs.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/attrs.xml") catch {};
 
-    try file.writeAll("<root><item id=\"1\">text</item></root>");
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, "<root><item id=\"1\">text</item></root>");
 
     var parser = StreamingXmlParser.init(file);
 
-    const e1 = try parser.next(allocator);
+    const e1 = try parser.next(io, allocator);
     defer if (e1 == .start_element) allocator.free(e1.start_element.name);
 
-    const e2 = try parser.next(allocator);
+    const e2 = try parser.next(io, allocator);
     defer if (e2 == .start_element) allocator.free(e2.start_element.name);
     try std.testing.expectEqualStrings("item", e2.start_element.name);
 }
 
 test "safe process XML" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const file = try std.fs.cwd().createFile("/tmp/safe.xml", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/safe.xml") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/safe.xml", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/safe.xml") catch {};
 
-    try file.writeAll("<root><item/></root>");
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, "<root><item/></root>");
 
-    try safeProcessXml(file, allocator);
+    try safeProcessXml(io, file, allocator);
 }
 ```
 
@@ -4729,7 +4727,7 @@ pub fn dictToXml(
     map: std.StringHashMap([]const u8),
     root_name: []const u8,
 ) ![]u8 {
-    var xml = std.ArrayList(u8){};
+    var xml = std.ArrayList(u8).empty;
     errdefer xml.deinit(allocator);
 
     // Write opening tag
@@ -4773,7 +4771,7 @@ pub fn structToXml(
     value: T,
     root_name: []const u8,
 ) ![]u8 {
-    var xml = std.ArrayList(u8){};
+    var xml = std.ArrayList(u8).empty;
     errdefer xml.deinit(allocator);
 
     try xml.appendSlice(allocator, "<");
@@ -4828,7 +4826,7 @@ pub const XmlWriter = struct {
 
     pub fn init(allocator: std.mem.Allocator) XmlWriter {
         return .{
-            .list = std.ArrayList(u8){},
+            .list = std.ArrayList(u8).empty,
             .indent_level = 0,
             .allocator = allocator,
         };
@@ -4916,6 +4914,7 @@ pub const XmlWriter = struct {
     }
 };
 ```
+```zig
     defer allocator.free(xml);
 
     try std.testing.expect(std.mem.indexOf(u8, xml, "<person>") != null);
@@ -4937,7 +4936,7 @@ pub fn structToXml(
     value: T,
     root_name: []const u8,
 ) ![]u8 {
-    var xml = std.ArrayList(u8){};
+    var xml = std.ArrayList(u8).empty;
     errdefer xml.deinit(allocator);
 
     try xml.appendSlice(allocator, "<");
@@ -5001,7 +5000,7 @@ pub fn arrayToXml(
     root_name: []const u8,
     item_name: []const u8,
 ) ![]u8 {
-    var xml = std.ArrayList(u8){};
+    var xml = std.ArrayList(u8).empty;
     errdefer xml.deinit(allocator);
 
     try xml.appendSlice(allocator, "<");
@@ -5053,7 +5052,7 @@ pub fn dictToXmlWithAttrs(
     attrs: std.StringHashMap([]const u8),
     root_name: []const u8,
 ) ![]u8 {
-    var xml = std.ArrayList(u8){};
+    var xml = std.ArrayList(u8).empty;
     errdefer xml.deinit(allocator);
 
     // Opening tag with attributes
@@ -5115,7 +5114,7 @@ Handle special characters:
 
 ```zig
 pub fn escapeXml(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |char| {
@@ -5152,7 +5151,7 @@ pub fn nestedDictToXml(
     map: std.StringHashMap(std.StringHashMap([]const u8)),
     root_name: []const u8,
 ) ![]u8 {
-    var xml = std.ArrayList(u8){};
+    var xml = std.ArrayList(u8).empty;
     errdefer xml.deinit(allocator);
 
     try xml.appendSlice(allocator, "<");
@@ -5201,7 +5200,7 @@ pub const XmlWriter = struct {
 
     pub fn init(allocator: std.mem.Allocator) XmlWriter {
         return .{
-            .list = std.ArrayList(u8){},
+            .list = std.ArrayList(u8).empty,
             .indent_level = 0,
             .allocator = allocator,
         };
@@ -5318,7 +5317,7 @@ pub fn dictToXml(
     map: std.StringHashMap([]const u8),
     root_name: []const u8,
 ) ![]u8 {
-    var xml = std.ArrayList(u8){};
+    var xml = std.ArrayList(u8).empty;
     errdefer xml.deinit(allocator);
 
     // Write opening tag
@@ -5360,7 +5359,7 @@ pub fn structToXml(
     value: T,
     root_name: []const u8,
 ) ![]u8 {
-    var xml = std.ArrayList(u8){};
+    var xml = std.ArrayList(u8).empty;
     errdefer xml.deinit(allocator);
 
     try xml.appendSlice(allocator, "<");
@@ -5412,7 +5411,7 @@ pub fn arrayToXml(
     root_name: []const u8,
     item_name: []const u8,
 ) ![]u8 {
-    var xml = std.ArrayList(u8){};
+    var xml = std.ArrayList(u8).empty;
     errdefer xml.deinit(allocator);
 
     try xml.appendSlice(allocator, "<");
@@ -5451,7 +5450,7 @@ pub fn dictToXmlWithAttrs(
     attrs: std.StringHashMap([]const u8),
     root_name: []const u8,
 ) ![]u8 {
-    var xml = std.ArrayList(u8){};
+    var xml = std.ArrayList(u8).empty;
     errdefer xml.deinit(allocator);
 
     // Opening tag with attributes
@@ -5500,7 +5499,7 @@ pub fn dictToXmlWithAttrs(
 
 /// Escape XML special characters
 pub fn escapeXml(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |char| {
@@ -5538,7 +5537,7 @@ pub const XmlWriter = struct {
 
     pub fn init(allocator: std.mem.Allocator) XmlWriter {
         return .{
-            .list = std.ArrayList(u8){},
+            .list = std.ArrayList(u8).empty,
             .indent_level = 0,
             .allocator = allocator,
         };
@@ -5962,7 +5961,7 @@ For most applications, using a thin wrapper like `zqlite.zig` provides a clean, 
 //     // Open in-memory database for testing
 //     const flags = zqlite.OpenFlags.Create | zqlite.OpenFlags.EXResCode;
 //     var conn = try zqlite.open(":memory:", flags);
-//     defer conn.close(); // Always clean up resources
+//     defer conn.close(io); // Always clean up resources
 //
 //     // CREATE TABLE
 //     try conn.exec(
@@ -6008,7 +6007,7 @@ For most applications, using a thin wrapper like `zqlite.zig` provides a clean, 
 //
 //     const flags = zqlite.OpenFlags.Create;
 //     var conn = try zqlite.open(":memory:", flags);
-//     defer conn.close();
+//     defer conn.close(io);
 //
 //     try conn.exec(
 //         "CREATE TABLE products (id INTEGER, name TEXT, price REAL)",
@@ -6257,7 +6256,7 @@ conn.close()
 **Zig (with wrapper):**
 ```zig
 var conn = try zqlite.open("myapp.db", .{});
-defer conn.close();
+defer conn.close(io);
 try conn.exec("INSERT INTO users VALUES (?1, ?2)", .{"Alice", 30});
 var rows = try conn.rows("SELECT * FROM users", .{});
 defer rows.deinit();
@@ -6296,10 +6295,11 @@ Use in-memory databases for unit tests to avoid filesystem dependencies:
 
 ```zig
 test "database operations" {
+    const io = std.testing.io;
     var conn = try zqlite.open(":memory:", .{});
-    defer conn.close();
+    defer conn.close(io);
 
-    // Your tests here - database is destroyed when conn.close() runs
+    // Your tests here - database is destroyed when conn.close(io) runs
 }
 ```
 
@@ -6307,7 +6307,7 @@ test "database operations" {
 
 ```zig
 // Recipe 6.6: Interacting with a Relational Database (SQLite)
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates two approaches to SQLite database interaction:
 // 1. Beginner: Using a simple wrapper library (zqlite.zig)
@@ -6364,7 +6364,7 @@ const testing = std.testing;
 //     // Open in-memory database for testing
 //     const flags = zqlite.OpenFlags.Create | zqlite.OpenFlags.EXResCode;
 //     var conn = try zqlite.open(":memory:", flags);
-//     defer conn.close(); // Always clean up resources
+//     defer conn.close(io); // Always clean up resources
 //
 //     // CREATE TABLE
 //     try conn.exec(
@@ -6408,7 +6408,7 @@ const testing = std.testing;
 //
 //     const flags = zqlite.OpenFlags.Create;
 //     var conn = try zqlite.open(":memory:", flags);
-//     defer conn.close();
+//     defer conn.close(io);
 //
 //     try conn.exec(
 //         "CREATE TABLE products (id INTEGER, name TEXT, price REAL)",
@@ -6716,11 +6716,11 @@ You need to convert binary data to hexadecimal strings for display or debugging,
 ```zig
 /// Convert bytes to hexadecimal string (lowercase)
 pub fn bytesToHex(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
-    var list = std.ArrayList(u8){};
+    var list = std.ArrayList(u8).empty;
     errdefer list.deinit(allocator);
 
     for (bytes) |byte| {
-        try list.writer(allocator).print("{x:0>2}", .{byte});
+        try list.print(allocator, "{x:0>2}", .{byte});
     }
 
     return list.toOwnedSlice(allocator);
@@ -6750,7 +6750,7 @@ pub fn hexToBytes(allocator: std.mem.Allocator, hex: []const u8) ![]u8 {
 ```zig
 /// Create hex dump with ASCII representation
 pub fn hexDump(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var offset: usize = 0;
@@ -6817,7 +6817,7 @@ pub fn bytesToHexBuf(bytes: []const u8, out: []u8) !void {
 
 /// Decode hex string to bytes, skipping invalid characters
 pub fn hexToBytesLenient(allocator: std.mem.Allocator, hex: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;
@@ -6839,6 +6839,7 @@ pub fn hexToBytesLenient(allocator: std.mem.Allocator, hex: []const u8) ![]u8 {
 }
 ```
 
+```zig
     try std.testing.expectEqualStrings("deadbeef", hex);
 }
 
@@ -6864,11 +6865,11 @@ Use uppercase hex digits with the `{X}` format specifier:
 
 ```zig
 pub fn bytesToHexUpper(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
-    var list = std.ArrayList(u8){};
+    var list = std.ArrayList(u8).empty;
     errdefer list.deinit(allocator);
 
     for (bytes) |byte| {
-        try list.writer(allocator).print("{X:0>2}", .{byte});
+        try list.print(allocator, "{X:0>2}", .{byte});
     }
 
     return list.toOwnedSlice(allocator);
@@ -6899,7 +6900,7 @@ pub fn bytesToHexWithSep(
         return allocator.alloc(u8, 0);
     }
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (bytes, 0..) |byte, i| {
@@ -6931,7 +6932,7 @@ Create hex dump with ASCII:
 
 ```zig
 pub fn hexDump(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var offset: usize = 0;
@@ -7101,7 +7102,7 @@ Skip invalid characters:
 
 ```zig
 pub fn hexToBytesLenient(allocator: std.mem.Allocator, hex: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;
@@ -7176,11 +7177,11 @@ const std = @import("std");
 // ANCHOR: basic_hex_conversion
 /// Convert bytes to hexadecimal string (lowercase)
 pub fn bytesToHex(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
-    var list = std.ArrayList(u8){};
+    var list = std.ArrayList(u8).empty;
     errdefer list.deinit(allocator);
 
     for (bytes) |byte| {
-        try list.writer(allocator).print("{x:0>2}", .{byte});
+        try list.print(allocator, "{x:0>2}", .{byte});
     }
 
     return list.toOwnedSlice(allocator);
@@ -7217,11 +7218,11 @@ fn hexCharToNibble(char: u8) !u8 {
 
 /// Convert bytes to hexadecimal string (uppercase)
 pub fn bytesToHexUpper(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
-    var list = std.ArrayList(u8){};
+    var list = std.ArrayList(u8).empty;
     errdefer list.deinit(allocator);
 
     for (bytes) |byte| {
-        try list.writer(allocator).print("{X:0>2}", .{byte});
+        try list.print(allocator, "{X:0>2}", .{byte});
     }
 
     return list.toOwnedSlice(allocator);
@@ -7237,7 +7238,7 @@ pub fn bytesToHexWithSep(
         return allocator.alloc(u8, 0);
     }
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (bytes, 0..) |byte, i| {
@@ -7255,7 +7256,7 @@ pub fn bytesToHexWithSep(
 // ANCHOR: hex_dump
 /// Create hex dump with ASCII representation
 pub fn hexDump(allocator: std.mem.Allocator, bytes: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var offset: usize = 0;
@@ -7356,7 +7357,7 @@ pub fn bytesToHexBuf(bytes: []const u8, out: []u8) !void {
 
 /// Decode hex string to bytes, skipping invalid characters
 pub fn hexToBytesLenient(allocator: std.mem.Allocator, hex: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;
@@ -7836,10 +7837,11 @@ test "streaming base64 encoding" {
 
     const data = "The quick brown fox jumps over the lazy dog";
 
-    var list = std.ArrayList(u8){};
+    var list = std.ArrayList(u8).empty;
     errdefer list.deinit(allocator);
 
-    try encodeBase64Stream(list.writer(allocator), data, 10);
+    var list_aw: std.Io.Writer.Allocating = .fromArrayList(allocator, &list);
+    try encodeBase64Stream(&list_aw.writer, data, 10);
 
     const encoded = try list.toOwnedSlice(allocator);
     defer allocator.free(encoded);
@@ -7960,7 +7962,7 @@ pub fn decodeBase64Lenient(
     encoded: []const u8,
 ) ![]u8 {
     // Remove whitespace
-    var cleaned = std.ArrayList(u8){};
+    var cleaned = std.ArrayList(u8).empty;
     errdefer cleaned.deinit(allocator);
 
     for (encoded) |char| {
@@ -8176,7 +8178,7 @@ pub fn decodeBase64Lenient(
     encoded: []const u8,
 ) ![]u8 {
     // Remove whitespace
-    var cleaned = std.ArrayList(u8){};
+    var cleaned = std.ArrayList(u8).empty;
     errdefer cleaned.deinit(allocator);
 
     for (encoded) |char| {
@@ -8245,10 +8247,11 @@ test "streaming base64 encoding" {
 
     const data = "The quick brown fox jumps over the lazy dog";
 
-    var list = std.ArrayList(u8){};
+    var list = std.ArrayList(u8).empty;
     errdefer list.deinit(allocator);
 
-    try encodeBase64Stream(list.writer(allocator), data, 10);
+    var list_aw: std.Io.Writer.Allocating = .fromArrayList(allocator, &list);
+    try encodeBase64Stream(&list_aw.writer, data, 10);
 
     const encoded = try list.toOwnedSlice(allocator);
     defer allocator.free(encoded);
@@ -8414,21 +8417,21 @@ You need to read or write binary files containing arrays of structured data, suc
 
 ```zig
 /// Write array of records to file
-pub fn writeRecords(file: std.fs.File, records: []const Record) !void {
+pub fn writeRecords(io: std.Io, file: std.Io.File, records: []const Record) !void {
     const bytes = std.mem.sliceAsBytes(records);
-    try file.writeAll(bytes);
+    try file.writeStreamingAll(io, bytes);
 }
 
 /// Read array of records from file
-pub fn readRecords(allocator: std.mem.Allocator, file: std.fs.File) ![]Record {
-    const file_size = (try file.stat()).size;
+pub fn readRecords(io: std.Io, allocator: std.mem.Allocator, file: std.Io.File) ![]Record {
+    const file_size = (try file.stat(io)).size;
     const record_count = file_size / @sizeOf(Record);
 
     const records = try allocator.alloc(Record, record_count);
     errdefer allocator.free(records);
 
     const bytes = std.mem.sliceAsBytes(records);
-    const bytes_read = try file.readAll(bytes);
+    const bytes_read = try file.readPositionalAll(io, bytes, 0);
 
     if (bytes_read != bytes.len) {
         return error.UnexpectedEof;
@@ -8471,13 +8474,13 @@ const NetworkPacket = struct {
 
 ```zig
 /// Read records using memory mapping
-pub fn readRecordsMmap(file: std.fs.File) ![]align(4096) const Record {
-    const file_size = (try file.stat()).size;
+pub fn readRecordsMmap(io: std.Io, file: std.Io.File) ![]align(4096) const Record {
+    const file_size = (try file.stat(io)).size;
 
     const mapped = try std.posix.mmap(
         null,
         file_size,
-        std.posix.PROT.READ,
+        .{ .READ = true },
         std.posix.MAP{ .TYPE = .SHARED },
         file.handle,
         0,
@@ -8486,15 +8489,16 @@ pub fn readRecordsMmap(file: std.fs.File) ![]align(4096) const Record {
     return std.mem.bytesAsSlice(Record, mapped);
 }
 ```
-        const file = try tmp_dir.createFile("records.bin", .{});
-        defer file.close();
+```zig
+        const file = try tmp_dir.createFile(io, "records.bin", .{});
+        defer file.close(io);
         try writeRecords(file, &records);
     }
 
     // Read
     {
-        const file = try tmp_dir.openFile("records.bin", .{});
-        defer file.close();
+        const file = try tmp_dir.openFile(io, "records.bin", .{});
+        defer file.close(io);
 
         const read_records = try readRecords(allocator, file);
         defer allocator.free(read_records);
@@ -8521,15 +8525,15 @@ const BitmapHeader = packed struct {
     offset: u32,
 };
 
-pub fn writeBitmapHeader(file: std.fs.File, header: BitmapHeader) !void {
+pub fn writeBitmapHeader(io: std.Io, file: std.Io.File, header: BitmapHeader) !void {
     const bytes = std.mem.asBytes(&header);
-    try file.writeAll(bytes);
+    try file.writeStreamingAll(io, bytes);
 }
 
-pub fn readBitmapHeader(file: std.fs.File) !BitmapHeader {
+pub fn readBitmapHeader(io: std.Io, file: std.Io.File) !BitmapHeader {
     var header: BitmapHeader = undefined;
     const bytes = std.mem.asBytes(&header);
-    const bytes_read = try file.readAll(bytes);
+    const bytes_read = try file.readPositionalAll(io, bytes, 0);
 
     if (bytes_read != bytes.len) {
         return error.UnexpectedEof;
@@ -8539,6 +8543,7 @@ pub fn readBitmapHeader(file: std.fs.File) !BitmapHeader {
 }
 
 test "bitmap header" {
+    const io = std.testing.io;
     const header = BitmapHeader{
         .magic = 0x4D42, // "BM" in little-endian
         .file_size = 1024,
@@ -8555,16 +8560,16 @@ test "bitmap header" {
     defer tmp.cleanup();
 
     {
-        const file = try tmp_dir.createFile("header.bin", .{});
-        defer file.close();
-        try writeBitmapHeader(file, header);
+        const file = try tmp_dir.createFile(io, "header.bin", .{});
+        defer file.close(io);
+        try writeBitmapHeader(io, file, header);
     }
 
     {
-        const file = try tmp_dir.openFile("header.bin", .{});
-        defer file.close();
+        const file = try tmp_dir.openFile(io, "header.bin", .{});
+        defer file.close(io);
 
-        const read_header = try readBitmapHeader(file);
+        const read_header = try readBitmapHeader(io, file);
         try std.testing.expectEqual(header.magic, read_header.magic);
         try std.testing.expectEqual(header.file_size, read_header.file_size);
     }
@@ -8638,14 +8643,14 @@ const VarRecord = struct {
         try writer.writeAll(self.name);
     }
 
-    pub fn read(allocator: std.mem.Allocator, reader: anytype) !VarRecord {
-        const id = try reader.readInt(u32, .little);
-        const name_len = try reader.readInt(u32, .little);
+    pub fn read(io: std.Io, allocator: std.mem.Allocator, reader: anytype) !VarRecord {
+        const id = std.mem.readInt(u32, try reader.takeArray(@divExact(@bitSizeOf(u32), 8)), .little);
+        const name_len = std.mem.readInt(u32, try reader.takeArray(@divExact(@bitSizeOf(u32), 8)), .little);
 
         const name = try allocator.alloc(u8, name_len);
         errdefer allocator.free(name);
 
-        const bytes_read = try reader.readAll(name);
+        const bytes_read = try reader.readSliceShort(name);
         if (bytes_read != name_len) {
             return error.UnexpectedEof;
         }
@@ -8663,6 +8668,7 @@ const VarRecord = struct {
 };
 
 test "variable-length records" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const record = VarRecord{
@@ -8672,12 +8678,12 @@ test "variable-length records" {
     };
 
     var buffer: [256]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = std.Io.Writer.fixed(&buffer);
 
-    try record.write(fbs.writer());
+    try record.write(&fbs);
 
-    fbs.pos = 0;
-    const read_record = try VarRecord.read(allocator, fbs.reader());
+    fbs.end = 0;
+    const read_record = try VarRecord.read(io, allocator, &fbs);
     defer read_record.deinit(allocator);
 
     try std.testing.expectEqual(record.id, read_record.id);
@@ -8741,27 +8747,23 @@ test "aligned records" {
 Write records one at a time for sequential processing:
 
 ```zig
-pub fn writeRecordsBuf(
-    file: std.fs.File,
-    records: []const Record,
-) !void {
+pub fn writeRecordsBuf(io: std.Io, file: std.Io.File,
+    records: []const Record,) !void {
     for (records) |record| {
         const bytes = std.mem.asBytes(&record);
-        try file.writeAll(bytes);
+        try file.writeStreamingAll(io, bytes);
     }
 }
 
-pub fn readRecordsBuf(
-    allocator: std.mem.Allocator,
-    file: std.fs.File,
-    count: usize,
-) ![]Record {
+pub fn readRecordsBuf(io: std.Io, allocator: std.mem.Allocator,
+    file: std.Io.File,
+    count: usize,) ![]Record {
     const records = try allocator.alloc(Record, count);
     errdefer allocator.free(records);
 
     for (records) |*record| {
         const bytes = std.mem.asBytes(record);
-        const bytes_read = try file.readAll(bytes);
+        const bytes_read = try file.readPositionalAll(io, bytes, 0);
         if (bytes_read != bytes.len) {
             return error.UnexpectedEof;
         }
@@ -8771,6 +8773,7 @@ pub fn readRecordsBuf(
 }
 
 test "individual record IO" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const records = [_]Record{
@@ -8784,16 +8787,16 @@ test "individual record IO" {
     defer tmp.cleanup();
 
     {
-        const file = try tmp_dir.createFile("records.bin", .{});
-        defer file.close();
-        try writeRecordsBuf(file, &records);
+        const file = try tmp_dir.createFile(io, "records.bin", .{});
+        defer file.close(io);
+        try writeRecordsBuf(io, file, &records);
     }
 
     {
-        const file = try tmp_dir.openFile("records.bin", .{});
-        defer file.close();
+        const file = try tmp_dir.openFile(io, "records.bin", .{});
+        defer file.close(io);
 
-        const read_records = try readRecordsBuf(allocator, file, records.len);
+        const read_records = try readRecordsBuf(io, allocator, file, records.len);
         defer allocator.free(read_records);
 
         try std.testing.expectEqual(records.len, read_records.len);
@@ -8809,13 +8812,13 @@ test "individual record IO" {
 Use memory mapping for large datasets:
 
 ```zig
-pub fn readRecordsMmap(file: std.fs.File) ![]align(4096) const Record {
-    const file_size = (try file.stat()).size;
+pub fn readRecordsMmap(io: std.Io, file: std.Io.File) ![]align(4096) const Record {
+    const file_size = (try file.stat(io)).size;
 
     const mapped = try std.posix.mmap(
         null,
         file_size,
-        std.posix.PROT.READ,
+        .{ .READ = true },
         std.posix.MAP{ .TYPE = .SHARED },
         file.handle,
         0,
@@ -8825,6 +8828,7 @@ pub fn readRecordsMmap(file: std.fs.File) ![]align(4096) const Record {
 }
 
 test "memory-mapped records" {
+    const io = std.testing.io;
     const records = [_]Record{
         .{ .id = 1, .x = 10.0, .y = 20.0, .flags = 1 },
         .{ .id = 2, .x = 30.0, .y = 40.0, .flags = 2 },
@@ -8835,16 +8839,16 @@ test "memory-mapped records" {
     defer tmp.cleanup();
 
     {
-        const file = try tmp_dir.createFile("mmap.bin", .{});
-        defer file.close();
+        const file = try tmp_dir.createFile(io, "mmap.bin", .{});
+        defer file.close(io);
         try writeRecords(file, &records);
     }
 
     {
-        const file = try tmp_dir.openFile("mmap.bin", .{});
-        defer file.close();
+        const file = try tmp_dir.openFile(io, "mmap.bin", .{});
+        defer file.close(io);
 
-        const mapped_records = try readRecordsMmap(file);
+        const mapped_records = try readRecordsMmap(io, file);
         defer std.posix.munmap(@alignCast(std.mem.sliceAsBytes(mapped_records)));
 
         try std.testing.expectEqual(@as(usize, 2), mapped_records.len);
@@ -8873,13 +8877,13 @@ const native_bytes = try std.mem.writeInt(u32, buffer, value, .native);
 **Error Handling:**
 ```zig
 // Always check for unexpected EOF
-const bytes_read = try file.readAll(buffer);
+const bytes_read = try file.readPositionalAll(io, buffer, 0);
 if (bytes_read != buffer.len) {
     return error.UnexpectedEof;
 }
 
 // Validate file size
-const file_size = (try file.stat()).size;
+const file_size = (try file.stat(io)).size;
 if (file_size % @sizeOf(Record) != 0) {
     return error.InvalidFileSize;
 }
@@ -8923,21 +8927,21 @@ const Record = packed struct {
 
 // ANCHOR: basic_binary_io
 /// Write array of records to file
-pub fn writeRecords(file: std.fs.File, records: []const Record) !void {
+pub fn writeRecords(io: std.Io, file: std.Io.File, records: []const Record) !void {
     const bytes = std.mem.sliceAsBytes(records);
-    try file.writeAll(bytes);
+    try file.writeStreamingAll(io, bytes);
 }
 
 /// Read array of records from file
-pub fn readRecords(allocator: std.mem.Allocator, file: std.fs.File) ![]Record {
-    const file_size = (try file.stat()).size;
+pub fn readRecords(io: std.Io, allocator: std.mem.Allocator, file: std.Io.File) ![]Record {
+    const file_size = (try file.stat(io)).size;
     const record_count = file_size / @sizeOf(Record);
 
     const records = try allocator.alloc(Record, record_count);
     errdefer allocator.free(records);
 
     const bytes = std.mem.sliceAsBytes(records);
-    const bytes_read = try file.readAll(bytes);
+    const bytes_read = try file.readPositionalAll(io, bytes, 0);
 
     if (bytes_read != bytes.len) {
         return error.UnexpectedEof;
@@ -8957,16 +8961,16 @@ const BitmapHeader = packed struct {
 };
 
 /// Write bitmap header
-pub fn writeBitmapHeader(file: std.fs.File, header: BitmapHeader) !void {
+pub fn writeBitmapHeader(io: std.Io, file: std.Io.File, header: BitmapHeader) !void {
     const bytes = std.mem.asBytes(&header);
-    try file.writeAll(bytes);
+    try file.writeStreamingAll(io, bytes);
 }
 
 /// Read bitmap header
-pub fn readBitmapHeader(file: std.fs.File) !BitmapHeader {
+pub fn readBitmapHeader(io: std.Io, file: std.Io.File) !BitmapHeader {
     var header: BitmapHeader = undefined;
     const bytes = std.mem.asBytes(&header);
-    const bytes_read = try file.readAll(bytes);
+    const bytes_read = try file.readPositionalAll(io, bytes, 0);
 
     if (bytes_read != bytes.len) {
         return error.UnexpectedEof;
@@ -9015,13 +9019,13 @@ const VarRecord = struct {
     }
 
     pub fn read(allocator: std.mem.Allocator, reader: anytype) !VarRecord {
-        const id = try reader.readInt(u32, .little);
-        const name_len = try reader.readInt(u32, .little);
+        const id = std.mem.readInt(u32, try reader.takeArray(@divExact(@bitSizeOf(u32), 8)), .little);
+        const name_len = std.mem.readInt(u32, try reader.takeArray(@divExact(@bitSizeOf(u32), 8)), .little);
 
         const name = try allocator.alloc(u8, name_len);
         errdefer allocator.free(name);
 
-        const bytes_read = try reader.readAll(name);
+        const bytes_read = try reader.readSliceShort(name);
         if (bytes_read != name_len) {
             return error.UnexpectedEof;
         }
@@ -9062,28 +9066,24 @@ const AlignedRecord = struct {
 };
 
 /// Write records one at a time
-pub fn writeRecordsBuf(
-    file: std.fs.File,
-    records: []const Record,
-) !void {
+pub fn writeRecordsBuf(io: std.Io, file: std.Io.File,
+    records: []const Record,) !void {
     for (records) |record| {
         const bytes = std.mem.asBytes(&record);
-        try file.writeAll(bytes);
+        try file.writeStreamingAll(io, bytes);
     }
 }
 
 /// Read records one at a time
-pub fn readRecordsBuf(
-    allocator: std.mem.Allocator,
-    file: std.fs.File,
-    count: usize,
-) ![]Record {
+pub fn readRecordsBuf(io: std.Io, allocator: std.mem.Allocator,
+    file: std.Io.File,
+    count: usize,) ![]Record {
     const records = try allocator.alloc(Record, count);
     errdefer allocator.free(records);
 
     for (records) |*record| {
         const bytes = std.mem.asBytes(record);
-        const bytes_read = try file.readAll(bytes);
+        const bytes_read = try file.readPositionalAll(io, bytes, 0);
         if (bytes_read != bytes.len) {
             return error.UnexpectedEof;
         }
@@ -9094,13 +9094,13 @@ pub fn readRecordsBuf(
 
 // ANCHOR: memory_mapping
 /// Read records using memory mapping
-pub fn readRecordsMmap(file: std.fs.File) ![]align(4096) const Record {
-    const file_size = (try file.stat()).size;
+pub fn readRecordsMmap(io: std.Io, file: std.Io.File) ![]align(4096) const Record {
+    const file_size = (try file.stat(io)).size;
 
     const mapped = try std.posix.mmap(
         null,
         file_size,
-        std.posix.PROT.READ,
+        .{ .READ = true },
         std.posix.MAP{ .TYPE = .SHARED },
         file.handle,
         0,
@@ -9113,6 +9113,7 @@ pub fn readRecordsMmap(file: std.fs.File) ![]align(4096) const Record {
 // Tests
 
 test "write and read records" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const records = [_]Record{
@@ -9126,17 +9127,17 @@ test "write and read records" {
 
     // Write
     {
-        const file = try tmp_dir.createFile("records.bin", .{});
-        defer file.close();
-        try writeRecords(file, &records);
+        const file = try tmp_dir.createFile(io, "records.bin", .{});
+        defer file.close(io);
+        try writeRecords(io, file, &records);
     }
 
     // Read
     {
-        const file = try tmp_dir.openFile("records.bin", .{});
-        defer file.close();
+        const file = try tmp_dir.openFile(io, "records.bin", .{});
+        defer file.close(io);
 
-        const read_records = try readRecords(allocator, file);
+        const read_records = try readRecords(io, allocator, file);
         defer allocator.free(read_records);
 
         try std.testing.expectEqual(@as(usize, 2), read_records.len);
@@ -9146,6 +9147,7 @@ test "write and read records" {
 }
 
 test "bitmap header" {
+    const io = std.testing.io;
     const header = BitmapHeader{
         .magic = 0x4D42,
         .file_size = 1024,
@@ -9162,16 +9164,16 @@ test "bitmap header" {
     defer tmp.cleanup();
 
     {
-        const file = try tmp_dir.createFile("header.bin", .{});
-        defer file.close();
-        try writeBitmapHeader(file, header);
+        const file = try tmp_dir.createFile(io, "header.bin", .{});
+        defer file.close(io);
+        try writeBitmapHeader(io, file, header);
     }
 
     {
-        const file = try tmp_dir.openFile("header.bin", .{});
-        defer file.close();
+        const file = try tmp_dir.openFile(io, "header.bin", .{});
+        defer file.close(io);
 
-        const read_header = try readBitmapHeader(file);
+        const read_header = try readBitmapHeader(io, file);
         try std.testing.expectEqual(header.magic, read_header.magic);
         try std.testing.expectEqual(header.file_size, read_header.file_size);
     }
@@ -9208,12 +9210,12 @@ test "variable-length records" {
     };
 
     var buffer: [256]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = std.Io.Writer.fixed(&buffer);
 
-    try record.write(fbs.writer());
+    try record.write(&fbs);
 
-    fbs.pos = 0;
-    const read_record = try VarRecord.read(allocator, fbs.reader());
+    var read_stream = std.Io.Reader.fixed(fbs.buffered());
+    const read_record = try VarRecord.read(allocator, &read_stream);
     defer read_record.deinit(allocator);
 
     try std.testing.expectEqual(record.id, read_record.id);
@@ -9242,6 +9244,7 @@ test "aligned records" {
 }
 
 test "buffered binary IO" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const records = [_]Record{
@@ -9255,16 +9258,16 @@ test "buffered binary IO" {
     defer tmp.cleanup();
 
     {
-        const file = try tmp_dir.createFile("buffered.bin", .{});
-        defer file.close();
-        try writeRecordsBuf(file, &records);
+        const file = try tmp_dir.createFile(io, "buffered.bin", .{});
+        defer file.close(io);
+        try writeRecordsBuf(io, file, &records);
     }
 
     {
-        const file = try tmp_dir.openFile("buffered.bin", .{});
-        defer file.close();
+        const file = try tmp_dir.openFile(io, "buffered.bin", .{});
+        defer file.close(io);
 
-        const read_records = try readRecordsBuf(allocator, file, records.len);
+        const read_records = try readRecordsBuf(io, allocator, file, records.len);
         defer allocator.free(read_records);
 
         try std.testing.expectEqual(records.len, read_records.len);
@@ -9275,6 +9278,7 @@ test "buffered binary IO" {
 }
 
 test "memory-mapped records" {
+    const io = std.testing.io;
     const records = [_]Record{
         .{ .id = 1, .x = 10.0, .y = 20.0, .flags = 1 },
         .{ .id = 2, .x = 30.0, .y = 40.0, .flags = 2 },
@@ -9285,16 +9289,16 @@ test "memory-mapped records" {
     defer tmp.cleanup();
 
     {
-        const file = try tmp_dir.createFile("mmap.bin", .{});
-        defer file.close();
-        try writeRecords(file, &records);
+        const file = try tmp_dir.createFile(io, "mmap.bin", .{});
+        defer file.close(io);
+        try writeRecords(io, file, &records);
     }
 
     {
-        const file = try tmp_dir.openFile("mmap.bin", .{});
-        defer file.close();
+        const file = try tmp_dir.openFile(io, "mmap.bin", .{});
+        defer file.close(io);
 
-        const mapped_records = try readRecordsMmap(file);
+        const mapped_records = try readRecordsMmap(io, file);
         defer std.posix.munmap(@alignCast(std.mem.sliceAsBytes(mapped_records)));
 
         try std.testing.expectEqual(@as(usize, 2), mapped_records.len);
@@ -9303,6 +9307,7 @@ test "memory-mapped records" {
 }
 
 test "empty file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     var tmp = std.testing.tmpDir(.{});
@@ -9310,16 +9315,16 @@ test "empty file" {
     defer tmp.cleanup();
 
     {
-        const file = try tmp_dir.createFile("empty.bin", .{});
-        defer file.close();
-        try writeRecords(file, &[_]Record{});
+        const file = try tmp_dir.createFile(io, "empty.bin", .{});
+        defer file.close(io);
+        try writeRecords(io, file, &[_]Record{});
     }
 
     {
-        const file = try tmp_dir.openFile("empty.bin", .{});
-        defer file.close();
+        const file = try tmp_dir.openFile(io, "empty.bin", .{});
+        defer file.close(io);
 
-        const read_records = try readRecords(allocator, file);
+        const read_records = try readRecords(io, allocator, file);
         defer allocator.free(read_records);
 
         try std.testing.expectEqual(@as(usize, 0), read_records.len);
@@ -9352,12 +9357,12 @@ test "variable record with empty name" {
     };
 
     var buffer: [256]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = std.Io.Writer.fixed(&buffer);
 
-    try record.write(fbs.writer());
+    try record.write(&fbs);
 
-    fbs.pos = 0;
-    const read_record = try VarRecord.read(allocator, fbs.reader());
+    var read_stream = std.Io.Reader.fixed(fbs.buffered());
+    const read_record = try VarRecord.read(allocator, &read_stream);
     defer read_record.deinit(allocator);
 
     try std.testing.expectEqual(record.id, read_record.id);
@@ -9365,6 +9370,7 @@ test "variable record with empty name" {
 }
 
 test "roundtrip multiple records" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     var records = [_]Record{
@@ -9380,16 +9386,16 @@ test "roundtrip multiple records" {
     defer tmp.cleanup();
 
     {
-        const file = try tmp_dir.createFile("multi.bin", .{});
-        defer file.close();
-        try writeRecords(file, &records);
+        const file = try tmp_dir.createFile(io, "multi.bin", .{});
+        defer file.close(io);
+        try writeRecords(io, file, &records);
     }
 
     {
-        const file = try tmp_dir.openFile("multi.bin", .{});
-        defer file.close();
+        const file = try tmp_dir.openFile(io, "multi.bin", .{});
+        defer file.close(io);
 
-        const read_records = try readRecords(allocator, file);
+        const read_records = try readRecords(io, allocator, file);
         defer allocator.free(read_records);
 
         try std.testing.expectEqual(records.len, read_records.len);

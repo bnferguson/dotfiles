@@ -1,6 +1,6 @@
 # Build System & Modules Recipes
 
-*18 tested recipes for Zig 0.15.2*
+*18 recipes for Zig 0.16.0 — 4 not yet migrated (see `scripts/verify_recipes.py`)*
 
 ## Quick Reference
 
@@ -100,6 +100,16 @@ const std = @import("std");
 /// Add two numbers
 pub fn add(a: i32, b: i32) i32 {
     return a + b;
+}
+
+/// Subtract two numbers
+pub fn subtract(a: i32, b: i32) i32 {
+    return a - b;
+}
+
+/// Multiply two numbers
+pub fn multiply(a: i32, b: i32) i32 {
+    return a * b;
 }
 
 /// Divide two numbers (returns error on division by zero)
@@ -260,6 +270,16 @@ const std = @import("std");
 /// Convert integer to string
 pub fn intToString(allocator: std.mem.Allocator, value: i32) ![]u8 {
     return std.fmt.allocPrint(allocator, "{d}", .{value});
+}
+
+/// Parse an integer out of a string
+pub fn parseInt(str: []const u8) !i32 {
+    return std.fmt.parseInt(i32, str, 10);
+}
+
+/// Clamp a value into an inclusive range
+pub fn clamp(value: i32, low: i32, high: i32) i32 {
+    return @max(low, @min(high, value));
 }
 
 /// Check if string is numeric
@@ -509,6 +529,7 @@ test "add" {
 ```zig
 // In math.zig
 test "calculate all operations" {
+    const testing = @import("std").testing;
     try testing.expectEqual(@as(i32, 7), try calculate(.add, 3, 4));
     try testing.expectEqual(@as(i32, 12), try calculate(.multiply, 3, 4));
 }
@@ -587,7 +608,7 @@ Solutions:
 
 ```zig
 // Recipe 10.1: Making a Hierarchical Package of Modules
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to organize code into a hierarchical
 // module structure with multiple levels of imports and re-exports.
@@ -1351,9 +1372,8 @@ pub const Documented = struct {
     /// that shows how to use doc comments.
     ///
     /// Example:
-    /// ```
-    /// const result = Documented.add(5, 3);
-    /// ```
+    ///
+    ///     const result = Documented.add(5, 3);
     pub fn add(a: i32, b: i32) i32 {
         return addImpl(a, b);
     }
@@ -1488,7 +1508,7 @@ pub fn process(data: []const u8) !void { ... }
 
 ```zig
 // Recipe 10.2: Controlling the Export of Symbols
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to control symbol visibility using the pub keyword,
 // creating clean public APIs while hiding implementation details.
@@ -1945,9 +1965,8 @@ pub const Documented = struct {
     /// that shows how to use doc comments.
     ///
     /// Example:
-    /// ```
-    /// const result = Documented.add(5, 3);
-    /// ```
+    ///
+    ///     const result = Documented.add(5, 3);
     pub fn add(a: i32, b: i32) i32 {
         return addImpl(a, b);
     }
@@ -2552,7 +2571,7 @@ Relative paths always resolve from the current file's location.
 
 ```zig
 // Recipe 10.3: Importing Package Submodules Using Relative Names
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to import submodules using relative paths,
 // showing parent-to-child, child-to-parent, and sibling imports.
@@ -2848,7 +2867,7 @@ Access all functionality through the aggregator:
 
 ```zig
 test "using split module" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -3135,7 +3154,7 @@ Storage operations work seamlessly:
 
 ```zig
 test "storage operations" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -3160,7 +3179,7 @@ test "storage operations" {
     try manager.addUser(user2);
 
     const found = manager.findUser(1);
-    try testing.expect(found != null);
+    try testing.expect((found) != null);
     try testing.expectEqualStrings("dave", found.?.username);
 
     const not_found = manager.findUser(999);
@@ -3176,7 +3195,7 @@ Errors propagate through the aggregator:
 
 ```zig
 test "error handling in split module" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -3265,7 +3284,7 @@ Manage multiple users:
 
 ```zig
 test "bulk operations" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -3303,7 +3322,7 @@ Reset the storage:
 
 ```zig
 test "clear all users" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -3591,7 +3610,7 @@ Users' code doesn't change - they still import `user.zig`.
 
 ```zig
 // Recipe 10.4: Splitting a Module into Multiple Files
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to split a large module into multiple files
 // while maintaining a clean public API through an aggregator module.
@@ -3614,7 +3633,7 @@ const UserManager = @import("recipe_10_4/user_manager.zig");
 
 // ANCHOR: using_split_module
 test "using split module" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -3679,7 +3698,7 @@ test "validation through aggregator" {
 
 // ANCHOR: storage_operations
 test "storage operations" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -3709,7 +3728,7 @@ test "storage operations" {
     try manager.addUser(user2);
 
     const found = manager.findUser(1);
-    try testing.expect(found != null);
+    try testing.expect((found) != null);
     try testing.expectEqualStrings("dave", found.?.username);
 
     const not_found = manager.findUser(999);
@@ -3719,7 +3738,7 @@ test "storage operations" {
 
 // ANCHOR: error_handling
 test "error handling in split module" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -3789,7 +3808,7 @@ test "age validation" {
 
 // ANCHOR: bulk_operations
 test "bulk operations" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -3826,7 +3845,7 @@ test "bulk operations" {
 
 // ANCHOR: clear_all
 test "clear all users" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -3870,7 +3889,7 @@ test "organizational benefits of splitting" {
 
 // Comprehensive test
 test "comprehensive split module usage" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -3897,7 +3916,7 @@ test "comprehensive split module usage" {
 
     for (users) |user| {
         const found = manager.findUser(user.id);
-        try testing.expect(found != null);
+        try testing.expect((found) != null);
         try testing.expectEqualStrings(user.username, found.?.username);
     }
 
@@ -4733,7 +4752,7 @@ Each step is independent and testable.
 
 ```zig
 // Recipe 10.5: Making Separate Directories of Code Import Under a Common Namespace
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to organize separate feature directories
 // under a common namespace using a namespace aggregator module.
@@ -5565,7 +5584,7 @@ zig build --watch  # (proposed feature)
 ```zig
 // For runtime updates, use dynamic loading
 const lib = try std.DynLib.open("plugin.so");
-defer lib.close();
+defer lib.close(io);
 
 const loadFn = lib.lookup(*const fn() void, "pluginInit") orelse return error.SymbolNotFound;
 loadFn();
@@ -5591,12 +5610,12 @@ For thread-safe code:
 ```zig
 const std = @import("std");
 
-var counter_mutex: std.Thread.Mutex = .{};
+var counter_mutex: std.Io.Mutex = .init;
 var counter: usize = 0;
 
-pub fn increment() void {
-    counter_mutex.lock();
-    defer counter_mutex.unlock();
+pub fn increment(io: std.Io) void {
+    try counter_mutex.lock(io);
+    defer counter_mutex.unlock(io);
     counter += 1;
 }
 ```
@@ -5622,9 +5641,9 @@ const Config = struct {
     debug_mode: bool,
     log_level: i32,
 
-    pub fn loadFromFile(allocator: std.mem.Allocator, path: []const u8) !Config {
-        const file = try std.fs.cwd().openFile(path, .{});
-        defer file.close();
+    pub fn loadFromFile(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !Config {
+        const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+        defer file.close(io);
 
         // Parse configuration file
         // Return Config instance
@@ -5685,7 +5704,7 @@ const init_fn = plugin.lookup(*const fn() void, "init") orelse return error.Miss
 init_fn();
 
 // Can reload by closing and reopening
-plugin.close();
+plugin.close(io);
 const new_plugin = try std.DynLib.open("feature.so");
 ```
 
@@ -5698,7 +5717,7 @@ while (true) {
         texture = try loadTexture("assets/textures.png");
         last_mtime = mtime;
     }
-    std.time.sleep(1 * std.time.ns_per_s);
+    try io.sleep(.fromNanoseconds(1 * std.time.ns_per_s), .awake);
 }
 ```
 
@@ -5713,7 +5732,7 @@ Module state should be cleaned up:
 var list: std.ArrayList(u8) = undefined;
 
 pub fn init(allocator: std.mem.Allocator) void {
-    list = std.ArrayList(u8).init(allocator);
+    list = std.ArrayList(u8).empty;
 }
 
 // Good: Provides cleanup
@@ -5767,7 +5786,7 @@ Key takeaways for module "reloading" in Zig:
 
 ```zig
 // Recipe 10.6: Reloading Modules
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates module import caching, state management,
 // and patterns for dynamic code updates in Zig.
@@ -6119,9 +6138,13 @@ A runnable Zig program requires a public main function:
 
 ```zig
 // A runnable Zig program requires a public main function
-pub fn main() !void {
-    const stdout = std.io.getStdOut().writer();
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
     try stdout.print("Recipe 10.7: Executable Package Example\n", .{});
+    try stdout.flush();
 }
 ```
 
@@ -6302,7 +6325,7 @@ test "argument parsing" {
     // Valid command
     const args2 = [_][]const u8{ "program", "help" };
     const result2 = try parseArgs(&args2);
-    try testing.expect(result2 != null);
+    try testing.expect((result2) != null);
     try testing.expectEqualStrings("help", result2.?);
 
     // Another valid command
@@ -6649,9 +6672,9 @@ This creates both `zig build run` and `zig build test` commands.
 Implement a complete command dispatcher:
 
 ```zig
-pub fn executeCommand(allocator: std.mem.Allocator, args: []const []const u8) !void {
+pub fn executeCommand(io: std.Io, allocator: std.mem.Allocator, args: []const []const u8) !void {
     const cmd_name = try parseArgs(args) orelse {
-        try showHelp();
+        try showHelp(io);
         return;
     };
 
@@ -6665,12 +6688,15 @@ pub fn executeCommand(allocator: std.mem.Allocator, args: []const []const u8) !v
     return ParseError.UnknownCommand;
 }
 
-fn showHelp() !void {
-    const stdout = std.io.getStdOut().writer();
+fn showHelp(io: std.Io) !void {
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
     try stdout.print("Available commands:\n", .{});
     for (commands) |cmd| {
         try stdout.print("  {s}: {s}\n", .{ cmd.name, cmd.description });
     }
+    try stdout.flush();
 }
 ```
 
@@ -6681,8 +6707,9 @@ This pattern dispatches to the appropriate command handler.
 Process arguments in main:
 
 ```zig
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -6692,10 +6719,13 @@ pub fn main() !void {
 
     // Execute command
     executeCommand(allocator, args) catch |err| {
-        const stderr = std.io.getStdErr().writer();
+        var stderr_buffer: [1024]u8 = undefined;
+        var stderr_writer = std.Io.File.stderr().writer(io, &stderr_buffer);
+        const stderr = &stderr_writer.interface;
         try stderr.print("Error: {}\n", .{err});
         std.process.exit(@intFromEnum(ExitCode.general_error));
     };
+        try stderr.flush();
 }
 ```
 
@@ -6706,8 +6736,9 @@ Always clean up allocated arguments.
 Handle errors at the appropriate level:
 
 ```zig
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const deinit_status = gpa.deinit();
         if (deinit_status == .leak) {
@@ -6722,16 +6753,21 @@ pub fn main() !void {
     // Try to execute, catch and report errors
     executeCommand(allocator, args) catch |err| switch (err) {
         ParseError.UnknownCommand => {
-            const stderr = std.io.getStdErr().writer();
+            var stderr_buffer: [1024]u8 = undefined;
+            var stderr_writer = std.Io.File.stderr().writer(io, &stderr_buffer);
+            const stderr = &stderr_writer.interface;
             try stderr.print("Unknown command. Use 'help' for available commands.\n", .{});
             std.process.exit(@intFromEnum(ExitCode.usage_error));
         },
         else => {
-            const stderr = std.io.getStdErr().writer();
+            var stderr_buffer: [1024]u8 = undefined;
+            var stderr_writer = std.Io.File.stderr().writer(io, &stderr_buffer);
+            const stderr = &stderr_writer.interface;
             try stderr.print("Error: {}\n", .{err});
             std.process.exit(@intFromEnum(ExitCode.general_error));
         },
     };
+            try stderr.flush();
 }
 ```
 
@@ -6747,11 +6783,13 @@ const Config = struct {
     log_level: i32,
     output_path: []const u8,
 
-    pub fn loadFromFile(allocator: std.mem.Allocator, path: []const u8) !Config {
-        const file = try std.fs.cwd().openFile(path, .{});
-        defer file.close();
+    pub fn loadFromFile(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !Config {
+        const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+        defer file.close(io);
 
-        const contents = try file.readToEndAlloc(allocator, 1024 * 1024);
+        var contents_buffer: [4096]u8 = undefined;
+        var contents_reader = file.reader(io, &contents_buffer);
+        const contents = try contents_reader.interface.allocRemaining(allocator, .limited(1024 * 1024));
         defer allocator.free(contents);
 
         // Parse config file (JSON, TOML, etc.)
@@ -6885,7 +6923,7 @@ Both approaches work, but Zig's compiled model offers better performance and sim
 
 ```zig
 // Recipe 10.7: Making a Directory or Zip File Runnable as a Main Script
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates Zig's approach to creating executable packages.
 // Unlike Python's __main__.py pattern, Zig uses build.zig to define entry points.
@@ -6921,9 +6959,13 @@ const testing = std.testing;
 
 // ANCHOR: main_function
 // A runnable Zig program requires a public main function
-pub fn main() !void {
-    const stdout = std.io.getStdOut().writer();
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
     try stdout.print("Recipe 10.7: Executable Package Example\n", .{});
+    try stdout.flush();
 }
 // ANCHOR_END: main_function
 
@@ -7058,7 +7100,7 @@ test "argument parsing" {
     // Valid command
     const args2 = [_][]const u8{ "program", "help" };
     const result2 = try parseArgs(&args2);
-    try testing.expect(result2 != null);
+    try testing.expect((result2) != null);
     try testing.expectEqualStrings("help", result2.?);
 
     // Another valid command
@@ -7386,9 +7428,11 @@ config = files(my_package).joinpath("data/config.txt").read_text()
 const config = @embedFile("data/config.txt");
 
 // Or runtime loading
-const file = try std.fs.cwd().openFile("data/config.txt", .{});
-defer file.close();
-const config = try file.readToEndAlloc(allocator, max_size);
+const file = try std.Io.Dir.cwd().openFile(io, "data/config.txt", .{});
+defer file.close(io);
+var config_buffer: [4096]u8 = undefined;
+var config_reader = file.reader(io, &config_buffer);
+const config = try config_reader.interface.allocRemaining(allocator, .limited(max_size));
 defer allocator.free(config);
 ```
 
@@ -7411,7 +7455,7 @@ const Template = struct {
         allocator: std.mem.Allocator,
         vars: std.StringHashMap([]const u8),
     ) ![]u8 {
-        var result = std.ArrayList(u8){};
+        var result = std.ArrayList(u8).empty;
         errdefer result.deinit(allocator);
 
         var i: usize = 0;
@@ -7473,12 +7517,14 @@ const ResourceLoader = struct {
         return @embedFile(name);
     }
 
-    pub fn loadRuntime(self: ResourceLoader, path: []const u8) ![]u8 {
-        const file = try std.fs.cwd().openFile(path, .{});
-        defer file.close();
+    pub fn loadRuntime(self: ResourceLoader, io: std.Io, path: []const u8) ![]u8 {
+        const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+        defer file.close(io);
 
-        const stat = try file.stat();
-        const contents = try file.readToEndAlloc(self.allocator, stat.size);
+        const stat = try file.stat(io);
+        var contents_buffer: [4096]u8 = undefined;
+        var contents_reader = file.reader(io, &contents_buffer);
+        const contents = try contents_reader.interface.allocRemaining(self.allocator, .limited(stat.size));
         return contents;
     }
 };
@@ -7630,7 +7676,7 @@ This information can be populated by build.zig using the options system.
 
 ```zig
 // Recipe 10.8: Reading Datafiles Within a Package
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to access data files packaged with your code.
 // Unlike Python's importlib.resources or pkg_resources, Zig provides compile-time
@@ -7731,12 +7777,9 @@ const Template = struct {
         return .{ .content = embedded_data };
     }
 
-    pub fn render(
-        self: Template,
-        allocator: std.mem.Allocator,
-        vars: std.StringHashMap([]const u8),
-    ) ![]u8 {
-        var result = std.ArrayList(u8){};
+    pub fn render(self: Template, allocator: std.mem.Allocator,
+        vars: std.StringHashMap([]const u8),) ![]u8 {
+        var result = std.ArrayList(u8).empty;
         errdefer result.deinit(allocator);
 
         var i: usize = 0;
@@ -7791,12 +7834,14 @@ const ResourceLoader = struct {
         return @embedFile(name);
     }
 
-    pub fn loadRuntime(self: ResourceLoader, path: []const u8) ![]u8 {
-        const file = try std.fs.cwd().openFile(path, .{});
-        defer file.close();
+    pub fn loadRuntime(self: ResourceLoader, io: std.Io, path: []const u8) ![]u8 {
+        const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+        defer file.close(io);
 
-        const stat = try file.stat();
-        const contents = try file.readToEndAlloc(self.allocator, stat.size);
+        const stat = try file.stat(io);
+        var contents_buffer: [4096]u8 = undefined;
+        var contents_reader = file.reader(io, &contents_buffer);
+        const contents = try contents_reader.interface.allocRemaining(self.allocator, .limited(stat.size));
         return contents;
     }
 };
@@ -7964,7 +8009,7 @@ test "resource manager" {
     try manager.load("template", "template_data");
 
     const config = manager.get("config");
-    try testing.expect(config != null);
+    try testing.expect((config) != null);
     try testing.expectEqualStrings("config_data", config.?);
 
     const missing = manager.get("missing");
@@ -7973,7 +8018,7 @@ test "resource manager" {
     // Test updating existing resource (replaces old value)
     try manager.load("config", "updated_config_data");
     const updated = manager.get("config");
-    try testing.expect(updated != null);
+    try testing.expect((updated) != null);
     try testing.expectEqualStrings("updated_config_data", updated.?);
 }
 // ANCHOR_END: resource_manager
@@ -8281,11 +8326,11 @@ test "module registry" {
     try registry.register("utils", "lib/utils/utils.zig", &.{"core"});
 
     const core = registry.get("core");
-    try testing.expect(core != null);
+    try testing.expect((core) != null);
     try testing.expectEqualStrings("lib/core/core.zig", core.?.path);
 
     const utils = registry.get("utils");
-    try testing.expect(utils != null);
+    try testing.expect((utils) != null);
     try testing.expectEqual(@as(usize, 1), utils.?.dependencies.len);
 }
 ```
@@ -8313,7 +8358,7 @@ const PathResolver = struct {
                 &.{ base, relative_path },
             );
             // Check if file exists
-            std.fs.cwd().access(full_path, .{}) catch {
+            std.Io.Dir.cwd().access(io, full_path, .{}) catch {
                 self.allocator.free(full_path);
                 continue;
             };
@@ -8344,7 +8389,7 @@ const DependencyGraph = struct {
         const owned_name = try self.allocator.dupe(u8, name);
         const node = Node{
             .name = owned_name,
-            .dependencies = std.ArrayList([]const u8){},
+            .dependencies = std.ArrayList([]const u8).empty,
         };
         try self.nodes.put(try self.allocator.dupe(u8, name), node);
     }
@@ -8470,7 +8515,7 @@ const ImportValidator = struct {
         const gop = try self.allowed_imports.getOrPut(module);
         if (!gop.found_existing) {
             gop.key_ptr.* = try self.allocator.dupe(u8, module);
-            gop.value_ptr.* = std.ArrayList([]const u8){};
+            gop.value_ptr.* = std.ArrayList([]const u8).empty;
         }
 
         const owned_import = try self.allocator.dupe(u8, import);
@@ -8514,7 +8559,7 @@ if (!validator.canImport("main", "vendor")) {
 
 ```zig
 // Recipe 10.9: Adding Directories to the Build Path
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to organize code across multiple directories
 // and configure the build system to find modules in different locations.
@@ -8687,11 +8732,11 @@ test "module registry" {
     try registry.register("utils", "lib/utils/utils.zig", &.{"core"});
 
     const core = registry.get("core");
-    try testing.expect(core != null);
+    try testing.expect((core) != null);
     try testing.expectEqualStrings("lib/core/core.zig", core.?.path);
 
     const utils = registry.get("utils");
-    try testing.expect(utils != null);
+    try testing.expect((utils) != null);
     try testing.expectEqual(@as(usize, 1), utils.?.dependencies.len);
 }
 // ANCHOR_END: module_registry
@@ -8703,7 +8748,7 @@ const PathResolver = struct {
 
     pub fn init(allocator: std.mem.Allocator) PathResolver {
         return .{
-            .base_paths = std.ArrayList([]const u8){},
+            .base_paths = std.ArrayList([]const u8).empty,
             .allocator = allocator,
         };
     }
@@ -8722,7 +8767,7 @@ const PathResolver = struct {
 
     pub fn resolve(self: *PathResolver, relative_path: []const u8) !?[]u8 {
         // Note: This is a stub implementation for demonstration.
-        // Production code should check if file exists using std.fs.cwd().access()
+        // Production code should check if file exists using std.Io.Dir.cwd().access(io)
         // before returning the path.
         for (self.base_paths.items) |base| {
             const full_path = try std.fs.path.join(
@@ -8744,7 +8789,7 @@ test "path resolution" {
     try resolver.addPath("vendor");
 
     const resolved = try resolver.resolve("core/core.zig");
-    try testing.expect(resolved != null);
+    try testing.expect((resolved) != null);
     defer testing.allocator.free(resolved.?);
 
     try testing.expect(std.mem.endsWith(u8, resolved.?, "core/core.zig"));
@@ -8789,7 +8834,7 @@ const DependencyGraph = struct {
         const owned_name = try self.allocator.dupe(u8, name);
         const node = Node{
             .name = owned_name,
-            .dependencies = std.ArrayList([]const u8){},
+            .dependencies = std.ArrayList([]const u8).empty,
         };
         try self.nodes.put(try self.allocator.dupe(u8, name), node);
     }
@@ -8890,7 +8935,7 @@ const ModuleLoader = struct {
 
     pub fn init(allocator: std.mem.Allocator) ModuleLoader {
         return .{
-            .search_paths = std.ArrayList([]const u8){},
+            .search_paths = std.ArrayList([]const u8).empty,
             .loaded_modules = std.StringHashMap(void).init(allocator),
             .allocator = allocator,
         };
@@ -9031,7 +9076,7 @@ const ImportValidator = struct {
         const gop = try self.allowed_imports.getOrPut(module);
         if (!gop.found_existing) {
             gop.key_ptr.* = try self.allocator.dupe(u8, module);
-            gop.value_ptr.* = std.ArrayList([]const u8){};
+            gop.value_ptr.* = std.ArrayList([]const u8).empty;
         }
 
         const owned_import = try self.allocator.dupe(u8, import);
@@ -9464,7 +9509,7 @@ fn pluginBDeinit() void {}
 
 test "plugin system" {
     const plugin = PluginRegistry.get("plugin_a");
-    try testing.expect(plugin != null);
+    try testing.expect((plugin) != null);
 
     plugin.?.init_fn();
     const result = plugin.?.process_fn(10);
@@ -9578,7 +9623,7 @@ const mod = ModuleAlias.resolve("primary");
 
 ```zig
 // Recipe 10.10: Importing Modules Using a Name Given in a String
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates working with dynamic module selection in Zig.
 // Unlike Python's importlib, Zig's @import requires compile-time known strings.
@@ -9762,7 +9807,7 @@ test "runtime module dispatch" {
     const module_name = "module_a"; // Could be runtime value
     const mod = getModuleRuntime(module_name);
 
-    try testing.expect(mod != null);
+    try testing.expect((mod) != null);
     try testing.expectEqualStrings("module_a", mod.?.name);
     try testing.expectEqual(@as(i32, 20), mod.?.process_fn(10));
 
@@ -9923,7 +9968,7 @@ fn pluginBDeinit() void {}
 
 test "plugin system" {
     const plugin = PluginRegistry.get("plugin_a");
-    try testing.expect(plugin != null);
+    try testing.expect((plugin) != null);
 
     plugin.?.init_fn();
     const result = plugin.?.process_fn(10);
@@ -10054,11 +10099,11 @@ test "comprehensive module selection patterns" {
 
     // Runtime dispatch
     const runtime_mod = getModuleRuntime("module_a");
-    try testing.expect(runtime_mod != null);
+    try testing.expect((runtime_mod) != null);
 
     // Plugin system
     const plugin = PluginRegistry.get("plugin_a");
-    try testing.expect(plugin != null);
+    try testing.expect((plugin) != null);
 }
 ```
 
@@ -10522,7 +10567,7 @@ pub const module_docs = Documentation{
 
 ```zig
 // Recipe 10.11: Distributing Packages
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to prepare and distribute Zig packages.
 // Unlike Python's setup.py and PyPI, Zig uses build.zig.zon and Git-based packages.
@@ -10800,7 +10845,7 @@ pub const PackageBuilder = struct {
     pub fn init(allocator: std.mem.Allocator, metadata: PackageMetadata) PackageBuilder {
         return .{
             .metadata = metadata,
-            .dependencies = std.ArrayList(DependencySpec){},
+            .dependencies = std.ArrayList(DependencySpec).empty,
             .allocator = allocator,
         };
     }
@@ -12066,9 +12111,11 @@ test "artifact linking" {
 pub const InstallArtifact = struct {
     name: []const u8,
     destination: []const u8,
-    artifact_type: enum { Executable, Library, Header },
+    artifact_type: Kind,
 
-    pub fn init(name: []const u8, destination: []const u8, artifact_type: @TypeOf(artifact_type)) InstallArtifact {
+    pub const Kind = enum { Executable, Library, Header };
+
+    pub fn init(name: []const u8, destination: []const u8, artifact_type: Kind) InstallArtifact {
         return .{
             .name = name,
             .destination = destination,

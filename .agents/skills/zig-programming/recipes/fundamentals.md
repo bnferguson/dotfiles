@@ -1,6 +1,6 @@
 # Fundamentals & Philosophy Recipes
 
-*19 tested recipes for Zig 0.15.2*
+*19 recipes for Zig 0.16.0 — the 14 with a full-code block all compile; recipes 1.1-1.5 are prose only*
 
 ## Quick Reference
 
@@ -72,7 +72,7 @@ In Zig, you must be explicit:
 
 test "explicit memory allocation" {
     // You must provide an allocator - no magic memory
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -83,7 +83,7 @@ test "explicit memory allocation" {
     const allocator = gpa.allocator();
 
     // Create a dynamic list - you see exactly where memory comes from
-    var numbers = std.ArrayList(i32){};
+    var numbers = std.ArrayList(i32).empty;
     defer numbers.deinit(allocator); // You control when it's freed
 
     try numbers.append(allocator, 1);
@@ -99,7 +99,7 @@ test "stack vs heap allocation" {
     // You can see it's fixed size just by looking at the type: [3]i32
 
     // For variable-size data, you must use an allocator
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -208,7 +208,7 @@ Zig forces you to think about these cases upfront:
 // Zig forces you to handle edge cases explicitly:
 
 test "out of memory is an error, not a crash" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -361,7 +361,7 @@ But here's what you get:
 
 ```zig
 // Recipe 0.1: Understanding Zig's Philosophy
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates the core principles that make Zig different from
 // other languages. These examples show why Zig makes the choices it does.
@@ -380,7 +380,7 @@ const testing = std.testing;
 
 test "explicit memory allocation" {
     // You must provide an allocator - no magic memory
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -391,7 +391,7 @@ test "explicit memory allocation" {
     const allocator = gpa.allocator();
 
     // Create a dynamic list - you see exactly where memory comes from
-    var numbers = std.ArrayList(i32){};
+    var numbers = std.ArrayList(i32).empty;
     defer numbers.deinit(allocator); // You control when it's freed
 
     try numbers.append(allocator, 1);
@@ -407,7 +407,7 @@ test "stack vs heap allocation" {
     // You can see it's fixed size just by looking at the type: [3]i32
 
     // For variable-size data, you must use an allocator
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -478,7 +478,7 @@ test "no operator overloading" {
 // Zig forces you to handle edge cases explicitly:
 
 test "out of memory is an error, not a crash" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -644,29 +644,29 @@ After installing via package manager, skip to **Step 3: Verify Installation**.
 
 ### Option B: Manual Download
 
-If you need a specific version (like 0.15.2 for this cookbook) or your package manager doesn't have Zig, download it manually.
+If you need a specific version (like 0.16.0 for this cookbook) or your package manager doesn't have Zig, download it manually.
 
 #### Step 1: Download Zig
 
 Visit [https://ziglang.org/download/](https://ziglang.org/download/) and choose:
 
-- **0.15.2** (stable - recommended for this cookbook)
+- **0.16.0** (stable - recommended for this cookbook)
 - Or the latest development build if you want cutting-edge features
 
 Download the archive for your platform:
-- **macOS**: `zig-macos-aarch64-0.15.2.tar.xz` (Apple Silicon) or `zig-macos-x86_64-0.15.2.tar.xz` (Intel)
-- **Linux**: `zig-linux-x86_64-0.15.2.tar.xz` or your architecture
-- **Windows**: `zig-windows-x86_64-0.15.2.zip`
+- **macOS**: `zig-macos-aarch64-0.16.0.tar.xz` (Apple Silicon) or `zig-macos-x86_64-0.16.0.tar.xz` (Intel)
+- **Linux**: `zig-linux-x86_64-0.16.0.tar.xz` or your architecture
+- **Windows**: `zig-windows-x86_64-0.16.0.zip`
 
 #### Step 2: Extract and Add to PATH
 
 **macOS/Linux:**
 ```bash
 # Extract
-tar xf zig-macos-aarch64-0.15.2.tar.xz
+tar xf zig-macos-aarch64-0.16.0.tar.xz
 
 # Move to a permanent location
-sudo mv zig-macos-aarch64-0.15.2 /usr/local/zig
+sudo mv zig-macos-aarch64-0.16.0 /usr/local/zig
 
 # Add to PATH (add this to your ~/.zshrc or ~/.bashrc)
 export PATH="/usr/local/zig:$PATH"
@@ -689,7 +689,7 @@ Run these commands to verify Zig is installed correctly:
 ```bash
 # Check version
 zig version
-# Should output: 0.15.2 (or your installed version)
+# Should output: 0.16.0 (or your installed version)
 
 # Check environment
 zig env
@@ -741,7 +741,7 @@ If you see "All 1 tests passed", you're ready to go!
 
 When you run `zig version`, you'll see output like:
 ```
-0.15.2
+0.16.0
 ```
 
 This tells you exactly which version of Zig you're running. This matters because Zig is still evolving, and different versions have different features and APIs.
@@ -756,7 +756,7 @@ The `zig env` command shows your environment configuration:
   "lib_dir": "/usr/local/zig/lib",
   "std_dir": "/usr/local/zig/lib/std",
   "global_cache_dir": "/Users/you/.cache/zig",
-  "version": "0.15.2"
+  "version": "0.16.0"
 }
 ```
 
@@ -961,7 +961,7 @@ zig init-lib             # Create a new library project
 - **Solution**: You have multiple Zig installations. Check `which zig` (Unix) or `where zig` (Windows) to see which one is being used.
 
 **Problem**: Tests fail with weird errors
-- **Solution**: Make sure you're using Zig 0.15.2. Earlier versions have different APIs.
+- **Solution**: Make sure you're using Zig 0.16.0. Earlier versions have different APIs.
 
 **Problem**: Editor doesn't recognize Zig
 - **Solution**: Install the Zig Language Server (ZLS) for your editor. See [zigtools.org](https://zigtools.org/) for setup.
@@ -970,7 +970,7 @@ zig init-lib             # Create a new library project
 
 ```zig
 // Recipe 0.2: Installing Zig and Verifying Your Toolchain
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to verify your Zig installation and use
 // basic toolchain commands. These examples assume Zig is already installed.
@@ -1182,10 +1182,14 @@ Create a file called `hello.zig`:
 // The `pub` keyword makes it visible outside this file (required for main).
 // The `!void` return type means "returns nothing or an error".
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
     // Print to standard output
-    const stdout = std.io.getStdOut().writer();
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
     try stdout.print("Hello, World!\n", .{});
+    try stdout.flush();
 }
 
 // Note: This main() won't actually run when you `zig test` this file.
@@ -1238,7 +1242,9 @@ This is the entry point for your program. Let's break it down:
 - `!void` - The return type. More on this below.
 
 ```zig
-const stdout = std.io.getStdOut().writer();
+var stdout_buffer: [1024]u8 = undefined;
+var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
+const stdout = &stdout_writer.interface;
 ```
 
 This gets a writer for standard output. In Zig, you need to explicitly get handles to stdout/stderr/stdin. Nothing is magically available.
@@ -1254,10 +1260,14 @@ This prints to stdout. The `try` keyword means "if this fails, return the error 
 The `!` in `!void` means this function returns "void or an error". This is called an error union type.
 
 ```zig
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
     // This can fail (printing might fail!)
-    const stdout = std.io.getStdOut().writer();
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
     try stdout.print("Hello, World!\n", .{});
+    try stdout.flush();
 }
 ```
 
@@ -1422,7 +1432,7 @@ try stdout.print("Hello, {s}!\n", .{name});
 
 // Multiple arguments
 const lang = "Zig";
-const version = "0.15.2";
+const version = "0.16.0";
 try stdout.print("Language: {s}, Version: {s}\n", .{ lang, version });
 ```
 
@@ -1461,7 +1471,9 @@ Zig has two main ways to print:
 
 ```zig
 // For stdout/stderr (production)
-const stdout = std.io.getStdOut().writer();
+var stdout_buffer: [1024]u8 = undefined;
+var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
+const stdout = &stdout_writer.interface;
 try stdout.print("Output: {}\n", .{value});
 
 // For debugging (simpler, but not for production)
@@ -1518,7 +1530,7 @@ Tests don't execute `main()`. They run the test blocks instead. This is why we h
 
 ```zig
 // Recipe 0.3: Your First Zig Program
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to write a basic Zig program with main(),
 // understand return types, and work with exit codes.
@@ -1533,10 +1545,14 @@ const testing = std.testing;
 // The `pub` keyword makes it visible outside this file (required for main).
 // The `!void` return type means "returns nothing or an error".
 
-pub fn main() !void {
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
     // Print to standard output
-    const stdout = std.io.getStdOut().writer();
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
     try stdout.print("Hello, World!\n", .{});
+    try stdout.flush();
 }
 
 // Note: This main() won't actually run when you `zig test` this file.
@@ -1676,7 +1692,7 @@ test "understanding print formatting" {
 test "multiple print arguments" {
     // You can print multiple values
     const name = "Zig";
-    const version = "0.15.2";
+    const version = "0.16.0";
 
     const msg = std.fmt.allocPrint(
         testing.allocator,
@@ -1861,7 +1877,7 @@ test "when type inference needs help" {
     try testing.expectEqual(@as(usize, 0), arr.len);
 
     // Function calls sometimes need type hints
-    const list = std.ArrayList(i32){}; // Type parameter required
+    const list = std.ArrayList(i32).empty; // Type parameter required
     try testing.expectEqual(@as(usize, 0), list.items.len);
 }
 
@@ -2057,7 +2073,7 @@ const y = x;  // Undefined behavior!
 
 ```zig
 // Recipe 0.4: Variables, Constants, and Type Inference
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to declare variables and constants,
 // understand mutability, and work with type inference.
@@ -2164,7 +2180,7 @@ test "when type inference needs help" {
     try testing.expectEqual(@as(usize, 0), arr.len);
 
     // Function calls sometimes need type hints
-    const list = std.ArrayList(i32){}; // Type parameter required
+    const list = std.ArrayList(i32).empty; // Type parameter required
     try testing.expectEqual(@as(usize, 0), list.items.len);
 }
 
@@ -2655,7 +2671,7 @@ You'll rarely use `void` as a variable type, but you'll see it as return types f
 
 ```zig
 // Recipe 0.5: Primitive Data and Basic Arrays
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates Zig's primitive types (integers, floats, booleans)
 // and basic fixed-size arrays.
@@ -2936,7 +2952,7 @@ test "void type" {
 
 ```zig
 // Recipe 0.6: Arrays, ArrayLists, and Slices (CRITICAL)
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This is the #1 confusion point for Zig beginners!
 // This recipe clarifies the three fundamental sequence types in Zig.
@@ -3069,7 +3085,7 @@ test "slices don't own memory" {
 
 test "ArrayList needs an allocator" {
     // ArrayList requires an allocator to manage memory
-    var list = std.ArrayList(i32){};
+    var list = std.ArrayList(i32).empty;
     defer list.deinit(testing.allocator);
 
     // Can grow dynamically
@@ -3087,7 +3103,7 @@ test "ArrayList vs fixed array" {
     _ = fixed;
 
     // ArrayList - size known at runtime, can grow
-    var list = std.ArrayList(i32){};
+    var list = std.ArrayList(i32).empty;
     defer list.deinit(testing.allocator);
 
     try list.append(testing.allocator, 1);
@@ -3100,7 +3116,7 @@ test "ArrayList vs fixed array" {
 }
 
 test "ArrayList operations" {
-    var list = std.ArrayList(i32){};
+    var list = std.ArrayList(i32).empty;
     defer list.deinit(testing.allocator);
 
     // Append items
@@ -3121,7 +3137,7 @@ test "ArrayList operations" {
 }
 
 test "ArrayList .items is a slice" {
-    var list = std.ArrayList(i32){};
+    var list = std.ArrayList(i32).empty;
     defer list.deinit(testing.allocator);
 
     try list.append(testing.allocator, 5);
@@ -3167,7 +3183,7 @@ test "strings as slices" {
 
 test "building strings with ArrayList" {
     // For dynamic strings, use ArrayList(u8)
-    var string = std.ArrayList(u8){};
+    var string = std.ArrayList(u8).empty;
     defer string.deinit(testing.allocator);
 
     try string.appendSlice(testing.allocator, "Hello");
@@ -3197,7 +3213,7 @@ test "comparing the three types" {
     try testing.expectEqual(@as(usize, 3), slice_view.len);
 
     // 3. ArrayList
-    var dynamic = std.ArrayList(i32){};
+    var dynamic = std.ArrayList(i32).empty;
     defer dynamic.deinit(testing.allocator);
     try dynamic.append(testing.allocator, 1);
     try dynamic.append(testing.allocator, 2);
@@ -3364,7 +3380,7 @@ test "using standard library for strings" {
 
     // Finding substrings
     const index = std.mem.indexOf(u8, str, "World");
-    try testing.expect(index != null);
+    try testing.expect((index) != null);
     try testing.expectEqual(@as(usize, 7), index.?);
 }
 
@@ -3389,7 +3405,7 @@ test "using standard library for math" {
 
 test "using standard library for collections" {
     // ArrayList - growable array
-    var list = std.ArrayList(i32){};
+    var list = std.ArrayList(i32).empty;
     defer list.deinit(testing.allocator);
 
     try list.append(testing.allocator, 1);
@@ -3410,7 +3426,7 @@ test "using standard library for collections" {
     try map.put("year", 2025);
 
     const value = map.get("answer");
-    try testing.expect(value != null);
+    try testing.expect((value) != null);
     try testing.expectEqual(@as(i32, 42), value.?);
 }
 
@@ -3532,7 +3548,7 @@ test "understanding comptime errors" {
     // var arr2: [runtime_size]i32 = undefined;  // error: unable to resolve comptime value
 
     // For runtime-sized collections, use ArrayList
-    var list = std.ArrayList(i32){};
+    var list = std.ArrayList(i32).empty;
     defer list.deinit(testing.allocator);
 
     const runtime_size: usize = 5;
@@ -3582,7 +3598,7 @@ test "understanding comptime errors" {
     // error: unable to resolve comptime value
 
     // For runtime-sized collections, use ArrayList
-    var list = std.ArrayList(i32){};
+    var list = std.ArrayList(i32).empty;
     defer list.deinit(testing.allocator);
 
     const runtime_size: usize = 5;
@@ -3692,7 +3708,7 @@ std.debug.print("{d}\n", .{42});  // fixed - {d} for integers
 
 ```zig
 // Recipe 0.7: Functions and the Standard Library (EXPANDED)
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe covers defining functions, working with the standard library,
 // and introduces basic comptime parameters for generic functions.
@@ -3802,7 +3818,7 @@ test "using standard library for strings" {
 
     // Finding substrings
     const index = std.mem.indexOf(u8, str, "World");
-    try testing.expect(index != null);
+    try testing.expect((index) != null);
     try testing.expectEqual(@as(usize, 7), index.?);
 }
 
@@ -3827,7 +3843,7 @@ test "using standard library for math" {
 
 test "using standard library for collections" {
     // ArrayList - growable array
-    var list = std.ArrayList(i32){};
+    var list = std.ArrayList(i32).empty;
     defer list.deinit(testing.allocator);
 
     try list.append(testing.allocator, 1);
@@ -3848,7 +3864,7 @@ test "using standard library for collections" {
     try map.put("year", 2025);
 
     const value = map.get("answer");
-    try testing.expect(value != null);
+    try testing.expect((value) != null);
     try testing.expectEqual(@as(i32, 42), value.?);
 }
 
@@ -3958,7 +3974,7 @@ test "understanding comptime errors" {
     // var arr2: [runtime_size]i32 = undefined;  // error: unable to resolve comptime value
 
     // For runtime-sized collections, use ArrayList
-    var list = std.ArrayList(i32){};
+    var list = std.ArrayList(i32).empty;
     defer list.deinit(testing.allocator);
 
     const runtime_size: usize = 5;
@@ -4503,7 +4519,7 @@ for (0..10) |i| { }
 
 ```zig
 // Recipe 0.8: Control Flow and Iteration
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates Zig's control flow constructs: if, switch, while, for,
 // and how to use break, continue, and labeled blocks.
@@ -5359,7 +5375,7 @@ ptr.* = 100;  // error: cannot assign to constant
 
 ```zig
 // Recipe 0.9: Understanding Pointers and References (CRITICAL)
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This is essential for beginners from garbage-collected languages.
 // Understand when and how to use pointers in Zig.
@@ -5674,13 +5690,13 @@ test "comparing pointers vs comparing values" {
 }
 
 test "avoiding dangling pointers" {
-    // Example of what NOT to do (would cause undefined behavior)
-    _ = struct {
-        fn call() *i32 {
-            var x: i32 = 42;
-            return &x; // BAD: x goes out of scope!
-        }
-    };
+    // Example of what NOT to do. Since 0.16 the compiler rejects it outright,
+    // so it stays as a comment rather than code:
+    //
+    //     fn call() *i32 {
+    //         var x: i32 = 42;
+    //         return &x; // BAD: x goes out of scope!
+    //     }
 
     // This would be undefined behavior:
     // const bad_ptr = getBadPointer();
@@ -6260,7 +6276,7 @@ switch (val) {
 
 ```zig
 // Recipe 0.10: Structs, Enums, and Simple Data Models
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe covers creating custom types with structs, enums,
 // and tagged unions for simple data modeling.
@@ -6718,7 +6734,7 @@ These eliminate entire classes of bugs: null pointer dereferences, unchecked exc
 test "basic optionals" {
     // ?T means "optional T" - can be a value or null
     var maybe_num: ?i32 = 42;
-    try testing.expect(maybe_num != null);
+    try testing.expect((maybe_num) != null);
 
     // Set to null
     maybe_num = null;
@@ -6726,7 +6742,7 @@ test "basic optionals" {
 
     // Create optional with value
     const some_value: ?i32 = 100;
-    try testing.expect(some_value != null);
+    try testing.expect((some_value) != null);
 }
 
 test "unwrapping optionals with if" {
@@ -6784,7 +6800,7 @@ test "functions returning optionals" {
     const numbers = [_]i32{ 10, 20, 30, 40, 50 };
 
     const index1 = findInArray(&numbers, 30);
-    try testing.expect(index1 != null);
+    try testing.expect((index1) != null);
     try testing.expectEqual(@as(usize, 2), index1.?);
 
     const index2 = findInArray(&numbers, 99);
@@ -6940,7 +6956,7 @@ test "defer for resource cleanup" {
 }
 
 fn createList(allocator: std.mem.Allocator, fail: bool) !std.ArrayList(i32) {
-    var list = std.ArrayList(i32){};
+    var list = std.ArrayList(i32).empty;
     errdefer list.deinit(allocator); // Clean up if initialization fails
 
     try list.append(allocator, 1);
@@ -7000,7 +7016,7 @@ fn initializeResource(allocator: std.mem.Allocator, stage: u8) !*std.ArrayList(i
     const list = try allocator.create(std.ArrayList(i32));
     errdefer allocator.destroy(list);
 
-    list.* = std.ArrayList(i32){};
+    list.* = std.ArrayList(i32).empty;
     errdefer list.deinit(allocator);
 
     try list.append(allocator, 1);
@@ -7176,7 +7192,7 @@ Fix: Put errdefer after the allocation.
 
 ```zig
 // Recipe 0.11: Optionals, Errors, and Resource Cleanup (EXPANDED)
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe covers optionals (?T), error unions (!T), and resource cleanup
 // with defer and errdefer.
@@ -7192,7 +7208,7 @@ const testing = std.testing;
 test "basic optionals" {
     // ?T means "optional T" - can be a value or null
     var maybe_num: ?i32 = 42;
-    try testing.expect(maybe_num != null);
+    try testing.expect((maybe_num) != null);
 
     // Set to null
     maybe_num = null;
@@ -7200,7 +7216,7 @@ test "basic optionals" {
 
     // Create optional with value
     const some_value: ?i32 = 100;
-    try testing.expect(some_value != null);
+    try testing.expect((some_value) != null);
 }
 
 test "unwrapping optionals with if" {
@@ -7258,7 +7274,7 @@ test "functions returning optionals" {
     const numbers = [_]i32{ 10, 20, 30, 40, 50 };
 
     const index1 = findInArray(&numbers, 30);
-    try testing.expect(index1 != null);
+    try testing.expect((index1) != null);
     try testing.expectEqual(@as(usize, 2), index1.?);
 
     const index2 = findInArray(&numbers, 99);
@@ -7406,7 +7422,7 @@ test "defer for resource cleanup" {
 }
 
 fn createList(allocator: std.mem.Allocator, fail: bool) !std.ArrayList(i32) {
-    var list = std.ArrayList(i32){};
+    var list = std.ArrayList(i32).empty;
     errdefer list.deinit(allocator); // Clean up if initialization fails
 
     try list.append(allocator, 1);
@@ -7466,7 +7482,7 @@ fn initializeResource(allocator: std.mem.Allocator, stage: u8) !*std.ArrayList(i
     const list = try allocator.create(std.ArrayList(i32));
     errdefer allocator.destroy(list);
 
-    list.* = std.ArrayList(i32){};
+    list.* = std.ArrayList(i32).empty;
     errdefer list.deinit(allocator);
 
     try list.append(allocator, 1);
@@ -7615,10 +7631,10 @@ This explicit approach eliminates hidden allocations and makes memory usage pred
 
 test "no default allocator" {
     // This would NOT compile in Zig:
-    // var list = std.ArrayList(i32).init();  // error: missing allocator parameter
+    // var list = std.ArrayList(i32).empty;  // error: missing allocator parameter
 
     // You MUST provide an allocator:
-    var list = std.ArrayList(i32){};
+    var list = std.ArrayList(i32).empty;
     defer list.deinit(testing.allocator);
 
     try list.append(testing.allocator, 1);
@@ -7690,7 +7706,7 @@ test "FixedBufferAllocator - stack memory" {
 
 test "GeneralPurposeAllocator - safe malloc" {
     // GPA is like malloc but with leak detection
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -7936,7 +7952,7 @@ test "building a dynamic data structure" {
 
     const allocator = arena.allocator();
 
-    var names = std.ArrayList([]const u8){};
+    var names = std.ArrayList([]const u8).empty;
     defer names.deinit(allocator);
 
     // Add strings to list
@@ -8006,7 +8022,7 @@ fn middleLevel(allocator: std.mem.Allocator) !void {
 
 **Forgetting to pass allocator:**
 ```zig
-var list = std.ArrayList(i32){};
+var list = std.ArrayList(i32).empty;
 list.append(1);  // error: no allocator provided
 // Fixed:
 try list.append(allocator, 1);
@@ -8035,7 +8051,7 @@ const data = try allocator.alloc(u8, huge_size);
 
 ```zig
 // Recipe 0.12: Understanding Allocators (CRITICAL)
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This is critical for beginners from garbage-collected languages.
 // Zig requires explicit memory allocation - no hidden allocations.
@@ -8051,10 +8067,10 @@ const testing = std.testing;
 
 test "no default allocator" {
     // This would NOT compile in Zig:
-    // var list = std.ArrayList(i32).init();  // error: missing allocator parameter
+    // var list = std.ArrayList(i32).empty;  // error: missing allocator parameter
 
     // You MUST provide an allocator:
-    var list = std.ArrayList(i32){};
+    var list = std.ArrayList(i32).empty;
     defer list.deinit(testing.allocator);
 
     try list.append(testing.allocator, 1);
@@ -8120,7 +8136,7 @@ test "FixedBufferAllocator - stack memory" {
 
 test "GeneralPurposeAllocator - safe malloc" {
     // GPA is like malloc but with leak detection
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -8322,7 +8338,7 @@ test "building a dynamic data structure" {
 
     const allocator = arena.allocator();
 
-    var names = std.ArrayList([]const u8){};
+    var names = std.ArrayList([]const u8).empty;
     defer names.deinit(allocator);
 
     // Add strings to list
@@ -8494,7 +8510,7 @@ test "testing with allocators" {
     // Always use testing.allocator in tests
     // It detects memory leaks automatically
 
-    var list = std.ArrayList(i32){};
+    var list = std.ArrayList(i32).empty;
     defer list.deinit(testing.allocator);
 
     try list.append(testing.allocator, 1);
@@ -8524,7 +8540,7 @@ test "testing optional values" {
     const no_value: ?i32 = null;
 
     // Check if optional has value
-    try testing.expect(maybe_value != null);
+    try testing.expect((maybe_value) != null);
     try testing.expect(no_value == null);
 
     // Unwrap and check value
@@ -8674,7 +8690,7 @@ test "logging levels" {
 fn debugHelper(x: i32) void {
     std.debug.print("debugHelper called with {d}\n", .{x});
     std.debug.print("Stack trace:\n", .{});
-    std.debug.dumpCurrentStackTrace(@returnAddress());
+    std.debug.dumpCurrentStackTrace(.{});
 }
 
 test "stack traces" {
@@ -8760,7 +8776,7 @@ test "processData with valid input" {
 **Use testing.allocator:**
 ```zig
 test "always use testing allocator" {
-    var list = std.ArrayList(i32){};
+    var list = std.ArrayList(i32).empty;
     defer list.deinit(testing.allocator); // Automatic leak detection
     // ...
 }
@@ -8787,7 +8803,7 @@ try testing.expect(std.mem.eql(u8, str1, str2));  // Correct
 
 **Forgetting defer with allocator:**
 ```zig
-var list = std.ArrayList(i32){};
+var list = std.ArrayList(i32).empty;
 try list.append(testing.allocator, 1);
 // Missing: defer list.deinit(testing.allocator);
 // Test will fail with memory leak!
@@ -8804,7 +8820,7 @@ try testing.expectApproxEqAbs(0.3, f, 0.0001);  // Correct
 
 ```zig
 // Recipe 0.13: Testing and Debugging Fundamentals
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe covers creating tests, using std.testing, and debugging techniques.
 
@@ -8886,7 +8902,7 @@ test "testing with allocators" {
     // Always use testing.allocator in tests
     // It detects memory leaks automatically
 
-    var list = std.ArrayList(i32){};
+    var list = std.ArrayList(i32).empty;
     defer list.deinit(testing.allocator);
 
     try list.append(testing.allocator, 1);
@@ -8916,7 +8932,7 @@ test "testing optional values" {
     const no_value: ?i32 = null;
 
     // Check if optional has value
-    try testing.expect(maybe_value != null);
+    try testing.expect((maybe_value) != null);
     try testing.expect(no_value == null);
 
     // Unwrap and check value
@@ -9062,7 +9078,7 @@ test "logging levels" {
 fn debugHelper(x: i32) void {
     std.debug.print("debugHelper called with {d}\n", .{x});
     std.debug.print("Stack trace:\n", .{});
-    std.debug.dumpCurrentStackTrace(@returnAddress());
+    std.debug.dumpCurrentStackTrace(.{});
 }
 
 test "stack traces" {
@@ -9171,7 +9187,6 @@ test "importing std library" {
     _ = std.HashMap;
     _ = std.mem;
     _ = std.testing;
-    _ = std.io;
 }
 
 test "module structure" {
@@ -9564,7 +9579,7 @@ zig build -Dtarget=aarch64-linux
 
 ```zig
 // Recipe 0.14: Projects, Modules, and Dependencies
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe covers project structure, modules, and the build system.
 
@@ -9585,7 +9600,6 @@ test "importing std library" {
     _ = std.HashMap;
     _ = std.mem;
     _ = std.testing;
-    _ = std.io;
 }
 
 test "module structure" {
@@ -10242,7 +10256,7 @@ test "optional pointers" {
     const numbers = [_]i32{ 3, 7, 2, 9, 1 };
     const max = findMax(&numbers);
 
-    try testing.expect(max != null);
+    try testing.expect((max) != null);
     try testing.expectEqual(@as(i32, 9), max.?.*);
 
     const empty: []const i32 = &.{};

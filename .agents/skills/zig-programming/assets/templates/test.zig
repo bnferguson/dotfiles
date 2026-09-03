@@ -1,4 +1,4 @@
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 // For other versions, see references/version-differences.md
 
 const std = @import("std");

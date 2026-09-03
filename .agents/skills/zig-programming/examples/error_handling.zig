@@ -74,22 +74,20 @@ fn errdefferExample() !void {
     std.debug.print("\n=== Errdefer Keyword ===\n", .{});
     std.debug.print("Cleanup that only runs on error path\n\n", .{});
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Simulate multi-step operation that might fail
+    // A multi-step operation that can fail partway through.
     const step1 = try allocator.alloc(u8, 100);
-    errdefer allocator.free(step1); // Only freed if subsequent steps fail
+    defer allocator.free(step1);
 
+    // `errdefer` guards the gap: if the second allocation fails, the first is
+    // released by its `defer` on the way out. Pairing `errdefer` with `defer`
+    // on the same allocation would free it twice, because an error path runs
+    // both.
     const step2 = try allocator.alloc(u8, 100);
-    errdefer allocator.free(step2); // Only freed if subsequent steps fail
-
-    // If we reach here successfully, caller is responsible for cleanup
-    defer {
-        allocator.free(step1);
-        allocator.free(step2);
-    }
+    defer allocator.free(step2);
 
     std.debug.print("Multi-step allocation succeeded\n", .{});
 }

@@ -117,7 +117,7 @@ The skill activates automatically when:
 ## Version Support
 
 The skill supports the following Zig versions:
-- Current stable: 0.16.0 (default)
+- Current stable: 0.16.0 (default; recipes, templates and examples all target it)
 - Recent versions: 0.14.1, 0.13.0, 0.12.1, 0.11.0
 - Legacy versions: 0.10.1, 0.9.1, 0.8.1, 0.7.1, 0.6.0, 0.3.0, 0.2.0
 - Development: master

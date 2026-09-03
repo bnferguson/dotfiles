@@ -1,6 +1,6 @@
 # Strings & Text Recipes
 
-*14 tested recipes for Zig 0.15.2*
+*14 recipes for Zig 0.16.0 — 1 not yet migrated (see `scripts/verify_recipes.py`)*
 
 ## Quick Reference
 
@@ -103,7 +103,7 @@ pub fn collectTokens(
     text: []const u8,
     delimiters: []const u8,
 ) !std.ArrayList([]const u8) {
-    var result = std.ArrayList([]const u8){};
+    var result = std.ArrayList([]const u8).empty;
     errdefer result.deinit(allocator);
 
     var iter = mem.tokenizeAny(u8, text, delimiters);
@@ -238,7 +238,7 @@ Zig's approach is more memory-efficient since it returns an iterator rather than
 
 ```zig
 // Recipe 2.1: Splitting strings on any of multiple delimiters
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates various approaches to splitting strings in Zig
 // using the standard library's tokenization and splitting functions.
@@ -279,7 +279,7 @@ pub fn collectTokens(
     text: []const u8,
     delimiters: []const u8,
 ) !std.ArrayList([]const u8) {
-    var result = std.ArrayList([]const u8){};
+    var result = std.ArrayList([]const u8).empty;
     errdefer result.deinit(allocator);
 
     var iter = tokenizeAny(text, delimiters);
@@ -789,7 +789,7 @@ Zig's approach is more explicit but equally efficient, with the advantage of no 
 
 ```zig
 // Recipe 2.2: Matching text at the start or end of a string
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to check if strings start with or end with
 // specific prefixes or suffixes using Zig's standard library.
@@ -1232,7 +1232,7 @@ pub fn filterByGlob(
     items: []const []const u8,
     pattern: []const u8,
 ) !std.ArrayList([]const u8) {
-    var result = std.ArrayList([]const u8){};
+    var result = std.ArrayList([]const u8).empty;
     errdefer result.deinit(allocator);
 
     for (items) |item| {
@@ -1434,7 +1434,7 @@ This glob implementation provides efficient, memory-safe wildcard matching perfe
 
 ```zig
 // Recipe 2.3: Matching strings using shell wildcard patterns
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates implementing simple glob-style wildcard matching
 // similar to shell filename patterns (* and ?).
@@ -1517,7 +1517,7 @@ pub fn filterByGlob(
     items: []const []const u8,
     pattern: []const u8,
 ) !std.ArrayList([]const u8) {
-    var result = std.ArrayList([]const u8){};
+    var result = std.ArrayList([]const u8).empty;
     errdefer result.deinit(allocator);
 
     for (items) |item| {
@@ -1851,7 +1851,7 @@ pub fn findAll(
     text: []const u8,
     needle: []const u8,
 ) !std.ArrayList(usize) {
-    var result = std.ArrayList(usize){};
+    var result = std.ArrayList(usize).empty;
     errdefer result.deinit(allocator);
 
     if (needle.len == 0) return result;
@@ -2116,7 +2116,7 @@ This comprehensive set of search functions covers most text searching needs effi
 
 ```zig
 // Recipe 2.4: Matching and searching for text patterns
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates various string searching techniques in Zig
 // using std.mem functions for substring search and pattern matching.
@@ -2183,7 +2183,7 @@ pub fn findAll(
     text: []const u8,
     needle: []const u8,
 ) !std.ArrayList(usize) {
-    var result = std.ArrayList(usize){};
+    var result = std.ArrayList(usize).empty;
     errdefer result.deinit(allocator);
 
     if (needle.len == 0) return result;
@@ -2483,7 +2483,7 @@ test "memory safety - no allocations for basic search" {
     const has = contains(text, "hello");
     const cnt = count(text, "l");
 
-    try testing.expect(idx != null);
+    try testing.expect((idx) != null);
     try testing.expect(has);
     try testing.expectEqual(@as(usize, 3), cnt);
 }
@@ -2720,7 +2720,7 @@ const replacements = [_]ReplacePair{
 
 ```zig
 // Recipe 2.5: Searching and replacing text
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates various approaches to replacing text in strings,
 // including single replacement, global replacement, and replace all.
@@ -2837,7 +2837,7 @@ pub fn replaceWith(
         return allocator.dupe(u8, text);
     }
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var pos: usize = 0;
@@ -2926,7 +2926,7 @@ pub fn replaceManyOptimized(
         return allocator.dupe(u8, text);
     }
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var pos: usize = 0;
@@ -3132,7 +3132,7 @@ test "censor profanity" {
 
 /// Collapse runs of spaces into single spaces (single-pass algorithm)
 fn collapseSpaces(allocator: mem.Allocator, text: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var in_space = false;
@@ -4004,7 +4004,7 @@ This comprehensive set of case-insensitive operations handles most text processi
 
 ```zig
 // Recipe 2.6: Searching and replacing case-insensitive text
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates case-insensitive string operations including
 // searching, replacing, and comparing text regardless of case.
@@ -4433,12 +4433,12 @@ pub fn trim(text: []const u8) []const u8 {
 
 /// Remove whitespace from start only
 pub fn trimLeft(text: []const u8) []const u8 {
-    return mem.trimLeft(u8, text, " \t\n\r");
+    return mem.trimStart(u8, text, " \t\n\r");
 }
 
 /// Remove whitespace from end only
 pub fn trimRight(text: []const u8) []const u8 {
-    return mem.trimRight(u8, text, " \t\n\r");
+    return mem.trimEnd(u8, text, " \t\n\r");
 }
 
 /// Remove specific characters from both ends
@@ -4448,12 +4448,12 @@ pub fn trimChars(text: []const u8, chars: []const u8) []const u8 {
 
 /// Remove specific characters from start
 pub fn trimLeftChars(text: []const u8, chars: []const u8) []const u8 {
-    return mem.trimLeft(u8, text, chars);
+    return mem.trimStart(u8, text, chars);
 }
 
 /// Remove specific characters from end
 pub fn trimRightChars(text: []const u8, chars: []const u8) []const u8 {
-    return mem.trimRight(u8, text, chars);
+    return mem.trimEnd(u8, text, chars);
 }
 ```
 
@@ -4465,7 +4465,7 @@ pub fn removeChars(
     text: []const u8,
     chars_to_remove: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |char| {
@@ -4490,7 +4490,7 @@ pub fn keepChars(
     text: []const u8,
     chars_to_keep: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |char| {
@@ -4517,11 +4517,11 @@ Zig's `std.mem` provides basic trimming:
 - Removes any character in `chars` string
 - Common: `" \t\n\r"` for whitespace
 
-**`mem.trimLeft(u8, text, chars)`** - Remove from start only
+**`mem.trimStart(u8, text, chars)`** - Remove from start only
 - Returns slice of original string
 - Stops at first character not in `chars`
 
-**`mem.trimRight(u8, text, chars)`** - Remove from end only
+**`mem.trimEnd(u8, text, chars)`** - Remove from end only
 - Returns slice of original string
 - Stops at last character not in `chars`
 
@@ -4537,7 +4537,7 @@ pub fn removeNonAlphanumeric(
     allocator: mem.Allocator,
     text: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |char| {
@@ -4562,7 +4562,7 @@ pub fn removeNonAlphabetic(
     allocator: mem.Allocator,
     text: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |char| {
@@ -4581,7 +4581,7 @@ pub fn removeNonDigits(
     allocator: mem.Allocator,
     text: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |char| {
@@ -4623,7 +4623,7 @@ pub fn collapseSpaces(
     allocator: mem.Allocator,
     text: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var prev_was_space = false;
@@ -4732,7 +4732,7 @@ pub fn removeControlChars(
     allocator: mem.Allocator,
     text: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |char| {
@@ -4874,7 +4874,7 @@ This comprehensive set of string cleaning operations handles most text sanitizat
 
 ```zig
 // Recipe 2.7: Stripping unwanted characters
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates removing unwanted characters from strings,
 // including whitespace trimming, character filtering, and cleanup operations.
@@ -4892,12 +4892,12 @@ pub fn trim(text: []const u8) []const u8 {
 
 /// Remove whitespace from start only
 pub fn trimLeft(text: []const u8) []const u8 {
-    return mem.trimLeft(u8, text, " \t\n\r");
+    return mem.trimStart(u8, text, " \t\n\r");
 }
 
 /// Remove whitespace from end only
 pub fn trimRight(text: []const u8) []const u8 {
-    return mem.trimRight(u8, text, " \t\n\r");
+    return mem.trimEnd(u8, text, " \t\n\r");
 }
 
 /// Remove specific characters from both ends
@@ -4907,12 +4907,12 @@ pub fn trimChars(text: []const u8, chars: []const u8) []const u8 {
 
 /// Remove specific characters from start
 pub fn trimLeftChars(text: []const u8, chars: []const u8) []const u8 {
-    return mem.trimLeft(u8, text, chars);
+    return mem.trimStart(u8, text, chars);
 }
 
 /// Remove specific characters from end
 pub fn trimRightChars(text: []const u8, chars: []const u8) []const u8 {
-    return mem.trimRight(u8, text, chars);
+    return mem.trimEnd(u8, text, chars);
 }
 // ANCHOR_END: basic_trimming
 
@@ -4923,7 +4923,7 @@ pub fn removeChars(
     text: []const u8,
     chars_to_remove: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |char| {
@@ -4948,7 +4948,7 @@ pub fn keepChars(
     text: []const u8,
     chars_to_keep: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |char| {
@@ -4970,7 +4970,7 @@ pub fn removeNonAlphanumeric(
     allocator: mem.Allocator,
     text: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |char| {
@@ -4987,7 +4987,7 @@ pub fn removeNonAlphabetic(
     allocator: mem.Allocator,
     text: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |char| {
@@ -5005,7 +5005,7 @@ pub fn removeNonDigits(
     allocator: mem.Allocator,
     text: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |char| {
@@ -5022,7 +5022,7 @@ pub fn collapseSpaces(
     allocator: mem.Allocator,
     text: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var prev_was_space = false;
@@ -5043,7 +5043,7 @@ pub fn removeControlChars(
     allocator: mem.Allocator,
     text: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |char| {
@@ -5309,7 +5309,7 @@ pub fn concat(
     a: []const u8,
     b: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     try result.appendSlice(allocator, a);
@@ -5323,7 +5323,7 @@ pub fn concatMultiple(
     allocator: mem.Allocator,
     strings: []const []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (strings) |str| {
@@ -5386,7 +5386,7 @@ pub fn buildString(
     allocator: mem.Allocator,
     parts: []const []const u8,
 ) ![]u8 {
-    var builder = std.ArrayList(u8){};
+    var builder = std.ArrayList(u8).empty;
     errdefer builder.deinit(allocator);
 
     for (parts) |part| {
@@ -5427,7 +5427,7 @@ Zig provides several ways to combine strings, each with different trade-offs:
 
 **ArrayList approach** - Most flexible, efficient for multiple appends:
 ```zig
-var builder = std.ArrayList(u8){};
+var builder = std.ArrayList(u8).empty;
 defer builder.deinit(allocator);
 
 try builder.appendSlice(allocator, "part1");
@@ -5683,7 +5683,7 @@ defer allocator.free(row);
 
 **Build HTML Tag:**
 ```zig
-var builder = std.ArrayList(u8){};
+var builder = std.ArrayList(u8).empty;
 defer builder.deinit(allocator);
 
 try builder.appendSlice(allocator, "<");
@@ -5739,14 +5739,14 @@ const result = try concat(allocator, "a", "b");
 defer allocator.free(result);  // Must free
 
 // ArrayList also needs cleanup
-var builder = std.ArrayList(u8){};
+var builder = std.ArrayList(u8).empty;
 defer builder.deinit(allocator);  // Even if toOwnedSlice called
 ```
 
 When using `toOwnedSlice`, the ArrayList no longer owns the memory, but you must still call `deinit`:
 
 ```zig
-var builder = std.ArrayList(u8){};
+var builder = std.ArrayList(u8).empty;
 defer builder.deinit(allocator);  // Clean up ArrayList metadata
 
 try builder.appendSlice(allocator, "data");
@@ -5816,7 +5816,7 @@ This comprehensive set of string combination operations handles most text buildi
 
 ```zig
 // Recipe 2.8: Combining and concatenating strings
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates various ways to combine and concatenate strings
 // using allocators, ArrayList, join, and format functions.
@@ -5832,7 +5832,7 @@ pub fn concat(
     a: []const u8,
     b: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     try result.appendSlice(allocator, a);
@@ -5846,7 +5846,7 @@ pub fn concatMultiple(
     allocator: mem.Allocator,
     strings: []const []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (strings) |str| {
@@ -5907,7 +5907,7 @@ pub fn buildString(
     allocator: mem.Allocator,
     parts: []const []const u8,
 ) ![]u8 {
-    var builder = std.ArrayList(u8){};
+    var builder = std.ArrayList(u8).empty;
     errdefer builder.deinit(allocator);
 
     for (parts) |part| {
@@ -6729,7 +6729,7 @@ This comprehensive formatting system provides type-safe, efficient string interp
 
 ```zig
 // Recipe 2.9: Interpolating variables in strings
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates string formatting and variable interpolation
 // using std.fmt functions for building formatted strings.
@@ -7190,7 +7190,7 @@ pub fn formatRow(
     widths: []const usize,
     separator: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (columns, widths, 0..) |col, width, i| {
@@ -7271,7 +7271,7 @@ pub fn textBox(
 ) ![]u8 {
     const inner_width = text.len + (padding * 2);
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     // Top border
@@ -7538,7 +7538,7 @@ This comprehensive text alignment system provides the building blocks for creati
 
 ```zig
 // Recipe 2.10: Aligning text strings
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates text alignment and formatting for tables,
 // columns, and structured output.
@@ -7636,7 +7636,7 @@ pub fn formatRow(
 ) ![]u8 {
     if (columns.len != widths.len) return error.ColumnWidthMismatch;
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (columns, widths, 0..) |col, width, i| {
@@ -7674,7 +7674,7 @@ pub fn textBox(
 ) ![]u8 {
     const inner_width = text.len + (padding * 2);
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     // Top border
@@ -7971,7 +7971,7 @@ pub fn wrapText(
     if (width == 0) return allocator.dupe(u8, "");
     if (text.len <= width) return allocator.dupe(u8, text);
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var pos: usize = 0;
@@ -8029,7 +8029,7 @@ pub fn hardWrap(
     if (width == 0) return allocator.dupe(u8, "");
     if (text.len <= width) return allocator.dupe(u8, text);
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var pos: usize = 0;
@@ -8060,7 +8060,7 @@ pub fn indent(
     text: []const u8,
     prefix: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var lines = mem.tokenizeScalar(u8, text, '\n');
@@ -8102,7 +8102,7 @@ pub fn formatParagraph(
     const wrapped = try wrapText(allocator, text, width);
     defer allocator.free(wrapped);
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var lines = mem.tokenizeScalar(u8, wrapped, '\n');
@@ -8145,7 +8145,7 @@ pub fn splitIntoLines(
     text: []const u8,
     width: usize,
 ) !std.ArrayList([]const u8) {
-    var lines = std.ArrayList([]const u8){};
+    var lines = std.ArrayList([]const u8).empty;
     errdefer lines.deinit(allocator);
 
     var line_start: usize = 0;
@@ -8281,7 +8281,7 @@ defer allocator.free(with_timestamp);
 
 ```zig
 // Reuse ArrayList for multiple wraps
-var wrapper = std.ArrayList(u8).init(allocator);
+var wrapper = std.ArrayList(u8).empty;
 defer wrapper.deinit();
 
 for (paragraphs) |para| {
@@ -8381,7 +8381,7 @@ fn formatListItem(
     const wrapped = try wrapText(allocator, text, width);
     defer allocator.free(wrapped);
 
-    var result = std.ArrayList(u8).init(allocator);
+    var result = std.ArrayList(u8).empty;
     defer result.deinit();
 
     var lines = mem.tokenizeScalar(u8, wrapped, '\n');
@@ -8421,7 +8421,7 @@ This comprehensive text reformatting system handles word wrapping, line breaking
 
 ```zig
 // Recipe 2.11: Reformatting text to fixed columns
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates text wrapping, word breaking, and reformatting
 // text to fit within fixed column widths.
@@ -8440,7 +8440,7 @@ pub fn wrapText(
     if (width == 0) return allocator.dupe(u8, "");
     if (text.len <= width) return allocator.dupe(u8, text);
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var pos: usize = 0;
@@ -8498,7 +8498,7 @@ pub fn hardWrap(
     if (width == 0) return allocator.dupe(u8, "");
     if (text.len <= width) return allocator.dupe(u8, text);
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var pos: usize = 0;
@@ -8524,7 +8524,7 @@ pub fn splitIntoLines(
     text: []const u8,
     width: usize,
 ) !std.ArrayList([]const u8) {
-    var lines = std.ArrayList([]const u8){};
+    var lines = std.ArrayList([]const u8).empty;
     errdefer lines.deinit(allocator);
 
     var pos: usize = 0;
@@ -8569,7 +8569,7 @@ pub fn indent(
     text: []const u8,
     prefix: []const u8,
 ) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var lines = mem.tokenizeScalar(u8, text, '\n');
@@ -8600,7 +8600,7 @@ pub fn formatParagraph(
     const wrapped = try wrapText(allocator, text, width);
     defer allocator.free(wrapped);
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var lines = mem.tokenizeScalar(u8, wrapped, '\n');
@@ -8835,7 +8835,7 @@ pub fn iterateCodepoints(
     allocator: mem.Allocator,
     text: []const u8,
 ) !std.ArrayList(u21) {
-    var codepoints = std.ArrayList(u21){};
+    var codepoints = std.ArrayList(u21).empty;
     errdefer codepoints.deinit(allocator);
 
     var i: usize = 0;
@@ -9226,7 +9226,7 @@ fn containsEmoji(text: []const u8) !bool {
 
 ```zig
 // Cache codepoint positions if accessing frequently
-var positions = std.ArrayList(usize).init(allocator);
+var positions = std.ArrayList(usize).empty;
 defer positions.deinit();
 
 var i: usize = 0;
@@ -9349,7 +9349,7 @@ This comprehensive guide covers proper UTF-8 handling in Zig, distinguishing bet
 
 ```zig
 // Recipe 2.12: Handling byte strings vs unicode strings
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates the difference between byte strings and Unicode strings,
 // UTF-8 iteration, validation, and proper Unicode handling in Zig.
@@ -9384,7 +9384,7 @@ pub fn iterateCodepoints(
     allocator: mem.Allocator,
     text: []const u8,
 ) !std.ArrayList(u21) {
-    var codepoints = std.ArrayList(u21){};
+    var codepoints = std.ArrayList(u21).empty;
     errdefer codepoints.deinit(allocator);
 
     var i: usize = 0;
@@ -9754,7 +9754,7 @@ Zig provides powerful string manipulation tools through `std.mem` and `std.Array
 pub fn normalizeWhitespace(allocator: Allocator, text: []const u8) ![]u8 {
     if (text.len == 0) return try allocator.dupe(u8, "");
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var in_whitespace = true; // Start true to skip leading whitespace
@@ -9810,7 +9810,7 @@ pub const LineEnding = enum {
 
 /// Convert all line endings in text to the specified format.
 pub fn normalizeLineEndings(allocator: Allocator, text: []const u8, target: LineEnding) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     const target_bytes = switch (target) {
@@ -9886,7 +9886,7 @@ fn shouldEncodeUrlChar(c: u8) bool {
 /// Encode a string for use in URLs (percent encoding).
 /// Encodes all characters except unreserved characters per RFC 3986.
 pub fn urlEncode(allocator: Allocator, text: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |c| {
@@ -9906,7 +9906,7 @@ pub fn urlEncode(allocator: Allocator, text: []const u8) ![]u8 {
 /// Decode a percent-encoded URL string.
 /// Returns error.InvalidPercentEncoding if the encoding is malformed.
 pub fn urlDecode(allocator: Allocator, text: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;
@@ -9982,7 +9982,7 @@ test "urlDecode - invalid encoding" {
 /// ANSI codes are sequences starting with ESC (0x1B) followed by '[' and
 /// terminated by a letter (typically 'm' for colors).
 pub fn removeAnsiCodes(allocator: Allocator, text: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;
@@ -10054,7 +10054,7 @@ const html_entities = [_]HtmlEntity{
 /// Encode text for safe display in HTML by escaping special characters.
 /// Handles: <, >, &, ", '
 pub fn htmlEncode(allocator: Allocator, text: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |c| {
@@ -10077,7 +10077,7 @@ pub fn htmlEncode(allocator: Allocator, text: []const u8) ![]u8 {
 /// Decode HTML entities back to their original characters.
 /// Handles both named entities (&lt;, &gt;, etc.) and numeric entities (&#65;, &#x41;).
 pub fn htmlDecode(allocator: Allocator, text: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;
@@ -10211,7 +10211,7 @@ pub fn htmlEncode(allocator: std.mem.Allocator, text: []const u8) ![]u8 {
         .{ .char = '\'', .entity = "&#39;" },
     };
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |c| {
@@ -10422,7 +10422,7 @@ For simple trimming, use Recipe 2.7's `std.mem.trim`. For complex sanitization, 
 
 ```zig
 // Recipe 2.13: Sanitizing and Cleaning Up Text
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Advanced text sanitization including whitespace normalization, line ending
 // conversion, URL encoding/decoding, ANSI escape code removal, and HTML entity
@@ -10444,7 +10444,7 @@ const Allocator = mem.Allocator;
 pub fn normalizeWhitespace(allocator: Allocator, text: []const u8) ![]u8 {
     if (text.len == 0) return try allocator.dupe(u8, "");
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var in_whitespace = true; // Start true to skip leading whitespace
@@ -10500,7 +10500,7 @@ pub const LineEnding = enum {
 
 /// Convert all line endings in text to the specified format.
 pub fn normalizeLineEndings(allocator: Allocator, text: []const u8, target: LineEnding) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     const target_bytes = switch (target) {
@@ -10574,7 +10574,7 @@ fn shouldEncodeUrlChar(c: u8) bool {
 /// Encode a string for use in URLs (percent encoding).
 /// Encodes all characters except unreserved characters per RFC 3986.
 pub fn urlEncode(allocator: Allocator, text: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |c| {
@@ -10594,7 +10594,7 @@ pub fn urlEncode(allocator: Allocator, text: []const u8) ![]u8 {
 /// Decode a percent-encoded URL string.
 /// Returns error.InvalidPercentEncoding if the encoding is malformed.
 pub fn urlDecode(allocator: Allocator, text: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;
@@ -10668,7 +10668,7 @@ test "urlDecode - invalid encoding" {
 /// ANSI codes are sequences starting with ESC (0x1B) followed by '[' and
 /// terminated by a letter (typically 'm' for colors).
 pub fn removeAnsiCodes(allocator: Allocator, text: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;
@@ -10740,7 +10740,7 @@ const html_entities = [_]HtmlEntity{
 /// Encode text for safe display in HTML by escaping special characters.
 /// Handles: <, >, &, ", '
 pub fn htmlEncode(allocator: Allocator, text: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (text) |c| {
@@ -10763,7 +10763,7 @@ pub fn htmlEncode(allocator: Allocator, text: []const u8) ![]u8 {
 /// Decode HTML entities back to their original characters.
 /// Handles both named entities (&lt;, &gt;, etc.) and numeric entities (&#65;, &#x41;).
 pub fn htmlDecode(allocator: Allocator, text: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;
@@ -12170,7 +12170,7 @@ fn stripAccents(allocator: Allocator, text: []const u8) ![]u8 {
     defer allocator.free(decomposed);
 
     // Filter out combining marks (U+0300 - U+036F range)
-    var result = std.ArrayList(u8).init(allocator);
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit();
 
     var i: usize = 0;
@@ -12215,7 +12215,7 @@ for (strings) |str| {
 }
 
 // Good: Normalize once upfront
-var normalized_strings = std.ArrayList([]u8).init(allocator);
+var normalized_strings = std.ArrayList([]u8).empty;
 defer {
     for (normalized_strings.items) |s| allocator.free(s);
     normalized_strings.deinit();
@@ -12297,7 +12297,7 @@ This recipe's value is in teaching FFI patterns, not in being production-ready U
 
 ```zig
 // Recipe 2.14: Standardizing Unicode text with ICU
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // EDUCATIONAL FOCUS: This recipe demonstrates C library interoperability patterns.
 // For production code, consider pure-Zig alternatives like Ziglyph.

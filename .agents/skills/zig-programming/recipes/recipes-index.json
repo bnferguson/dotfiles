@@ -1,5 +1,5 @@
 {
-  "version": "0.15.2",
+  "version": "0.16.0",
   "generated": true,
   "total_recipes": 223,
   "topics": [
@@ -5857,5 +5857,6 @@
         "20.5: Using UDP Multicast"
       ]
     }
-  ]
+  ],
+  "verified_against": "0.16.0"
 }

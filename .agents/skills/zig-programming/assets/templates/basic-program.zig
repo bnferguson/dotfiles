@@ -1,17 +1,27 @@
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 // For other versions, see references/version-differences.md
 
 const std = @import("std");
 
-pub fn main() !void {
-    // Get a general purpose allocator
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    // The application owns the Io implementation and the allocator, and passes
+    // them down to everything that needs them.
+    const io = init.io;
+    const allocator = init.gpa;
+    _ = allocator;
 
-    // Get stdout writer
-    const stdout = std.io.getStdOut().writer();
+    // A writer owns a buffer, and that buffer must be flushed before it goes
+    // out of scope -- an early `return` above the flush loses the output.
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writerStreaming(io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
 
     // Your code here
     try stdout.print("Hello, Zig!\n", .{});
+
+    // A write reports the placeholder `error.WriteFailed` and stashes the real
+    // error on the writer, so unwrap it rather than losing why the write failed.
+    stdout.flush() catch |err| switch (err) {
+        error.WriteFailed => return stdout_writer.err.?,
+    };
 }

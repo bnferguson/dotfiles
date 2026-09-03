@@ -1,6 +1,6 @@
 # Functions & Callbacks Recipes
 
-*11 tested recipes for Zig 0.15.2*
+*11 recipes, all compiled against Zig 0.16.0*
 
 ## Quick Reference
 
@@ -113,6 +113,7 @@ pub fn print(writer: anytype, args: anytype) !void {
 ### Compile-Time Variadic Functions
 
 Use tuples for compile-time known arguments (see code examples above).
+```zig
     }
     return total;
 }
@@ -165,12 +166,13 @@ pub fn print(writer: anytype, args: anytype) !void {
 }
 
 test "generic print" {
+    const io = std.testing.io;
     var buffer: [256]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = std.Io.Writer.fixed(&buffer);
 
-    try print(fbs.writer(), .{ 42, "hello", 3.14 });
+    try print(&fbs, .{ 42, "hello", 3.14 });
 
-    try std.testing.expectEqualStrings("42 hello 3.14 ", fbs.getWritten());
+    try std.testing.expectEqualStrings("42 hello 3.14 ", fbs.buffered());
 }
 ```
 
@@ -183,7 +185,7 @@ pub fn buildString(
     allocator: std.mem.Allocator,
     args: anytype,
 ) ![]u8 {
-    var list = std.ArrayList(u8){};
+    var list = std.ArrayList(u8).empty;
     errdefer list.deinit(allocator);
 
     const ArgsType = @TypeOf(args);
@@ -303,13 +305,14 @@ pub fn log(
 }
 
 test "logging" {
+    const io = std.testing.io;
     var buffer: [256]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = std.Io.Writer.fixed(&buffer);
 
-    try log(fbs.writer(), .info, .{ "User", 42, "logged in" });
+    try log(&fbs, .info, .{ "User", 42, "logged in" });
 
-    try std.testing.expect(std.mem.startsWith(u8, fbs.getWritten(), "[info]"));
-    try std.testing.expect(std.mem.indexOf(u8, fbs.getWritten(), "User") != null);
+    try std.testing.expect(std.mem.startsWith(u8, fbs.buffered(), "[info]"));
+    try std.testing.expect(std.mem.indexOf(u8, fbs.buffered(), "User") != null);
 }
 ```
 
@@ -459,7 +462,7 @@ pub fn buildString(
     allocator: std.mem.Allocator,
     args: anytype,
 ) ![]u8 {
-    var list = std.ArrayList(u8){};
+    var list = std.ArrayList(u8).empty;
     errdefer list.deinit(allocator);
 
     const ArgsType = @TypeOf(args);
@@ -625,11 +628,11 @@ test "sum comptime" {
 
 test "generic print" {
     var buffer: [256]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = std.Io.Writer.fixed(&buffer);
 
-    try print(fbs.writer(), .{ 42, "hello", 3.14 });
+    try print(&fbs, .{ 42, "hello", 3.14 });
 
-    try std.testing.expectEqualStrings("42 hello 3.14 ", fbs.getWritten());
+    try std.testing.expectEqualStrings("42 hello 3.14 ", fbs.buffered());
 }
 
 test "build string" {
@@ -651,12 +654,12 @@ test "min and max" {
 
 test "logging" {
     var buffer: [256]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = std.Io.Writer.fixed(&buffer);
 
-    try log(fbs.writer(), .info, .{ "User", 42, "logged in" });
+    try log(&fbs, .info, .{ "User", 42, "logged in" });
 
-    try std.testing.expect(std.mem.startsWith(u8, fbs.getWritten(), "[info]"));
-    try std.testing.expect(std.mem.indexOf(u8, fbs.getWritten(), "User") != null);
+    try std.testing.expect(std.mem.startsWith(u8, fbs.buffered(), "[info]"));
+    try std.testing.expect(std.mem.indexOf(u8, fbs.buffered(), "User") != null);
 }
 
 test "average" {
@@ -679,11 +682,11 @@ test "negative numbers" {
 
 test "mixed types in print" {
     var buffer: [256]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = std.Io.Writer.fixed(&buffer);
 
-    try print(fbs.writer(), .{ 1, 2.5, "test", true });
+    try print(&fbs, .{ 1, 2.5, "test", true });
 
-    const written = fbs.getWritten();
+    const written = fbs.buffered();
     try std.testing.expect(std.mem.indexOf(u8, written, "1 ") != null);
     try std.testing.expect(std.mem.indexOf(u8, written, "2.5") != null);
     try std.testing.expect(std.mem.indexOf(u8, written, "test") != null);
@@ -701,14 +704,14 @@ test "empty buildString" {
 
 test "log levels" {
     var buffer: [256]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = std.Io.Writer.fixed(&buffer);
 
-    try log(fbs.writer(), .debug, .{"Debug message"});
-    try std.testing.expect(std.mem.startsWith(u8, fbs.getWritten(), "[debug]"));
+    try log(&fbs, .debug, .{"Debug message"});
+    try std.testing.expect(std.mem.startsWith(u8, fbs.buffered(), "[debug]"));
 
-    fbs.pos = 0;
-    try log(fbs.writer(), .err, .{"Error occurred"});
-    try std.testing.expect(std.mem.startsWith(u8, fbs.getWritten(), "[err]"));
+    fbs.end = 0;
+    try log(&fbs, .err, .{"Error occurred"});
+    try std.testing.expect(std.mem.startsWith(u8, fbs.buffered(), "[err]"));
 }
 
 test "large slice sum" {
@@ -770,14 +773,13 @@ pub fn connect(config: ConnectionConfig) !void {
 /// File options with required and optional fields
 const FileOptions = struct {
     path: []const u8, // Required
-    mode: std.fs.File.OpenMode = .read_only,
+    mode: std.Io.File.OpenMode = .read_only,
     buffer_size: usize = 4096,
     create_if_missing: bool = false,
 };
 
 /// Open file with options
 pub fn openFile(allocator: std.mem.Allocator, options: FileOptions) !void {
-    _ = allocator;
     std.debug.print("Opening {s} in mode {s}\n", .{
         options.path,
         @tagName(options.mode),
@@ -829,7 +831,7 @@ const QueryBuilder = struct {
     }
 
     pub fn build(self: QueryBuilder) ![]const u8 {
-        var list = std.ArrayList(u8){};
+        var list = std.ArrayList(u8).empty;
         errdefer list.deinit(self.allocator);
 
         try list.appendSlice(self.allocator, "SELECT * FROM ");
@@ -865,6 +867,7 @@ Mix required and optional fields (see code examples above).
     std.debug.print("Opening {s} in mode {s}\n", .{
         options.path,
         @tagName(options.mode),
+```zig
     });
     std.debug.print("Buffer: {} bytes, Create: {}\n", .{
         options.buffer_size,
@@ -931,7 +934,7 @@ const QueryBuilder = struct {
     }
 
     pub fn build(self: QueryBuilder) ![]const u8 {
-        var list = std.ArrayList(u8){};
+        var list = std.ArrayList(u8).empty;
         errdefer list.deinit(self.allocator);
 
         try list.appendSlice(self.allocator, "SELECT * FROM ");
@@ -1236,7 +1239,7 @@ pub fn connect(config: ConnectionConfig) !void {
 /// File options with required and optional fields
 const FileOptions = struct {
     path: []const u8, // Required
-    mode: std.fs.File.OpenMode = .read_only,
+    mode: std.Io.File.OpenMode = .read_only,
     buffer_size: usize = 4096,
     create_if_missing: bool = false,
 };
@@ -1293,7 +1296,7 @@ const QueryBuilder = struct {
     }
 
     pub fn build(self: QueryBuilder) ![]const u8 {
-        var list = std.ArrayList(u8){};
+        var list = std.ArrayList(u8).empty;
         errdefer list.deinit(self.allocator);
 
         try list.appendSlice(self.allocator, "SELECT * FROM ");
@@ -1966,7 +1969,7 @@ const User = struct {
     };
 
     pub fn toJson(self: User, allocator: std.mem.Allocator) ![]u8 {
-        var list = std.ArrayList(u8){};
+        var list = std.ArrayList(u8).empty;
         errdefer list.deinit(allocator);
 
         try list.appendSlice(allocator, "{");
@@ -2346,7 +2349,7 @@ const User = struct {
     };
 
     pub fn toJson(self: User, allocator: std.mem.Allocator) ![]u8 {
-        var list = std.ArrayList(u8){};
+        var list = std.ArrayList(u8).empty;
         errdefer list.deinit(allocator);
 
         try list.appendSlice(allocator, "{");
@@ -3839,7 +3842,7 @@ fn process(size: ?usize, enabled: ?bool) void {
 /// - create_if_missing: false
 const OpenOptions = struct {
     path: []const u8, // Required
-    mode: std.fs.File.OpenMode = .read_only,
+    mode: std.Io.File.OpenMode = .read_only,
     buffer_size: usize = 4096,
     create_if_missing: bool = false,
 };
@@ -4466,7 +4469,7 @@ pub fn filter(
     items: []const i32,
     predicate: fn (i32) bool,
 ) ![]i32 {
-    var result = std.ArrayList(i32).init(allocator);
+    var result = std.ArrayList(i32).empty;
     errdefer result.deinit();
 
     for (items) |item| {
@@ -4898,7 +4901,7 @@ pub fn filter(
     items: []const i32,
     predicate: fn (i32) bool,
 ) ![]i32 {
-    var result = std.ArrayList(i32){};
+    var result = std.ArrayList(i32).empty;
     errdefer result.deinit(allocator);
 
     for (items) |item| {
@@ -5382,7 +5385,7 @@ pub fn filterSlice(
     items: []const i32,
     filter_fn: FilterFn,
 ) ![]i32 {
-    var result = std.ArrayList(i32){};
+    var result = std.ArrayList(i32).empty;
     errdefer result.deinit(allocator);
 
     for (items) |item| {
@@ -5420,7 +5423,7 @@ pub fn StringBuilder(allocator: std.mem.Allocator) type {
 
         pub fn init() Self {
             return .{
-                .buffer = std.ArrayList(u8){},
+                .buffer = std.ArrayList(u8).empty,
             };
         }
 
@@ -5752,7 +5755,7 @@ test "event listener" {
 
     const allocator = std.testing.allocator;
     var logger = Logger{
-        .messages = std.ArrayList([]const u8){},
+        .messages = std.ArrayList([]const u8).empty,
         .allocator = allocator,
     };
     defer logger.deinit();
@@ -5911,7 +5914,7 @@ pub fn filterSlice(
     items: []const i32,
     filter_fn: FilterFn,
 ) ![]i32 {
-    var result = std.ArrayList(i32){};
+    var result = std.ArrayList(i32).empty;
     errdefer result.deinit(allocator);
 
     for (items) |item| {
@@ -5934,7 +5937,7 @@ pub fn StringBuilder(allocator: std.mem.Allocator) type {
 
         pub fn init() Self {
             return .{
-                .buffer = std.ArrayList(u8){},
+                .buffer = std.ArrayList(u8).empty,
             };
         }
 
@@ -6291,7 +6294,7 @@ test "event listener" {
 
     const allocator = std.testing.allocator;
     var logger = Logger{
-        .messages = std.ArrayList([]const u8){},
+        .messages = std.ArrayList([]const u8).empty,
         .allocator = allocator,
     };
     defer logger.deinit();
@@ -6563,7 +6566,7 @@ pub fn filter(
     items: []const i32,
     predicate: anytype,
 ) ![]i32 {
-    var result = std.ArrayList(i32){};
+    var result = std.ArrayList(i32).empty;
     errdefer result.deinit(allocator);
 
     for (items) |item| {
@@ -6980,7 +6983,7 @@ pub fn filter(
     items: []const i32,
     predicate: anytype,
 ) ![]i32 {
-    var result = std.ArrayList(i32){};
+    var result = std.ArrayList(i32).empty;
     errdefer result.deinit(allocator);
 
     for (items) |item| {
@@ -7588,7 +7591,7 @@ pub fn filterWithPredicate(
     items: []const i32,
     predicate: Predicate,
 ) ![]i32 {
-    var result = std.ArrayList(i32){};
+    var result = std.ArrayList(i32).empty;
     errdefer result.deinit(allocator);
 
     for (items) |item| {
@@ -8076,7 +8079,7 @@ pub fn filterWithPredicate(
     items: []const i32,
     predicate: Predicate,
 ) ![]i32 {
-    var result = std.ArrayList(i32){};
+    var result = std.ArrayList(i32).empty;
     errdefer result.deinit(allocator);
 
     for (items) |item| {
@@ -8489,7 +8492,7 @@ const EventSystem = struct {
 
     pub fn init(allocator: std.mem.Allocator) EventSystem {
         return .{
-            .callbacks = std.ArrayList(Callback){},
+            .callbacks = std.ArrayList(Callback).empty,
             .allocator = allocator,
         };
     }
@@ -8585,7 +8588,7 @@ test "callback with allocator" {
         }
     };
 
-    var logger = Logger{ .messages = std.ArrayList([]u8){} };
+    var logger = Logger{ .messages = std.ArrayList([]u8).empty };
     defer logger.deinit(allocator);
 
     const callback = AllocCallback.init(&logger, Logger.log);
@@ -8638,7 +8641,7 @@ test "error callback" {
     };
 
     const allocator = std.testing.allocator;
-    var errors = std.ArrayList(anyerror).init(allocator);
+    var errors = std.ArrayList(anyerror).empty;
     defer errors.deinit();
 
     var tracker = ErrorTracker{ .errors = &errors };
@@ -8892,7 +8895,7 @@ const CallbackRegistry = struct {
 
     pub fn init(allocator: std.mem.Allocator) CallbackRegistry {
         return .{
-            .callbacks = std.ArrayList(Callback){},
+            .callbacks = std.ArrayList(Callback).empty,
             .allocator = allocator,
         };
     }
@@ -9032,7 +9035,7 @@ const EventSystem = struct {
 
     pub fn init(allocator: std.mem.Allocator) EventSystem {
         return .{
-            .callbacks = std.ArrayList(Callback){},
+            .callbacks = std.ArrayList(Callback).empty,
             .allocator = allocator,
         };
     }
@@ -9239,7 +9242,7 @@ const CallbackRegistry = struct {
 
     pub fn init(allocator: std.mem.Allocator) CallbackRegistry {
         return .{
-            .callbacks = std.ArrayList(Callback){},
+            .callbacks = std.ArrayList(Callback).empty,
             .allocator = allocator,
         };
     }
@@ -9324,7 +9327,7 @@ test "callback with allocator" {
         }
     };
 
-    var logger = Logger{ .messages = std.ArrayList([]u8){} };
+    var logger = Logger{ .messages = std.ArrayList([]u8).empty };
     defer logger.deinit(allocator);
 
     const callback = AllocCallback.init(&logger, Logger.log);
@@ -9629,7 +9632,7 @@ pub fn map(
     items: []const i32,
     comptime transform: fn (i32) i32,
 ) ![]i32 {
-    var result = std.ArrayList(i32){};
+    var result = std.ArrayList(i32).empty;
     errdefer result.deinit(allocator);
 
     for (items) |item| {
@@ -9666,7 +9669,7 @@ pub fn filter(
     items: []const i32,
     comptime predicate: fn (i32) bool,
 ) ![]i32 {
-    var result = std.ArrayList(i32){};
+    var result = std.ArrayList(i32).empty;
     errdefer result.deinit(allocator);
 
     for (items) |item| {
@@ -9743,7 +9746,7 @@ pub fn pipeline(
     comptime transform: fn (i32) i32,
     comptime pred: fn (i32) bool,
 ) ![]i32 {
-    var result = std.ArrayList(i32){};
+    var result = std.ArrayList(i32).empty;
     errdefer result.deinit(allocator);
 
     for (items) |item| {
@@ -9796,7 +9799,7 @@ pub fn GenericMap(comptime T: type, comptime R: type) type {
             items: []const T,
             comptime transform: fn (T) R,
         ) ![]R {
-            var result = std.ArrayList(R){};
+            var result = std.ArrayList(R).empty;
             errdefer result.deinit(allocator);
 
             for (items) |item| {
@@ -9846,7 +9849,7 @@ pub fn Iterator(comptime T: type) type {
             allocator: std.mem.Allocator,
             comptime transform: fn (T) T,
         ) ![]T {
-            var result = std.ArrayList(T){};
+            var result = std.ArrayList(T).empty;
             errdefer result.deinit(allocator);
 
             while (self.next()) |item| {
@@ -10064,7 +10067,7 @@ pub fn map(
     items: []const i32,
     comptime transform: fn (i32) i32,
 ) ![]i32 {
-    var result = std.ArrayList(i32){};
+    var result = std.ArrayList(i32).empty;
     errdefer result.deinit(allocator);
 
     for (items) |item| {
@@ -10080,7 +10083,7 @@ pub fn filter(
     items: []const i32,
     comptime predicate: fn (i32) bool,
 ) ![]i32 {
-    var result = std.ArrayList(i32){};
+    var result = std.ArrayList(i32).empty;
     errdefer result.deinit(allocator);
 
     for (items) |item| {
@@ -10114,7 +10117,7 @@ pub fn pipeline(
     comptime transform: fn (i32) i32,
     comptime pred: fn (i32) bool,
 ) ![]i32 {
-    var result = std.ArrayList(i32){};
+    var result = std.ArrayList(i32).empty;
     errdefer result.deinit(allocator);
 
     for (items) |item| {
@@ -10136,7 +10139,7 @@ pub fn GenericMap(comptime T: type, comptime R: type) type {
             items: []const T,
             comptime transform: fn (T) R,
         ) ![]R {
-            var result = std.ArrayList(R){};
+            var result = std.ArrayList(R).empty;
             errdefer result.deinit(allocator);
 
             for (items) |item| {
@@ -10166,7 +10169,7 @@ pub fn Iterator(comptime T: type) type {
             allocator: std.mem.Allocator,
             comptime transform: fn (T) T,
         ) ![]T {
-            var result = std.ArrayList(T){};
+            var result = std.ArrayList(T).empty;
             errdefer result.deinit(allocator);
 
             while (self.next()) |item| {

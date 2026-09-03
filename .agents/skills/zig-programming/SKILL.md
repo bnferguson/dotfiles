@@ -66,9 +66,20 @@ python scripts/get_references.py --json
 
 ### Recipes - Cookbook
 
-The skill includes **223 tested recipes** from the Zig BBQ Cookbook, organized by topic. All recipes include complete, compilable code verified against Zig 0.15.2.
+The skill includes **223 recipes** from the Zig BBQ Cookbook, organized by topic. They target Zig 0.16.0.
 
-The recipes and templates still target Zig 0.15.2. For Zig 0.16 code that uses I/O or process state, migrate the example with `references/v0.16.0/io.md` before use.
+**Verification:** 210 of the 218 recipes that ship a full-code block compile against Zig 0.16.0. Re-check them at any time:
+
+```bash
+python scripts/verify_recipes.py                       # uses `zig` from PATH
+python scripts/verify_recipes.py --filter files-io -v  # one topic, with errors
+```
+
+Eight recipes do not yet compile, and each recipe file says so in its header. They are not blocked on the I/O change:
+
+- `build-system` 10.3-10.6 reference module files the markdown never included.
+- `files-io` 5.16 and `networking` 20.1/20.5 are built on the raw `std.posix` socket, `poll` and file-descriptor calls that 0.16 removed in favour of `std.Io.net`; they need rewriting, not translating.
+- `strings-text` 2.14 links ICU and needs a matching local ICU version.
 
 **Finding recipes by topic:**
 - `recipes/fundamentals.md` - Philosophy, basics (19 recipes)
@@ -114,11 +125,16 @@ python scripts/query_recipes.py --topic data-structures --json
 
 **Recipe format:** Each recipe includes Problem, Solution, Discussion sections plus full tested code.
 
+**Recipes are 0.16 code.** They pass `io` explicitly, take `std.process.Init` in `main`, and use `std.Io.Dir` / `std.Io.File` rather than `std.fs`. See `references/latest/io.md` for the model behind that.
+
 **When to use recipes vs references:**
 - **Recipes**: "How do I..." questions, practical tasks, working code examples
 - **References**: "What is..." questions, API lookup, comprehensive documentation
 
 ### Templates
+
+All templates and examples compile against Zig 0.16.0; the two build scripts
+were checked with a real `zig build run`.
 
 Copy and customize these starting points:
 - `assets/templates/basic-program.zig` - Basic program with allocator
@@ -136,7 +152,7 @@ Complete, runnable code demonstrating patterns:
 - `examples/error_handling.zig` - Error handling
 - `examples/c_interop.zig` - C FFI
 - `examples/comptime_example.zig` - Compile-time programming
-- `examples/build_example/` - Multi-file project
+- `examples/build_example/` - Multi-file project (`zig build test` passes on 0.16.0)
 
 ### Scripts
 
@@ -148,6 +164,9 @@ Use these Python automation tools for version management, recipe queries, and co
 
 **Recipe Queries:**
 - `scripts/query_recipes.py` - Search and filter recipes by topic, tag, difficulty, or keyword
+
+**Recipe Verification:**
+- `scripts/verify_recipes.py` - Compile every recipe against a real Zig toolchain and report what fails
 
 **Code Generation:**
 - `scripts/code_generator.py` - Generate Zig code from JSON specifications

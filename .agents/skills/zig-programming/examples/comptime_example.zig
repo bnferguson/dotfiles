@@ -89,7 +89,7 @@ fn genericStructures() !void {
     std.debug.print("\n=== Generic Data Structures ===\n", .{});
     std.debug.print("Type-parameterized containers\n\n", .{});
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -136,17 +136,17 @@ fn typeIntrospection() void {
     const type_info = @typeInfo(Point);
     std.debug.print("Type: {s}\n", .{@typeName(Point)});
     std.debug.print("Kind: Struct\n", .{});
-    std.debug.print("Fields: {d}\n", .{type_info.Struct.fields.len});
+    std.debug.print("Fields: {d}\n", .{type_info.@"struct".fields.len});
 
-    inline for (type_info.Struct.fields) |field| {
+    inline for (type_info.@"struct".fields) |field| {
         std.debug.print("  - {s}: {s}\n", .{ field.name, @typeName(field.type) });
     }
 
     // Check type properties
     std.debug.print("\nType checks:\n", .{});
-    std.debug.print("  i32 is signed: {}\n", .{@typeInfo(i32).Int.signedness == .signed});
-    std.debug.print("  u32 is signed: {}\n", .{@typeInfo(u32).Int.signedness == .signed});
-    std.debug.print("  i32 bit size: {d}\n", .{@typeInfo(i32).Int.bits});
+    std.debug.print("  i32 is signed: {}\n", .{@typeInfo(i32).int.signedness == .signed});
+    std.debug.print("  u32 is signed: {}\n", .{@typeInfo(u32).int.signedness == .signed});
+    std.debug.print("  i32 bit size: {d}\n", .{@typeInfo(i32).int.bits});
 }
 
 /// Example 5: Comptime string manipulation
@@ -171,10 +171,10 @@ fn printValue(comptime T: type, value: T) void {
     const type_info = @typeInfo(T);
 
     switch (type_info) {
-        .Int => std.debug.print("Integer: {d}\n", .{value}),
-        .Float => std.debug.print("Float: {d}\n", .{value}),
-        .Bool => std.debug.print("Boolean: {}\n", .{value}),
-        .Pointer => |ptr_info| {
+        .int => std.debug.print("Integer: {d}\n", .{value}),
+        .float => std.debug.print("Float: {d}\n", .{value}),
+        .bool => std.debug.print("Boolean: {}\n", .{value}),
+        .pointer => |ptr_info| {
             if (ptr_info.child == u8) {
                 std.debug.print("String: {s}\n", .{value});
             } else {
@@ -200,7 +200,7 @@ fn Vector(comptime T: type, comptime size: usize) type {
     // Comptime assertions
     comptime {
         if (size == 0) @compileError("Vector size must be > 0");
-        if (@typeInfo(T) != .Int and @typeInfo(T) != .Float) {
+        if (@typeInfo(T) != .int and @typeInfo(T) != .float) {
             @compileError("Vector only supports numeric types");
         }
     }
@@ -305,9 +305,9 @@ test "type introspection" {
     const T = i32;
     const info = @typeInfo(T);
 
-    try testing.expect(info == .Int);
-    try testing.expectEqual(@as(u16, 32), info.Int.bits);
-    try testing.expect(info.Int.signedness == .signed);
+    try testing.expect(info == .int);
+    try testing.expectEqual(@as(u16, 32), info.int.bits);
+    try testing.expect(info.int.signedness == .signed);
 }
 
 test "Vector type" {
@@ -343,8 +343,8 @@ test "conditional type printing" {
         const info2 = @typeInfo(T2);
         const info3 = @typeInfo(T3);
 
-        try testing.expect(info1 == .Int);
-        try testing.expect(info2 == .Float);
-        try testing.expect(info3 == .Bool);
+        try testing.expect(info1 == .int);
+        try testing.expect(info2 == .float);
+        try testing.expect(info3 == .bool);
     }
 }

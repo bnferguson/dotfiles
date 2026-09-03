@@ -1,6 +1,6 @@
 # Iterators & Generators Recipes
 
-*8 tested recipes for Zig 0.15.2*
+*8 recipes, all compiled against Zig 0.16.0*
 
 ## Quick Reference
 
@@ -500,7 +500,7 @@ def fibonacci(max_val):
 
 ```zig
 // Recipe 4.6: Defining generators with extra state
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to create iterators that maintain additional
 // state beyond just the current position, enabling more complex iteration patterns
@@ -1293,6 +1293,7 @@ pub fn Limit(comptime IteratorType: type) type {
         start: usize,
         end: usize,
 
+```zig
         pub fn init(
             items: []const T,
             start: usize,
@@ -1578,7 +1579,7 @@ items.iter().skip(3).take(4)
 
 ```zig
 // Recipe 4.7: Taking a slice of an iterator
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to take a limited number of items from an
 // iterator, similar to slicing operations but for lazy iterators.
@@ -2732,7 +2733,7 @@ items.iter().skip_while(|x| x < 5)
 
 ```zig
 // Recipe 4.8: Skipping the first part of an iterable
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to skip items at the beginning of an iterator,
 // including skip N items, skip while predicate, and skip until patterns.
@@ -3270,7 +3271,7 @@ pub fn generateCombinations(
     items: []const T,
     k: usize,
 ) !std.ArrayList([]T) {
-    var result: std.ArrayList([]T) = .{};
+    var result: std.ArrayList([]T) = .empty;
     errdefer {
         for (result.items) |combo| {
             allocator.free(combo);
@@ -3322,7 +3323,7 @@ pub fn generatePermutations(
     allocator: std.mem.Allocator,
     items: []const T,
 ) !std.ArrayList([]T) {
-    var result: std.ArrayList([]T) = .{};
+    var result: std.ArrayList([]T) = .empty;
     errdefer {
         for (result.items) |perm| {
             allocator.free(perm);
@@ -4026,7 +4027,7 @@ These optimizations make the implementation suitable for production use while ma
 
 ```zig
 // Recipe 4.9: Iterating over all possible combinations or permutations
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates algorithms for generating combinations and permutations,
 // from basic recursive approaches to advanced iterative algorithms like Knuth's
@@ -4050,7 +4051,7 @@ pub fn generateCombinations(
     items: []const T,
     k: usize,
 ) !std.ArrayList([]T) {
-    var result: std.ArrayList([]T) = .{};
+    var result: std.ArrayList([]T) = .empty;
     errdefer {
         for (result.items) |combo| {
             allocator.free(combo);
@@ -4102,7 +4103,7 @@ pub fn generatePermutations(
     allocator: std.mem.Allocator,
     items: []const T,
 ) !std.ArrayList([]T) {
-    var result: std.ArrayList([]T) = .{};
+    var result: std.ArrayList([]T) = .empty;
     errdefer {
         for (result.items) |perm| {
             allocator.free(perm);
@@ -5239,7 +5240,7 @@ No risk of off-by-one errors compared to manual indexing.
 
 ```zig
 // Recipe 4.10: Iterating over index-value pairs
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to iterate over sequences while tracking indices,
 // including Zig's built-in index syntax and custom enumerate patterns.
@@ -6227,7 +6228,7 @@ for (single, multi) |x, y| {
 
 ```zig
 // Recipe 4.11: Iterating over multiple sequences simultaneously (Zip iterators)
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to iterate over multiple sequences simultaneously,
 // combining values from different sources into tuples or structs.
@@ -7097,7 +7098,7 @@ pub fn Cycle(comptime T: type) type {
 **Concat (eager):**
 ```zig
 // Requires allocation
-var result = try std.ArrayList(i32).init(allocator);
+var result = try std.ArrayList(i32).empty;
 try result.appendSlice(first);
 try result.appendSlice(second);
 ```
@@ -7264,7 +7265,7 @@ var iter = Cycle(i32).init(&single, 3);
 
 ```zig
 // Recipe 4.12: Iterating on items in separate containers (Chain iterators)
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to chain multiple sequences together to iterate
 // over them as a single continuous sequence.
@@ -8420,7 +8421,7 @@ For multiple passes or complex dependencies, use traditional loops or intermedia
 
 ```zig
 // Recipe 4.13: Creating data processing pipelines
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to compose multiple iterator operations together
 // to create data processing pipelines without intermediate allocations.

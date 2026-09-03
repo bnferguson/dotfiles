@@ -1,6 +1,6 @@
 # Structs, Unions & Objects Recipes
 
-*22 tested recipes for Zig 0.15.2*
+*22 recipes, all compiled against Zig 0.16.0*
 
 ## Quick Reference
 
@@ -57,7 +57,7 @@ const Point = struct {
 };
 ```
 
-**Note:** In Zig 0.15.2, use `{f}` to call the custom `format` function, or `{any}` to use default struct representation.
+**Note:** In Zig 0.16.0, use `{f}` to call the custom `format` function, or `{any}` to use default struct representation.
 
 ### Discussion
 
@@ -457,9 +457,9 @@ test "format options" {
 
 ### Best Practices
 
-**Zig 0.15.2 Format Signature:**
+**Zig 0.16.0 Format Signature:**
 ```zig
-// Correct signature for Zig 0.15.2
+// Correct signature for Zig 0.16.0
 pub fn format(self: @This(), writer: anytype) !void {
     try writer.print("...", .{...});
 }
@@ -748,12 +748,12 @@ test "user debug format" {
     };
 
     var buf: [200]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
-    try user.formatDebug(stream.writer());
+    var stream = std.Io.Writer.fixed(&buf);
+    try user.formatDebug(&stream);
 
     try std.testing.expectEqualStrings(
         "User{ id=12345, username=\"alice\", email=\"alice@example.com\" }",
-        stream.getWritten(),
+        stream.buffered(),
     );
 }
 
@@ -817,8 +817,8 @@ test "config pretty formatting" {
     };
 
     var buf: [200]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
-    try cfg.formatPretty(stream.writer());
+    var stream = std.Io.Writer.fixed(&buf);
+    try cfg.formatPretty(&stream);
 
     const expected =
         \\Config {
@@ -827,7 +827,7 @@ test "config pretty formatting" {
         \\  timeout_ms: 5000
         \\}
     ;
-    try std.testing.expectEqualStrings(expected, stream.getWritten());
+    try std.testing.expectEqualStrings(expected, stream.buffered());
 }
 
 test "conditional formatting active" {
@@ -866,9 +866,9 @@ test "temperature precise formatting" {
     const temp = Temperature{ .celsius = 23.456 };
 
     var buf: [100]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
-    try temp.formatPrecise(stream.writer());
-    try std.testing.expectEqualStrings("23.46°C", stream.getWritten());
+    var stream = std.Io.Writer.fixed(&buf);
+    try temp.formatPrecise(&stream);
+    try std.testing.expectEqualStrings("23.46°C", stream.buffered());
 }
 ```
 
@@ -948,8 +948,8 @@ const StringBuilder = struct {
 
     pub fn init(allocator: std.mem.Allocator) StringBuilder {
         return .{
-            .parts = std.ArrayList([]const u8){},
-            .owned = std.ArrayList([]const u8){},
+            .parts = std.ArrayList([]const u8).empty,
+            .owned = std.ArrayList([]const u8).empty,
             .allocator = allocator,
         };
     }
@@ -1347,8 +1347,8 @@ const StringBuilder = struct {
 
     pub fn init(allocator: std.mem.Allocator) StringBuilder {
         return .{
-            .parts = std.ArrayList([]const u8){},
-            .owned = std.ArrayList([]const u8){},
+            .parts = std.ArrayList([]const u8).empty,
+            .owned = std.ArrayList([]const u8).empty,
             .allocator = allocator,
         };
     }
@@ -1741,8 +1741,8 @@ test "table formatter" {
     };
 
     var buf: [500]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
-    try table.format(stream.writer());
+    var stream = std.Io.Writer.fixed(&buf);
+    try table.format(&stream);
 
     const expected =
         \\Name  | Age | City
@@ -1752,7 +1752,7 @@ test "table formatter" {
         \\
     ;
 
-    try std.testing.expectEqualStrings(expected, stream.getWritten());
+    try std.testing.expectEqualStrings(expected, stream.buffered());
 }
 
 test "json-like formatter" {
@@ -1763,10 +1763,10 @@ test "json-like formatter" {
     };
 
     var buf: [500]u8 = undefined;
-    var stream = std.io.fixedBufferStream(&buf);
+    var stream = std.Io.Writer.fixed(&buf);
 
     const formatter = JsonLikeFormatter{};
-    try formatter.formatStruct(stream.writer(), "User", &fields);
+    try formatter.formatStruct(&stream, "User", &fields);
 
     const expected =
         \\User {
@@ -1776,7 +1776,7 @@ test "json-like formatter" {
         \\}
     ;
 
-    try std.testing.expectEqualStrings(expected, stream.getWritten());
+    try std.testing.expectEqualStrings(expected, stream.buffered());
 }
 
 test "colored formatter" {
@@ -1859,23 +1859,23 @@ Use `defer` and `errdefer` statements to guarantee cleanup, and implement `init`
 ```zig
 // Basic defer pattern
 const File = struct {
-    handle: std.fs.File,
+    handle: std.Io.File,
     path: []const u8,
 
-    pub fn init(path: []const u8) !File {
-        const file = try std.fs.cwd().createFile(path, .{});
+    pub fn init(io: std.Io, path: []const u8) !File {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
         return File{
             .handle = file,
             .path = path,
         };
     }
 
-    pub fn deinit(self: *File) void {
-        self.handle.close();
+    pub fn deinit(self: *File, io: std.Io) void {
+        self.handle.close(io);
     }
 
-    pub fn write(self: *File, data: []const u8) !void {
-        try self.handle.writeAll(data);
+    pub fn write(self: *File, io: std.Io, data: []const u8) !void {
+        try self.handle.writeStreamingAll(io, data);
     }
 };
 ```
@@ -2073,20 +2073,20 @@ Implement automatic lock management:
 
 ```zig
 const LockGuard = struct {
-    mutex: *std.Thread.Mutex,
+    mutex: *std.Io.Mutex,
 
-    pub fn init(mutex: *std.Thread.Mutex) LockGuard {
-        mutex.lock();
+    pub fn init(io: std.Io, mutex: *std.Io.Mutex) !LockGuard {
+        try mutex.lock(io);
         return LockGuard{ .mutex = mutex };
     }
 
-    pub fn deinit(self: *LockGuard) void {
-        self.mutex.unlock();
+    pub fn deinit(self: *LockGuard, io: std.Io) void {
+        self.mutex.unlock(io);
     }
 };
 
 test "lock guard" {
-    var mutex = std.Thread.Mutex{};
+    var mutex = std.Io.Mutex.init;
 
     {
         var guard = LockGuard.init(&mutex);
@@ -2212,7 +2212,7 @@ const Builder = struct {
 
     pub fn init(allocator: std.mem.Allocator) Builder {
         return Builder{
-            .items = std.ArrayList([]const u8){},
+            .items = std.ArrayList([]const u8).empty,
             .allocator = allocator,
         };
     }
@@ -2305,42 +2305,43 @@ pub fn create(allocator: std.mem.Allocator) !*MyStruct {
 
 ```zig
 // Recipe 8.3: Making Objects Support the Context-Management Protocol
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 
 // ANCHOR: basic_defer
 // Basic defer pattern
 const File = struct {
-    handle: std.fs.File,
+    handle: std.Io.File,
     path: []const u8,
 
-    pub fn init(path: []const u8) !File {
-        const file = try std.fs.cwd().createFile(path, .{});
+    pub fn init(io: std.Io, path: []const u8) !File {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
         return File{
             .handle = file,
             .path = path,
         };
     }
 
-    pub fn deinit(self: *File) void {
-        self.handle.close();
+    pub fn deinit(self: *File, io: std.Io) void {
+        self.handle.close(io);
     }
 
-    pub fn write(self: *File, data: []const u8) !void {
-        try self.handle.writeAll(data);
+    pub fn write(self: *File, io: std.Io, data: []const u8) !void {
+        try self.handle.writeStreamingAll(io, data);
     }
 };
 // ANCHOR_END: basic_defer
 
 test "basic defer pattern" {
+    const io = std.testing.io;
     const test_file = "test_defer.txt";
-    defer std.fs.cwd().deleteFile(test_file) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_file) catch {};
 
-    var file = try File.init(test_file);
-    defer file.deinit();
+    var file = try File.init(io, test_file);
+    defer file.deinit(io);
 
-    try file.write("Hello, World!");
+    try file.write(io, "Hello, World!");
 }
 
 // Database with defer
@@ -2492,24 +2493,25 @@ test "scoped resource" {
 
 // Lock guard pattern
 const LockGuard = struct {
-    mutex: *std.Thread.Mutex,
+    mutex: *std.Io.Mutex,
 
-    pub fn init(mutex: *std.Thread.Mutex) LockGuard {
-        mutex.lock();
+    pub fn init(io: std.Io, mutex: *std.Io.Mutex) !LockGuard {
+        try mutex.lock(io);
         return LockGuard{ .mutex = mutex };
     }
 
-    pub fn deinit(self: *LockGuard) void {
-        self.mutex.unlock();
+    pub fn deinit(self: *LockGuard, io: std.Io) void {
+        self.mutex.unlock(io);
     }
 };
 
 test "lock guard" {
-    var mutex = std.Thread.Mutex{};
+    const io = std.testing.io;
+    var mutex = std.Io.Mutex.init;
 
     {
-        var guard = LockGuard.init(&mutex);
-        defer guard.deinit();
+        var guard = try LockGuard.init(io, &mutex);
+        defer guard.deinit(io);
     }
 }
 
@@ -2607,7 +2609,7 @@ const Builder = struct {
 
     pub fn init(allocator: std.mem.Allocator) Builder {
         return Builder{
-            .items = std.ArrayList([]const u8){},
+            .items = std.ArrayList([]const u8).empty,
             .allocator = allocator,
         };
     }
@@ -3179,7 +3181,7 @@ const Config = packed struct {
 
 ```zig
 // Recipe 8.4: Saving Memory When Creating Many Instances
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 
@@ -4036,7 +4038,7 @@ const Implementation = struct {
 
 ```zig
 // Recipe 8.5: Encapsulating Names in a Struct
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 
@@ -4866,7 +4868,7 @@ This follows Zig's principle of making memory allocation explicit.
 
 ```zig
 // Recipe 8.6: Creating Managed Attributes
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -5897,7 +5899,7 @@ For structs with many delegated methods, consider using `comptime` to generate d
 
 ```zig
 // Recipe 8.7: Calling a Method on a Parent Class
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -6443,7 +6445,7 @@ const StringWriter = struct {
 
     pub fn init(allocator: std.mem.Allocator) StringWriter {
         return StringWriter{
-            .buffer = std.ArrayList(u8){},
+            .buffer = std.ArrayList(u8).empty,
             .allocator = allocator,
         };
     }
@@ -7067,7 +7069,7 @@ Use property extension when you want to:
 
 ```zig
 // Recipe 8.8: Extending a Property in a Subclass
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -7449,7 +7451,7 @@ test "override with fallback" {
     ttl_cache.set("cached value", 1000);
 
     const value1 = ttl_cache.get(1050);
-    try testing.expect(value1 != null);
+    try testing.expect((value1) != null);
 
     const value2 = ttl_cache.get(1200);
     try testing.expect(value2 == null);
@@ -7989,7 +7991,7 @@ All attribute systems shown here have zero runtime overhead:
 
 ```zig
 // Recipe 8.9: Creating a New Kind of Class or Instance Attribute
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -8174,7 +8176,7 @@ fn Annotated(comptime T: type) type {
 
         pub fn listFields(allocator: std.mem.Allocator) ![][]const u8 {
             const info = @typeInfo(T);
-            var list = std.ArrayList([]const u8){};
+            var list = std.ArrayList([]const u8).empty;
 
             inline for (info.@"struct".fields) |field| {
                 try list.append(allocator, field.name);
@@ -8196,7 +8198,7 @@ const AnnotatedConfig = Annotated(Config);
 
 test "field annotations" {
     const annotation = AnnotatedConfig.getFieldAnnotation("host");
-    try testing.expect(annotation != null);
+    try testing.expect((annotation) != null);
     try testing.expectEqualStrings("1.0", annotation.?.since_version);
 
     const fields = try AnnotatedConfig.listFields(testing.allocator);
@@ -8265,8 +8267,8 @@ const Document = struct {
     }
 
     pub fn fromJson(data: []const u8, allocator: std.mem.Allocator) !Document {
-        _ = data;
         _ = allocator;
+        _ = data;
         return error.NotImplemented;
     }
 };
@@ -8355,7 +8357,7 @@ fn Serializer(comptime T: type) type {
 
         pub fn serialize(value: T, allocator: std.mem.Allocator) ![]u8 {
             _ = value;
-            var result = std.ArrayList(u8){};
+            var result = std.ArrayList(u8).empty;
             errdefer result.deinit(allocator);
 
             try result.appendSlice(allocator, "{");
@@ -8925,7 +8927,7 @@ The patterns shown are not thread-safe. For concurrent access:
 
 ```zig
 // Recipe 8.10: Using Lazily Computed Properties
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -9247,7 +9249,7 @@ const DataModel = struct {
         }
 
         // Filter out negative numbers
-        var result = std.ArrayList(i32){};
+        var result = std.ArrayList(i32).empty;
         for (self.raw_data) |value| {
             if (value >= 0) {
                 try result.append(self.allocator, value);
@@ -9918,7 +9920,7 @@ test "email validates format" {
 
 ```zig
 // Recipe 8.11: Simplifying the Initialization of Data Structures
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -10247,7 +10249,7 @@ const StringBuilder = struct {
 
     pub fn init(allocator: std.mem.Allocator) StringBuilder {
         return StringBuilder{
-            .buffer = std.ArrayList(u8){},
+            .buffer = std.ArrayList(u8).empty,
             .allocator = allocator,
         };
     }
@@ -10548,7 +10550,7 @@ const BufferWriter = struct {
 
     pub fn init(allocator: std.mem.Allocator) BufferWriter {
         return BufferWriter{
-            .buffer = std.ArrayList(u8){},
+            .buffer = std.ArrayList(u8).empty,
             .allocator = allocator,
         };
     }
@@ -10798,8 +10800,8 @@ const ReadWriteCloseable = struct {
     writer: Writer,
     closeable: Closeable,
 
-    pub fn read(self: ReadWriteCloseable, buffer: []u8) !usize {
-        return self.reader.read(buffer);
+    pub fn read(self: ReadWriteCloseable, io: std.Io, buffer: []u8) !usize {
+        return self.reader.readPositionalAll(io, buffer, 0);
     }
 
     pub fn write(self: ReadWriteCloseable, data: []const u8) !usize {
@@ -10900,7 +10902,7 @@ Callers must handle errors with `try` or `catch`.
 
 ```zig
 // Recipe 8.12: Defining an Interface or Abstract Base Class
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -10932,7 +10934,7 @@ const BufferWriter = struct {
 
     pub fn init(allocator: std.mem.Allocator) BufferWriter {
         return BufferWriter{
-            .buffer = std.ArrayList(u8){},
+            .buffer = std.ArrayList(u8).empty,
             .allocator = allocator,
         };
     }
@@ -11159,8 +11161,8 @@ fn Serializer(comptime T: type) type {
         }
 
         pub fn deserialize(data: []const u8, allocator: std.mem.Allocator) !T {
-            _ = data;
             _ = allocator;
+            _ = data;
             return error.NotImplemented;
         }
     };
@@ -11257,7 +11259,7 @@ const DualBuffer = struct {
     pub fn init(allocator: std.mem.Allocator, read_data: []const u8) DualBuffer {
         return DualBuffer{
             .read_buffer = read_data,
-            .write_buffer = std.ArrayList(u8){},
+            .write_buffer = std.ArrayList(u8).empty,
             .read_pos = 0,
             .allocator = allocator,
             .closed = false,
@@ -11350,14 +11352,14 @@ const LowercaseProcessor = struct {
 // ANCHOR_END: static_dispatch
 
 test "static dispatch" {
-    var upper_output = std.ArrayList(u8){};
+    var upper_output = std.ArrayList(u8).empty;
     defer upper_output.deinit(testing.allocator);
 
     const upper = UppercaseProcessor{ .output = &upper_output, .allocator = testing.allocator };
     try process(UppercaseProcessor, upper, "hello");
     try testing.expectEqualStrings("HELLO", upper_output.items);
 
-    var lower_output = std.ArrayList(u8){};
+    var lower_output = std.ArrayList(u8).empty;
     defer lower_output.deinit(testing.allocator);
 
     const lower = LowercaseProcessor{ .output = &lower_output, .allocator = testing.allocator };
@@ -11804,7 +11806,7 @@ Specific errors help callers provide better feedback to users.
 
 ```zig
 // Recipe 8.13: Implementing a Data Model or Type System
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -12006,7 +12008,7 @@ test "relationship model" {
     };
 
     const author = post.getAuthor(&authors);
-    try testing.expect(author != null);
+    try testing.expect((author) != null);
     try testing.expectEqualStrings("Alice", author.?.name);
 }
 
@@ -12194,7 +12196,7 @@ test "polymorphic data" {
     try record.set("active", .{ .boolean = true });
 
     const name = record.get("name");
-    try testing.expect(name != null);
+    try testing.expect((name) != null);
     try testing.expectEqualStrings("Alice", try name.?.asString());
 
     const age = record.get("age");
@@ -12264,7 +12266,7 @@ const FieldMeta = struct {
 };
 
 fn serializeToJson(comptime T: type, value: T, allocator: std.mem.Allocator) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     try result.appendSlice(allocator, "{");
@@ -12325,7 +12327,7 @@ const QueryBuilder = struct {
     pub fn init(allocator: std.mem.Allocator, table: []const u8) QueryBuilder {
         return QueryBuilder{
             .table = table,
-            .where_clauses = std.ArrayList([]const u8){},
+            .where_clauses = std.ArrayList([]const u8).empty,
             .limit_value = null,
             .allocator = allocator,
         };
@@ -12346,7 +12348,7 @@ const QueryBuilder = struct {
     }
 
     pub fn build(self: *const QueryBuilder, allocator: std.mem.Allocator) ![]u8 {
-        var result = std.ArrayList(u8){};
+        var result = std.ArrayList(u8).empty;
         errdefer result.deinit(allocator);
 
         try result.appendSlice(allocator, "SELECT * FROM ");
@@ -12772,7 +12774,7 @@ The compiler enforces type requirements automatically.
 
 ```zig
 // Recipe 8.14: Implementing Custom Containers
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -13033,7 +13035,7 @@ fn PriorityQueue(comptime T: type) type {
         pub fn init(allocator: std.mem.Allocator) Self {
             _ = allocator;
             return Self{
-                .items = std.ArrayList(T){},
+                .items = std.ArrayList(T).empty,
             };
         }
 
@@ -13557,7 +13559,7 @@ Only expose safe operations:
 ```zig
 const ReadOnlyFileSystem = struct {
     // Only expose read operation
-    pub fn read(path: []const u8) ![]const u8 {
+    pub fn read(io: std.Io, path: []const u8) ![]const u8 {
         return FileSystem.read(path);
     }
 
@@ -13815,7 +13817,7 @@ pub fn write(self: Writer, data: []const u8) !void {
 
 ```zig
 // Recipe 8.15: Delegating Attribute Access
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -14104,7 +14106,7 @@ const LoggedDatabase = struct {
     pub fn init(allocator: std.mem.Allocator) LoggedDatabase {
         return LoggedDatabase{
             .db = Database.init(),
-            .query_log = std.ArrayList([]const u8){},
+            .query_log = std.ArrayList([]const u8).empty,
             .allocator = allocator,
         };
     }
@@ -14236,7 +14238,7 @@ const BufferWriter = struct {
 
     pub fn init(allocator: std.mem.Allocator) BufferWriter {
         return BufferWriter{
-            .buffer = std.ArrayList(u8){},
+            .buffer = std.ArrayList(u8).empty,
             .allocator = allocator,
         };
     }
@@ -14930,7 +14932,7 @@ Zig's approach is most similar to Rust, but simpler because Zig structs are just
 
 ```zig
 // Recipe 8.16: Defining More Than One Constructor in a Class
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -15890,7 +15892,7 @@ Use **comptime instances** when:
 
 ```zig
 // Recipe 8.17: Creating an Instance Without Invoking Init
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -16402,12 +16404,12 @@ fn WithTiming(comptime T: type) type {
         inner: T,
         last_duration_ns: u64,
 
-        pub fn execute(self: *Self) void {
-            const start = std.time.nanoTimestamp();
+        pub fn execute(self: *Self, io: std.Io) void {
+            const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
             if (@hasDecl(T, "execute")) {
                 self.inner.execute();
             }
-            const end = std.time.nanoTimestamp();
+            const end = std.Io.Timestamp.now(io, .real).toNanoseconds();
             self.last_duration_ns = @intCast(end - start);
         }
 
@@ -16420,7 +16422,7 @@ fn WithTiming(comptime T: type) type {
 // Stack multiple mixins
 const task = SimpleTask.init();
 var logged = WithLogging(SimpleTask).init(task);
-var timed = WithTiming(WithLogging(SimpleTask)).init(logged);
+var timed = WithTiming(io, WithLogging(SimpleTask)).init(logged);
 
 timed.execute();
 // Now both timed and logged!
@@ -16840,7 +16842,7 @@ Zig's approach is simpler and more explicit than these alternatives.
 
 ```zig
 // Recipe 8.18: Extending Classes with Mixins
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -16919,12 +16921,12 @@ fn WithTiming(comptime T: type) type {
             };
         }
 
-        pub fn execute(self: *Self) void {
-            const start = std.time.nanoTimestamp();
+        pub fn execute(self: *Self, io: std.Io) void {
+            const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
             if (@hasDecl(T, "execute")) {
                 self.inner.execute();
             }
-            const end = std.time.nanoTimestamp();
+            const end = std.Io.Timestamp.now(io, .real).toNanoseconds();
             self.last_duration_ns = @intCast(end - start);
         }
 
@@ -16939,11 +16941,12 @@ fn WithTiming(comptime T: type) type {
 }
 
 test "multiple mixins" {
+    const io = std.testing.io;
     const task = SimpleTask.init();
     const logged = WithLogging(SimpleTask).init(task);
     var timed = WithTiming(WithLogging(SimpleTask)).init(logged);
 
-    timed.execute();
+    timed.execute(io);
 
     try testing.expect(timed.getDuration() >= 0);
     try testing.expectEqual(@as(u32, 1), timed.getInner().getLogCount());
@@ -17403,12 +17406,13 @@ test "thread safe mixin" {
 
 // Comprehensive test
 test "comprehensive mixin patterns" {
+    const io = std.testing.io;
     // Stack mixins
     const task = SimpleTask.init();
     const logged = WithLogging(SimpleTask).init(task);
     var timed = WithTiming(WithLogging(SimpleTask)).init(logged);
 
-    timed.execute();
+    timed.execute(io);
     try testing.expect(timed.getInner().getLogCount() > 0);
 
     // Validation
@@ -17773,7 +17777,7 @@ const Workflow = struct {
     pub fn init(allocator: std.mem.Allocator) Workflow {
         return Workflow{
             .current = .draft,
-            .history = std.ArrayList(WorkflowState){},
+            .history = std.ArrayList(WorkflowState).empty,
             .allocator = allocator,
         };
     }
@@ -18110,7 +18114,7 @@ self.onEnter(new_state);
 
 ```zig
 // Recipe 8.19: Implementing Stateful Objects or State Machines
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -18506,7 +18510,7 @@ const Workflow = struct {
     pub fn init(allocator: std.mem.Allocator) Workflow {
         return Workflow{
             .current = .draft,
-            .history = std.ArrayList(WorkflowState){},
+            .history = std.ArrayList(WorkflowState).empty,
             .allocator = allocator,
         };
     }
@@ -19157,7 +19161,7 @@ const FilterVisitor = struct {
 };
 
 // Find all .txt files
-var matches = std.ArrayList([]const u8).init(allocator);
+var matches = std.ArrayList([]const u8).empty;
 var visitor = FilterVisitor{
     .matches = &matches,
     .allocator = allocator,
@@ -19310,7 +19314,7 @@ pub fn visit(item: anytype) void {
 
 **Accumulating visitor**:
 ```zig
-var results = std.ArrayList(Result).init(allocator);
+var results = std.ArrayList(Result).empty;
 var visitor = CollectVisitor{ .results = &results };
 ```
 
@@ -19367,7 +19371,7 @@ Don't use visitors when:
 
 ```zig
 // Recipe 8.20: Implementing the Visitor Pattern
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -19453,7 +19457,7 @@ const PrintVisitor = struct {
 };
 
 test "visitor with context" {
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(testing.allocator);
 
     const visitor = PrintVisitor{
@@ -19607,7 +19611,7 @@ test "transforming visitor" {
     const three = Expr{ .number = 3 };
     const add = Expr{ .add = .{ .left = @constCast(&five), .right = @constCast(&three) } };
 
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(testing.allocator);
 
     var visitor = StringifyVisitor{
@@ -19661,24 +19665,27 @@ test "fallible visitor" {
 
 // ANCHOR: generic_visitor
 // Generic visitor using comptime
-fn Visitor(comptime T: type) type {
+fn Visitor(comptime T: type, comptime Item: type) type {
     return struct {
         pub const ResultType = T;
+        pub const ItemType = Item;
 
-        visitFn: *const fn (item: anytype) T,
+        // A function pointer needs a concrete parameter type, so the item
+        // type is part of the visitor's type rather than `anytype`.
+        visitFn: *const fn (item: Item) T,
 
-        pub fn visit(self: @This(), item: anytype) T {
+        pub fn visit(self: @This(), item: Item) T {
             return self.visitFn(item);
         }
     };
 }
 
 test "generic visitor" {
-    const IntVisitor = Visitor(i32);
+    const IntVisitor = Visitor(i32, i32);
 
     const visitor = IntVisitor{
         .visitFn = struct {
-            fn visit(item: anytype) i32 {
+            fn visit(item: i32) i32 {
                 return item;
             }
         }.visit,
@@ -19803,7 +19810,7 @@ test "filter visitor" {
     const children = [_]FileNode{ file1, file2, file3 };
     const dir = FileNode{ .directory = .{ .name = "docs", .children = children[0..] } };
 
-    var matches = std.ArrayList([]const u8){};
+    var matches = std.ArrayList([]const u8).empty;
     defer matches.deinit(testing.allocator);
 
     var visitor = FilterVisitor{
@@ -19975,7 +19982,7 @@ const TreeNode = struct {
         const node = try allocator.create(TreeNode);
         node.* = TreeNode{
             .value = value,
-            .children = std.ArrayList(*TreeNode){},
+            .children = std.ArrayList(*TreeNode).empty,
             .parent = null,
         };
         return node;
@@ -20012,7 +20019,7 @@ const GraphNode = struct {
         const node = try allocator.create(GraphNode);
         node.* = GraphNode{
             .id = id,
-            .neighbors = std.ArrayList(*GraphNode){},
+            .neighbors = std.ArrayList(*GraphNode).empty,
             .allocator = allocator,
         };
         return node;
@@ -20025,7 +20032,7 @@ const GraphNode = struct {
 
     pub fn breakCycles(self: *GraphNode) void {
         self.neighbors.deinit(self.allocator);
-        self.neighbors = std.ArrayList(*GraphNode){};
+        self.neighbors = std.ArrayList(*GraphNode).empty;
     }
 
     pub fn deinit(self: *GraphNode) void {
@@ -20179,9 +20186,8 @@ const NodePool = struct {
     nodes: std.ArrayList(PoolNode),
 
     pub fn init(allocator: std.mem.Allocator) NodePool {
-        _ = allocator;
         return NodePool{
-            .nodes = std.ArrayList(PoolNode){},
+            .nodes = std.ArrayList(PoolNode).empty,
         };
     }
 
@@ -20233,10 +20239,9 @@ const GenerationalPool = struct {
     free_list: std.ArrayList(u32),
 
     pub fn init(allocator: std.mem.Allocator) GenerationalPool {
-        _ = allocator;
         return GenerationalPool{
-            .entries = std.ArrayList(Entry){},
-            .free_list = std.ArrayList(u32){},
+            .entries = std.ArrayList(Entry).empty,
+            .free_list = std.ArrayList(u32).empty,
         };
     }
 
@@ -20537,7 +20542,7 @@ test "no memory leaks" {
 
 ```zig
 // Recipe 8.21: Managing Memory in Cyclic Data Structures
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -20620,7 +20625,7 @@ const TreeNode = struct {
         const node = try allocator.create(TreeNode);
         node.* = TreeNode{
             .value = value,
-            .children = std.ArrayList(*TreeNode){},
+            .children = std.ArrayList(*TreeNode).empty,
             .parent = null,
         };
         return node;
@@ -20666,7 +20671,7 @@ const GraphNode = struct {
         const node = try allocator.create(GraphNode);
         node.* = GraphNode{
             .id = id,
-            .neighbors = std.ArrayList(*GraphNode){},
+            .neighbors = std.ArrayList(*GraphNode).empty,
             .allocator = allocator,
         };
         return node;
@@ -20679,7 +20684,7 @@ const GraphNode = struct {
 
     pub fn breakCycles(self: *GraphNode) void {
         self.neighbors.deinit(self.allocator);
-        self.neighbors = std.ArrayList(*GraphNode){};
+        self.neighbors = std.ArrayList(*GraphNode).empty;
     }
 
     pub fn deinit(self: *GraphNode) void {
@@ -20847,7 +20852,7 @@ const NodePool = struct {
     pub fn init(allocator: std.mem.Allocator) NodePool {
         _ = allocator;
         return NodePool{
-            .nodes = std.ArrayList(PoolNode){},
+            .nodes = std.ArrayList(PoolNode).empty,
         };
     }
 
@@ -20909,8 +20914,8 @@ const GenerationalPool = struct {
     pub fn init(allocator: std.mem.Allocator) GenerationalPool {
         _ = allocator;
         return GenerationalPool{
-            .entries = std.ArrayList(Entry){},
-            .free_list = std.ArrayList(u32){},
+            .entries = std.ArrayList(Entry).empty,
+            .free_list = std.ArrayList(u32).empty,
         };
     }
 
@@ -21703,7 +21708,7 @@ test "hash consistency" {
 
 ```zig
 // Recipe 8.22: Making Classes Support Comparison Operations
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;

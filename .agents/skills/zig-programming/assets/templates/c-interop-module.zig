@@ -1,4 +1,4 @@
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 // For other versions, see references/version-differences.md
 
 const std = @import("std");
@@ -14,10 +14,9 @@ const c = @cImport({
     @cInclude("stdlib.h");
     @cInclude("string.h");
 
-    // For custom C libraries, specify include paths in build.zig:
-    // exe.addIncludePath(.{ .path = "path/to/headers" });
-    // exe.linkLibC();
-    // exe.linkSystemLibrary("your_library");
+    // For custom C libraries, configure the module in build.zig:
+    // exe.root_module.addIncludePath(b.path("path/to/headers"));
+    // exe.root_module.linkSystemLibrary("your_library", .{});
 });
 
 // =============================================================================
@@ -161,7 +160,7 @@ pub fn cArrayToSlice(array: [*]const c_int, length: usize) []const c_int {
 // =============================================================================
 
 /// C-compatible function pointer type
-pub const CCallback = *const fn (value: c_int) callconv(.C) void;
+pub const CCallback = *const fn (value: c_int) callconv(.c) void;
 
 /// Example callback function
 export fn example_callback(value: c_int) void {
@@ -268,30 +267,32 @@ test "C malloc/free" {
 // Build Configuration Example
 // =============================================================================
 
-// In your build.zig, add:
+// In your build.zig, add. Since 0.16 the linking options live on the module,
+// not on the artifact:
 //
 // const exe = b.addExecutable(.{
 //     .name = "my_c_interop",
-//     .root_source_file = .{ .path = "src/main.zig" },
-//     .target = target,
-//     .optimize = optimize,
+//     .root_module = b.createModule(.{
+//         .root_source_file = b.path("src/main.zig"),
+//         .target = target,
+//         .optimize = optimize,
+//         // Link with the C standard library
+//         .link_libc = true,
+//     }),
 // });
 //
-// // Link with C standard library
-// exe.linkLibC();
-//
 // // Add C include directories
-// exe.addIncludePath(.{ .path = "path/to/c/headers" });
+// exe.root_module.addIncludePath(b.path("path/to/c/headers"));
 //
 // // Link with C libraries
-// exe.linkSystemLibrary("your_c_library");
+// exe.root_module.linkSystemLibrary("your_c_library", .{});
 //
 // // For static libraries
-// exe.addObjectFile(.{ .path = "path/to/library.a" });
+// exe.root_module.addObjectFile(b.path("path/to/library.a"));
 //
 // // For dynamic libraries
-// exe.addLibraryPath(.{ .path = "path/to/libs" });
-// exe.linkSystemLibrary("your_shared_lib");
+// exe.root_module.addLibraryPath(b.path("path/to/libs"));
+// exe.root_module.linkSystemLibrary("your_shared_lib", .{});
 
 // =============================================================================
 // Usage Examples

@@ -1,4 +1,4 @@
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 // For other versions, see references/version-differences.md
 
 const std = @import("std");
@@ -92,19 +92,19 @@ pub const Builder = struct {
     pub fn init(allocator: std.mem.Allocator) Builder {
         return .{
             .allocator = allocator,
-            .items = std.ArrayList(u8).init(allocator),
+            .items = std.ArrayList(u8).empty,
             .config = Config.init(),
         };
     }
 
     /// Clean up builder resources
     pub fn deinit(self: *Builder) void {
-        self.items.deinit();
+        self.items.deinit(self.allocator);
     }
 
     /// Add data to builder
     pub fn add(self: *Builder, data: []const u8) !*Builder {
-        try self.items.appendSlice(data);
+        try self.items.appendSlice(self.allocator, data);
         return self;
     }
 
@@ -198,7 +198,7 @@ test "transform function" {
     var ctx = Context.initDefault(allocator);
     defer ctx.deinit();
 
-    var data = try allocator.alloc(u8, 5);
+    const data = try allocator.alloc(u8, 5);
     defer allocator.free(data);
 
     @memcpy(data, "hello");

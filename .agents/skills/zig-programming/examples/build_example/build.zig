@@ -8,9 +8,11 @@ pub fn build(b: *std.Build) void {
     // Create executable
     const exe = b.addExecutable(.{
         .name = "build_example",
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     // Install the executable
@@ -31,9 +33,11 @@ pub fn build(b: *std.Build) void {
 
     // Create unit tests for main module
     const main_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/main.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     // Create run step for tests
@@ -41,18 +45,22 @@ pub fn build(b: *std.Build) void {
 
     // Create unit tests for math_utils module
     const math_tests = b.addTest(.{
-        .root_source_file = b.path("src/math_utils.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/math_utils.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     const run_math_tests = b.addRunArtifact(math_tests);
 
     // Create unit tests for string_utils module
     const string_tests = b.addTest(.{
-        .root_source_file = b.path("src/string_utils.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/string_utils.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     const run_string_tests = b.addRunArtifact(string_tests);
@@ -64,11 +72,14 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_string_tests.step);
 
     // Create a library from math_utils (optional - demonstrates library creation)
-    const math_lib = b.addStaticLibrary(.{
+    const math_lib = b.addLibrary(.{
         .name = "math_utils",
-        .root_source_file = b.path("src/math_utils.zig"),
-        .target = target,
-        .optimize = optimize,
+        .linkage = .static,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/math_utils.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
     // Install the library (optional)

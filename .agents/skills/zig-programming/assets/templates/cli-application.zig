@@ -1,4 +1,4 @@
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 // For other versions, see references/version-differences.md
 
 const std = @import("std");
@@ -7,18 +7,20 @@ const std = @import("std");
 // Demonstrates argument parsing, subcommands, and user interaction
 
 const Config = struct {
+    allocator: std.mem.Allocator,
     verbose: bool = false,
     output_file: ?[]const u8 = null,
     input_files: std.ArrayList([]const u8),
 
     pub fn init(allocator: std.mem.Allocator) Config {
         return .{
-            .input_files = std.ArrayList([]const u8).init(allocator),
+            .allocator = allocator,
+            .input_files = std.ArrayList([]const u8).empty,
         };
     }
 
     pub fn deinit(self: *Config) void {
-        self.input_files.deinit();
+        self.input_files.deinit(self.allocator);
     }
 };
 
@@ -40,9 +42,7 @@ fn printUsage() void {
     std.debug.print("{s}", .{usage});
 }
 
-fn processCommand(config: Config, args: []const []const u8) !void {
-    const stdout = std.io.getStdOut().writer();
-
+fn processCommand(stdout: *std.Io.Writer, config: *const Config, args: []const []const u8) !void {
     if (config.verbose) {
         try stdout.print("Processing files (verbose mode)...\n", .{});
     }
@@ -64,11 +64,11 @@ fn processCommand(config: Config, args: []const []const u8) !void {
     }
 
     try stdout.print("Processing complete!\n", .{});
+
+    try stdout.flush();
 }
 
-fn convertCommand(config: Config, args: []const []const u8) !void {
-    const stdout = std.io.getStdOut().writer();
-
+fn convertCommand(stdout: *std.Io.Writer, config: *const Config, args: []const []const u8) !void {
     if (config.verbose) {
         try stdout.print("Converting files (verbose mode)...\n", .{});
     }
@@ -88,25 +88,33 @@ fn convertCommand(config: Config, args: []const []const u8) !void {
     // TODO: Implement your conversion logic here
 
     try stdout.print("Conversion complete!\n", .{});
+
+    try stdout.flush();
 }
 
-pub fn main() !void {
-    // Setup allocator
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const io = init.io;
+    // `init.gpa` is already leak-checking in Debug and a fast allocator in
+    // release builds, so there is no reason to construct another one.
+    const allocator = init.gpa;
 
-    // Get command line arguments
-    const args = try std.process.argsAlloc(allocator);
-    defer std.process.argsFree(allocator, args);
+    // A writer owns a buffer, so build it once here and flush it on every path
+    // out of main -- an early `return` with an unflushed buffer loses output.
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writerStreaming(io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
+    defer stdout.flush() catch {};
+
+    // Arguments come from the process init data; the arena owns them.
+    const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     // Parse command line arguments
     var config = Config.init(allocator);
     defer config.deinit();
 
     var command: ?[]const u8 = null;
-    var command_args = std.ArrayList([]const u8).init(allocator);
-    defer command_args.deinit();
+    var command_args = std.ArrayList([]const u8).empty;
+    defer command_args.deinit(allocator);
 
     var i: usize = 1; // Skip program name
     while (i < args.len) : (i += 1) {
@@ -129,7 +137,7 @@ pub fn main() !void {
             command = arg;
         } else {
             // Subsequent arguments go to the command
-            try command_args.append(arg);
+            try command_args.append(allocator, arg);
         }
     }
 
@@ -141,9 +149,9 @@ pub fn main() !void {
     };
 
     if (std.mem.eql(u8, cmd, "process")) {
-        try processCommand(config, command_args.items);
+        try processCommand(stdout, &config, command_args.items);
     } else if (std.mem.eql(u8, cmd, "convert")) {
-        try convertCommand(config, command_args.items);
+        try convertCommand(stdout, &config, command_args.items);
     } else if (std.mem.eql(u8, cmd, "help")) {
         printUsage();
     } else {

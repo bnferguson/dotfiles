@@ -42,8 +42,10 @@ export fn zigMultiply(a: c_int, b: c_int) c_int {
 }
 
 export fn zigGreet(name: [*:0]const u8) void {
-    const stdout = std.io.getStdOut().writer();
-    stdout.print("Hello from Zig, {s}!\n", .{name}) catch {};
+    // std.Io is not C-ABI representable, so an exported function cannot take
+    // one as a parameter. Real code keeps an Io set up at init; here the
+    // message goes to locked stderr.
+    std.debug.print("Hello from Zig, {s}!\n", .{name});
 }
 
 fn demonstrateExports() void {
@@ -67,15 +69,16 @@ fn cTypeConversions() void {
     // C integer types
     const c_byte: c_char = 65; // 'A'
     const c_num: c_int = 42;
-    const c_long: c_long = 1234567890;
+    const long_value: c_long = 1234567890;
 
-    std.debug.print("c_char: {c} (value: {d})\n", .{ c_byte, c_byte });
+    std.debug.print("c_char: {c} (value: {d})\n", .{ @as(u8, @intCast(c_byte)), c_byte });
     std.debug.print("c_int: {d}\n", .{c_num});
-    std.debug.print("c_long: {d}\n", .{c_long});
+    std.debug.print("c_long: {d}\n", .{long_value});
 
-    // C floating point types
-    const c_float_val: c_float = 3.14;
-    const c_double_val: c_double = 2.71828;
+    // C's float and double map straight onto Zig's f32 and f64; the old
+    // c_float and c_double aliases were removed in 0.16.
+    const c_float_val: f32 = 3.14;
+    const c_double_val: f64 = 2.71828;
 
     std.debug.print("c_float: {d}\n", .{c_float_val});
     std.debug.print("c_double: {d}\n", .{c_double_val});
@@ -102,7 +105,7 @@ fn cStringHandling() !void {
     std.debug.print("C string as Zig slice: {s} (len: {d})\n", .{ zig_slice, zig_slice.len });
 
     // Allocate C string using malloc
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -167,7 +170,7 @@ fn variadicCFunctions() void {
 
     // Call C's printf with different argument counts
     _ = c.printf("Integer: %d\n", @as(c_int, 42));
-    _ = c.printf("Float: %.2f\n", @as(c_double, 3.14159));
+    _ = c.printf("Float: %.2f\n", @as(f64, 3.14159));
     _ = c.printf("String: %s, Number: %d\n", "test", @as(c_int, 100));
 }
 

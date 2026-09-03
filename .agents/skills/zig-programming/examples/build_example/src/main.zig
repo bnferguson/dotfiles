@@ -8,12 +8,17 @@ const strings = @import("string_utils.zig");
 /// - Cross-module imports
 /// - Testing across modules
 
-pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    // 0.16 hands the program its Io and a leak-checking allocator.
+    const io = init.io;
+    const allocator = init.gpa;
 
-    const stdout = std.io.getStdOut().writer();
+    // A writer owns a buffer, so it has to be flushed before it goes away.
+    var stdout_buffer: [4096]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writerStreaming(io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
+    // `error.WriteFailed` is a placeholder; the real error is kept on the writer.
+    defer stdout.flush() catch {};
 
     try stdout.print("=== Multi-File Zig Project Example ===\n\n", .{});
 
@@ -117,6 +122,6 @@ test "factorial and palindrome" {
     try testing.expectEqual(@as(u64, 24), fact);
 
     // Check palindrome
-    try testing.expect(strings.isPalindrome("24")); // Not a palindrome
-    try testing.expect(!strings.isPalindrome("24")); // Correct
+    try testing.expect(!strings.isPalindrome("24"));
+    try testing.expect(strings.isPalindrome("racecar"));
 }

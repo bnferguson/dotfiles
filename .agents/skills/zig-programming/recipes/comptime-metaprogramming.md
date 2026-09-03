@@ -1,6 +1,6 @@
 # Comptime & Metaprogramming Recipes
 
-*24 tested recipes for Zig 0.15.2*
+*24 recipes, all compiled against Zig 0.16.0*
 
 ## Quick Reference
 
@@ -69,8 +69,9 @@ fn double(x: i32) i32 {
 }
 
 test "basic wrapper" {
+    const io = std.testing.io;
     const wrapped = withLogging(double);
-    const result = wrapped(5);
+    const result = wrapped(io, 5);
     try testing.expectEqual(@as(i32, 10), result);
 }
 ```
@@ -82,12 +83,12 @@ The wrapper function is generated at compile time.
 Measure execution time of any function:
 
 ```zig
-fn withTiming(comptime func: anytype) fn (i32) i32 {
+fn withTiming(io: std.Io, comptime func: anytype) fn (i32) i32 {
     return struct {
-        fn wrapper(x: i32) i32 {
-            const start = std.time.nanoTimestamp();
+        fn wrapper(io: std.Io, x: i32) i32 {
+            const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
             const result = func(x);
-            const end = std.time.nanoTimestamp();
+            const end = std.Io.Timestamp.now(io, .real).toNanoseconds();
             const duration = end - start;
             std.debug.print("Execution time: {d}ns\n", .{duration});
             return result;
@@ -105,8 +106,8 @@ fn slowFunction(x: i32) i32 {
 }
 
 // Usage
-const timed = withTiming(slowFunction);
-const result = timed(100);  // Prints execution time
+const timed = withTiming(io, slowFunction);
+const result = timed(io, 100);  // Prints execution time
 ```
 
 Timing is added with zero overhead when disabled.
@@ -134,7 +135,7 @@ fn safeDivide(x: i32) anyerror!i32 {
 
 // Usage
 const wrapped = withErrorHandling(safeDivide);
-const result = try wrapped(10);  // Returns 10
+const result = try wrapped(io, 10);  // Returns 10
 ```
 
 The wrapper can validate inputs or handle errors.
@@ -631,11 +632,12 @@ fn Wrap(comptime func: anytype) type {
 **Test wrapper behavior**:
 ```zig
 test "wrapper adds logging" {
-    var output = std.ArrayList(u8).init(allocator);
+    const io = std.testing.io;
+    var output = std.ArrayList(u8).empty;
     defer output.deinit();
 
     const wrapped = withLogging(double);
-    _ = wrapped(5);
+    _ = wrapped(io, 5);
 
     // Verify logging occurred
     try testing.expect(output.items.len > 0);
@@ -700,7 +702,7 @@ Zig's approach is simpler and more explicit.
 
 ```zig
 // Recipe 9.1: Putting a Wrapper Around a Function
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -731,12 +733,12 @@ test "basic wrapper" {
 
 // ANCHOR: timing_wrapper
 // Wrapper that measures execution time
-fn withTiming(comptime func: anytype) fn (i32) i32 {
+fn withTiming(comptime func: anytype) fn (std.Io, i32) i32 {
     return struct {
-        fn wrapper(x: i32) i32 {
-            const start = std.time.nanoTimestamp();
+        fn wrapper(io: std.Io, x: i32) i32 {
+            const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
             const result = func(x);
-            const end = std.time.nanoTimestamp();
+            const end = std.Io.Timestamp.now(io, .real).toNanoseconds();
             const duration = end - start;
             std.debug.print("Execution time: {d}ns\n", .{duration});
             return result;
@@ -754,8 +756,9 @@ fn slowFunction(x: i32) i32 {
 }
 
 test "timing wrapper" {
+    const io = std.testing.io;
     const wrapped = withTiming(slowFunction);
-    const result = wrapped(100);
+    const result = wrapped(io, 100);
     try testing.expect(result >= 0);
 }
 // ANCHOR_END: timing_wrapper
@@ -1048,13 +1051,14 @@ test "conditional wrapper" {
 
 // Comprehensive test
 test "comprehensive function wrappers" {
+    const io = std.testing.io;
     // Test basic wrapper
     const wrapped_double = withLogging(double);
     try testing.expectEqual(@as(i32, 20), wrapped_double(10));
 
     // Test timing wrapper
     const timed = withTiming(slowFunction);
-    _ = timed(50);
+    _ = timed(io, 50);
 
     // Test generic wrapper with state
     const Wrapper = GenericWrapper(add);
@@ -1739,7 +1743,7 @@ test "error propagation" {
 
 ```zig
 // Recipe 9.2: Preserving Function Metadata When Writing Decorators
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -2829,12 +2833,12 @@ test "original function" {
 **Performance profiling**:
 ```zig
 const orig = Wrapper.unwrap();
-const start = timer.read();
+const start = timer.durationTo(.now(io, .awake)).toNanoseconds();
 _ = orig(args);
-const unwrapped_time = timer.read() - start;
+const unwrapped_time = timer.durationTo(.now(io, .awake)).toNanoseconds() - start;
 
 const wrapped_result = Wrapper.call(args);
-const wrapped_time = timer.read() - start - unwrapped_time;
+const wrapped_time = timer.durationTo(.now(io, .awake)).toNanoseconds() - start - unwrapped_time;
 ```
 
 **Conditional decoration**:
@@ -2890,7 +2894,7 @@ test "metadata survives unwrapping" {
 
 ```zig
 // Recipe 9.3: Unwrapping a Decorator
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -4042,7 +4046,7 @@ if (threshold < 0 or threshold > 100) {
 
 ```zig
 // Recipe 9.4: Defining a Decorator That Takes Arguments
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -5187,7 +5191,7 @@ fn isNumeric(comptime T: type) bool {
 
 ```zig
 // Recipe 9.5: Enforcing Type Checking on a Function Using a Decorator
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -6479,7 +6483,7 @@ const Resource = struct {
 
 ```zig
 // Recipe 9.6: Defining Decorators as Part of a Struct
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -7923,7 +7927,7 @@ pub fn deinit(self: *Self) void
 
 ```zig
 // Recipe 9.7: Defining Decorators as Structs
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -9296,7 +9300,7 @@ test "validation edge cases" {
 
 ```zig
 // Recipe 9.8: Applying Decorators to Struct and Static Methods
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -10576,7 +10580,7 @@ Can't make variadic functions:
 
 ```zig
 // Recipe 9.9: Writing Decorators That Add Arguments to Wrapped Functions
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -11160,7 +11164,7 @@ test "wrap struct" {
     try testing.expect(vp.validate());
 
     const person1 = vp.getInner();
-    try testing.expect(person1 != null);
+    try testing.expect((person1) != null);
 
     vp.invalidate();
     const person2 = vp.getInner();
@@ -11543,7 +11547,7 @@ Each wrapper adds another level of indirection. For complex compositions, consid
 
 ```zig
 // Recipe 9.10: Using Decorators to Patch Struct Definitions
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -11664,7 +11668,7 @@ test "wrap struct" {
     try testing.expect(vp.validate());
 
     const person1 = vp.getInner();
-    try testing.expect(person1 != null);
+    try testing.expect((person1) != null);
 
     vp.invalidate();
     const person2 = vp.getInner();
@@ -12661,7 +12665,7 @@ The key advantage is that all decisions happen during compilation, resulting in 
 
 ```zig
 // Recipe 9.11: Using Comptime to Control Instance Creation
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -13743,7 +13747,7 @@ This makes field order analysis essentially free in production code.
 
 ```zig
 // Recipe 9.12: Capturing Struct Attribute Definition Order
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -14828,7 +14832,7 @@ The pattern trades a small amount of syntax for significant gains in maintainabi
 
 ```zig
 // Recipe 9.13: Defining a Generic That Takes Optional Arguments
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 
 const std = @import("std");
 const testing = std.testing;
@@ -15947,7 +15951,7 @@ These patterns are useful for:
 
 ```zig
 // Recipe 9.14: Enforcing an Argument Signature on Tuple Arguments
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Performance Note: All validation in this recipe happens at compile-time.
 // There is ZERO runtime cost for these checks. Invalid code will not compile,
@@ -17083,7 +17087,7 @@ The `@typeInfo` builtin provides complete type metadata at compile time.
 
 ```zig
 // Recipe 9.15: Enforcing Coding Conventions in Structs
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to use compile-time validation to enforce
 // naming conventions, field requirements, and structural patterns in structs.
@@ -17654,12 +17658,32 @@ Use `@Type` to construct struct types programmatically at compile time. Zig's `@
 Create a simple struct type from scratch:
 
 ```zig
+
+/// 0.16 replaced `@Type` with per-kind builtins. `@Struct` takes parallel
+/// arrays, so this adapts the `StructField` list the old API used.
+fn StructFromFields(
+    comptime layout: std.builtin.Type.ContainerLayout,
+    comptime fields: []const std.builtin.Type.StructField,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var types: [fields.len]type = undefined;
+        var attrs: [fields.len]std.builtin.Type.StructField.Attributes = undefined;
+        for (fields, &names, &types, &attrs) |field, *name, *Type, *attr| {
+            name.* = field.name;
+            Type.* = field.type;
+            attr.* = .{
+                .default_value_ptr = field.default_value_ptr,
+                .@"comptime" = field.is_comptime,
+                .@"align" = field.alignment,
+            };
+        }
+        return @Struct(layout, null, &names, &types, &attrs);
+    }
+}
 // Create a simple struct type programmatically
 fn createSimpleStruct() type {
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &[_]std.builtin.Type.StructField{
+    return StructFromFields(.auto, &[_]std.builtin.Type.StructField{
                 .{
                     .name = "x",
                     .type = i32,
@@ -17674,11 +17698,7 @@ fn createSimpleStruct() type {
                     .is_comptime = false,
                     .alignment = @alignOf(i32),
                 },
-            },
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+            });
 }
 
 test "basic struct creation" {
@@ -17697,6 +17717,29 @@ The generated `Point` type is identical to one written manually.
 Generate structs with dynamic field counts:
 
 ```zig
+
+/// 0.16 replaced `@Type` with per-kind builtins. `@Struct` takes parallel
+/// arrays, so this adapts the `StructField` list the old API used.
+fn StructFromFields(
+    comptime layout: std.builtin.Type.ContainerLayout,
+    comptime fields: []const std.builtin.Type.StructField,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var types: [fields.len]type = undefined;
+        var attrs: [fields.len]std.builtin.Type.StructField.Attributes = undefined;
+        for (fields, &names, &types, &attrs) |field, *name, *Type, *attr| {
+            name.* = field.name;
+            Type.* = field.type;
+            attr.* = .{
+                .default_value_ptr = field.default_value_ptr,
+                .@"comptime" = field.is_comptime,
+                .@"align" = field.alignment,
+            };
+        }
+        return @Struct(layout, null, &names, &types, &attrs);
+    }
+}
 fn createFieldsStruct(comptime count: usize, comptime T: type) type {
     var fields: [count]std.builtin.Type.StructField = undefined;
 
@@ -17711,14 +17754,7 @@ fn createFieldsStruct(comptime count: usize, comptime T: type) type {
         };
     }
 
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &fields,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    return StructFromFields(.auto, &fields);
 }
 
 test "add fields" {
@@ -17744,6 +17780,29 @@ This is useful for code generation based on configuration.
 Build structs from name-type pairs:
 
 ```zig
+
+/// 0.16 replaced `@Type` with per-kind builtins. `@Struct` takes parallel
+/// arrays, so this adapts the `StructField` list the old API used.
+fn StructFromFields(
+    comptime layout: std.builtin.Type.ContainerLayout,
+    comptime fields: []const std.builtin.Type.StructField,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var types: [fields.len]type = undefined;
+        var attrs: [fields.len]std.builtin.Type.StructField.Attributes = undefined;
+        for (fields, &names, &types, &attrs) |field, *name, *Type, *attr| {
+            name.* = field.name;
+            Type.* = field.type;
+            attr.* = .{
+                .default_value_ptr = field.default_value_ptr,
+                .@"comptime" = field.is_comptime,
+                .@"align" = field.alignment,
+            };
+        }
+        return @Struct(layout, null, &names, &types, &attrs);
+    }
+}
 fn structFromPairs(comptime pairs: anytype) type {
     const fields_tuple = @typeInfo(@TypeOf(pairs)).@"struct".fields;
     var fields: [fields_tuple.len]std.builtin.Type.StructField = undefined;
@@ -17759,14 +17818,7 @@ fn structFromPairs(comptime pairs: anytype) type {
         };
     }
 
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &fields,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    return StructFromFields(.auto, &fields);
 }
 
 test "struct from tuples" {
@@ -17795,6 +17847,29 @@ This enables DSL-style struct definitions with clean syntax.
 Combine multiple structs into one:
 
 ```zig
+
+/// 0.16 replaced `@Type` with per-kind builtins. `@Struct` takes parallel
+/// arrays, so this adapts the `StructField` list the old API used.
+fn StructFromFields(
+    comptime layout: std.builtin.Type.ContainerLayout,
+    comptime fields: []const std.builtin.Type.StructField,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var types: [fields.len]type = undefined;
+        var attrs: [fields.len]std.builtin.Type.StructField.Attributes = undefined;
+        for (fields, &names, &types, &attrs) |field, *name, *Type, *attr| {
+            name.* = field.name;
+            Type.* = field.type;
+            attr.* = .{
+                .default_value_ptr = field.default_value_ptr,
+                .@"comptime" = field.is_comptime,
+                .@"align" = field.alignment,
+            };
+        }
+        return @Struct(layout, null, &names, &types, &attrs);
+    }
+}
 fn mergeStructs(comptime A: type, comptime B: type) type {
     const a_fields = @typeInfo(A).@"struct".fields;
     const b_fields = @typeInfo(B).@"struct".fields;
@@ -17818,14 +17893,7 @@ fn mergeStructs(comptime A: type, comptime B: type) type {
         merged[a_fields.len + i] = field;
     }
 
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &merged,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    return StructFromFields(.auto, &merged);
 }
 
 test "merge structs" {
@@ -17853,6 +17921,29 @@ This is useful for composition patterns and combining domain objects.
 Select fields matching specific criteria:
 
 ```zig
+
+/// 0.16 replaced `@Type` with per-kind builtins. `@Struct` takes parallel
+/// arrays, so this adapts the `StructField` list the old API used.
+fn StructFromFields(
+    comptime layout: std.builtin.Type.ContainerLayout,
+    comptime fields: []const std.builtin.Type.StructField,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var types: [fields.len]type = undefined;
+        var attrs: [fields.len]std.builtin.Type.StructField.Attributes = undefined;
+        for (fields, &names, &types, &attrs) |field, *name, *Type, *attr| {
+            name.* = field.name;
+            Type.* = field.type;
+            attr.* = .{
+                .default_value_ptr = field.default_value_ptr,
+                .@"comptime" = field.is_comptime,
+                .@"align" = field.alignment,
+            };
+        }
+        return @Struct(layout, null, &names, &types, &attrs);
+    }
+}
 fn filterFields(comptime T: type, comptime predicate: fn (std.builtin.Type.StructField) bool) type {
     const fields = @typeInfo(T).@"struct".fields;
 
@@ -17872,14 +17963,7 @@ fn filterFields(comptime T: type, comptime predicate: fn (std.builtin.Type.Struc
         }
     }
 
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &filtered,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    return StructFromFields(.auto, &filtered);
 }
 
 fn isIntegerField(field: std.builtin.Type.StructField) bool {
@@ -17913,6 +17997,29 @@ This enables type-based transformations and projections.
 Transform field names systematically:
 
 ```zig
+
+/// 0.16 replaced `@Type` with per-kind builtins. `@Struct` takes parallel
+/// arrays, so this adapts the `StructField` list the old API used.
+fn StructFromFields(
+    comptime layout: std.builtin.Type.ContainerLayout,
+    comptime fields: []const std.builtin.Type.StructField,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var types: [fields.len]type = undefined;
+        var attrs: [fields.len]std.builtin.Type.StructField.Attributes = undefined;
+        for (fields, &names, &types, &attrs) |field, *name, *Type, *attr| {
+            name.* = field.name;
+            Type.* = field.type;
+            attr.* = .{
+                .default_value_ptr = field.default_value_ptr,
+                .@"comptime" = field.is_comptime,
+                .@"align" = field.alignment,
+            };
+        }
+        return @Struct(layout, null, &names, &types, &attrs);
+    }
+}
 fn prefixFields(comptime T: type, comptime prefix: []const u8) type {
     const fields = @typeInfo(T).@"struct".fields;
     var prefixed: [fields.len]std.builtin.Type.StructField = undefined;
@@ -17927,14 +18034,7 @@ fn prefixFields(comptime T: type, comptime prefix: []const u8) type {
         };
     }
 
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &prefixed,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    return StructFromFields(.auto, &prefixed);
 }
 
 test "add prefix" {
@@ -17962,6 +18062,29 @@ This helps with namespace management and avoiding name collisions.
 Convert all fields to optional types:
 
 ```zig
+
+/// 0.16 replaced `@Type` with per-kind builtins. `@Struct` takes parallel
+/// arrays, so this adapts the `StructField` list the old API used.
+fn StructFromFields(
+    comptime layout: std.builtin.Type.ContainerLayout,
+    comptime fields: []const std.builtin.Type.StructField,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var types: [fields.len]type = undefined;
+        var attrs: [fields.len]std.builtin.Type.StructField.Attributes = undefined;
+        for (fields, &names, &types, &attrs) |field, *name, *Type, *attr| {
+            name.* = field.name;
+            Type.* = field.type;
+            attr.* = .{
+                .default_value_ptr = field.default_value_ptr,
+                .@"comptime" = field.is_comptime,
+                .@"align" = field.alignment,
+            };
+        }
+        return @Struct(layout, null, &names, &types, &attrs);
+    }
+}
 fn makeFieldsOptional(comptime T: type) type {
     const fields = @typeInfo(T).@"struct".fields;
     var optional_fields: [fields.len]std.builtin.Type.StructField = undefined;
@@ -17976,14 +18099,7 @@ fn makeFieldsOptional(comptime T: type) type {
         };
     }
 
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &optional_fields,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    return StructFromFields(.auto, &optional_fields);
 }
 
 test "optional wrapper" {
@@ -18011,6 +18127,29 @@ This is useful for builder patterns or partial updates.
 Create a struct containing only named fields:
 
 ```zig
+
+/// 0.16 replaced `@Type` with per-kind builtins. `@Struct` takes parallel
+/// arrays, so this adapts the `StructField` list the old API used.
+fn StructFromFields(
+    comptime layout: std.builtin.Type.ContainerLayout,
+    comptime fields: []const std.builtin.Type.StructField,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var types: [fields.len]type = undefined;
+        var attrs: [fields.len]std.builtin.Type.StructField.Attributes = undefined;
+        for (fields, &names, &types, &attrs) |field, *name, *Type, *attr| {
+            name.* = field.name;
+            Type.* = field.type;
+            attr.* = .{
+                .default_value_ptr = field.default_value_ptr,
+                .@"comptime" = field.is_comptime,
+                .@"align" = field.alignment,
+            };
+        }
+        return @Struct(layout, null, &names, &types, &attrs);
+    }
+}
 fn selectFields(comptime T: type, comptime field_names: []const []const u8) type {
     const all_fields = @typeInfo(T).@"struct".fields;
     var selected: [field_names.len]std.builtin.Type.StructField = undefined;
@@ -18029,14 +18168,7 @@ fn selectFields(comptime T: type, comptime field_names: []const []const u8) type
         }
     }
 
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &selected,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    return StructFromFields(.auto, &selected);
 }
 
 test "select fields" {
@@ -18162,22 +18294,42 @@ This helps understand what the compiler generated.
 
 ```zig
 // Recipe 9.16: Defining Structs Programmatically
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to create struct types at compile time using @Type.
 // All struct generation happens during compilation with zero runtime overhead.
 
 const std = @import("std");
+
+/// 0.16 replaced `@Type` with per-kind builtins. `@Struct` takes parallel
+/// arrays, so this adapts the `StructField` list the old API used.
+fn StructFromFields(
+    comptime layout: std.builtin.Type.ContainerLayout,
+    comptime fields: []const std.builtin.Type.StructField,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var types: [fields.len]type = undefined;
+        var attrs: [fields.len]std.builtin.Type.StructField.Attributes = undefined;
+        for (fields, &names, &types, &attrs) |field, *name, *Type, *attr| {
+            name.* = field.name;
+            Type.* = field.type;
+            attr.* = .{
+                .default_value_ptr = field.default_value_ptr,
+                .@"comptime" = field.is_comptime,
+                .@"align" = field.alignment,
+            };
+        }
+        return @Struct(layout, null, &names, &types, &attrs);
+    }
+}
 const testing = std.testing;
 const builtin = @import("builtin");
 
 // ANCHOR: basic_struct_creation
 // Create a simple struct type programmatically
 fn createSimpleStruct() type {
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &[_]std.builtin.Type.StructField{
+    return StructFromFields(.auto, &[_]std.builtin.Type.StructField{
                 .{
                     .name = "x",
                     .type = i32,
@@ -18192,11 +18344,7 @@ fn createSimpleStruct() type {
                     .is_comptime = false,
                     .alignment = @alignOf(i32),
                 },
-            },
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+            });
 }
 
 test "basic struct creation" {
@@ -18224,14 +18372,7 @@ fn createFieldsStruct(comptime count: usize, comptime T: type) type {
         };
     }
 
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &fields,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    return StructFromFields(.auto, &fields);
 }
 
 test "add fields" {
@@ -18265,14 +18406,7 @@ fn structFromPairs(comptime pairs: anytype) type {
         };
     }
 
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &fields,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    return StructFromFields(.auto, &fields);
 }
 
 test "struct from tuples" {
@@ -18320,14 +18454,7 @@ fn mergeStructs(comptime A: type, comptime B: type) type {
         merged[a_fields.len + i] = field;
     }
 
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &merged,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    return StructFromFields(.auto, &merged);
 }
 
 test "merge structs" {
@@ -18371,14 +18498,7 @@ fn filterFields(comptime T: type, comptime predicate: fn (std.builtin.Type.Struc
         }
     }
 
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &filtered,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    return StructFromFields(.auto, &filtered);
 }
 
 fn isIntegerField(field: std.builtin.Type.StructField) bool {
@@ -18421,14 +18541,7 @@ fn prefixFields(comptime T: type, comptime prefix: []const u8) type {
         };
     }
 
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &prefixed,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    return StructFromFields(.auto, &prefixed);
 }
 
 test "add prefix" {
@@ -18465,14 +18578,7 @@ fn makeFieldsOptional(comptime T: type) type {
         };
     }
 
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &optional_fields,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    return StructFromFields(.auto, &optional_fields);
 }
 
 test "optional wrapper" {
@@ -18514,14 +18620,7 @@ fn selectFields(comptime T: type, comptime field_names: []const []const u8) type
         }
     }
 
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = &selected,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    return StructFromFields(.auto, &selected);
 }
 
 test "select fields" {
@@ -19174,7 +19273,7 @@ Each pattern complements the others for different use cases.
 
 ```zig
 // Recipe 9.17: Initializing Struct Members at Definition Time
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates compile-time struct initialization patterns,
 // default values, and automatic field population.
@@ -19850,12 +19949,7 @@ fn toggleSignedness(comptime T: type) type {
             const new_signedness: std.builtin.Signedness =
                 if (int_info.signedness == .signed) .unsigned else .signed;
 
-            return @Type(.{
-                .int = .{
-                    .signedness = new_signedness,
-                    .bits = int_info.bits
-                }
-            });
+            return @Int(new_signedness, int_info.bits);
         },
         else => @compileError("toggleSignedness() only works with integer types"),
     };
@@ -19980,9 +20074,10 @@ fn serialize(comptime T: type, value: T, writer: anytype) !void {
 }
 
 test "polymorphic serializer" {
+    const io = std.testing.io;
     var buffer: [1024]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     try serialize(i32, 42, writer);
     try writer.writeAll(" ");
@@ -20005,7 +20100,7 @@ test "polymorphic serializer" {
 
     try serialize(?i32, 99, writer);
 
-    const output = fbs.getWritten();
+    const output = fbs.buffered();
     try testing.expect(std.mem.indexOf(u8, output, "42") != null);
     try testing.expect(std.mem.indexOf(u8, output, "3.14") != null);
     try testing.expect(std.mem.indexOf(u8, output, "true") != null);
@@ -20253,12 +20348,7 @@ fn toggleSignedness(comptime T: type) type {
             const new_signedness: std.builtin.Signedness =
                 if (int_info.signedness == .signed) .unsigned else .signed;
 
-            return @Type(.{
-                .int = .{
-                    .signedness = new_signedness,
-                    .bits = int_info.bits
-                }
-            });
+            return @Int(new_signedness, int_info.bits);
         },
         else => @compileError("toggleSignedness() only works with integer types"),
     };
@@ -20376,8 +20466,8 @@ fn serialize(comptime T: type, value: T, writer: anytype) !void {
 
 test "polymorphic serializer" {
     var buffer: [1024]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     try serialize(i32, 42, writer);
     try writer.writeAll(" ");
@@ -20400,7 +20490,7 @@ test "polymorphic serializer" {
 
     try serialize(?i32, 99, writer);
 
-    const output = fbs.getWritten();
+    const output = fbs.buffered();
     try testing.expect(std.mem.indexOf(u8, output, "42") != null);
     try testing.expect(std.mem.indexOf(u8, output, "3.14") != null);
     try testing.expect(std.mem.indexOf(u8, output, "true") != null);
@@ -20630,6 +20720,24 @@ test "format string parsing" {
 Create enum types from string lists at compile time:
 
 ```zig
+
+/// `@Enum` takes parallel name and value arrays, so this adapts the
+/// `EnumField` list that `@Type` used before 0.16.
+fn EnumFromFields(
+    comptime Tag: type,
+    comptime fields: []const std.builtin.Type.EnumField,
+    comptime exhaustive: bool,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var values: [fields.len]Tag = undefined;
+        for (fields, &names, &values) |field, *name, *value| {
+            name.* = field.name;
+            value.* = @intCast(field.value);
+        }
+        return @Enum(Tag, if (exhaustive) .exhaustive else .nonexhaustive, &names, &values);
+    }
+}
 /// Generate an enum from compile-time string list
 fn makeEnum(comptime strings: []const []const u8) type {
     comptime {
@@ -20644,14 +20752,7 @@ fn makeEnum(comptime strings: []const []const u8) type {
             };
         }
 
-        return @Type(.{
-            .@"enum" = .{
-                .tag_type = std.math.IntFittingRange(0, strings.len - 1),
-                .fields = &fields,
-                .decls = &[_]std.builtin.Type.Declaration{},
-                .is_exhaustive = true,
-            },
-        });
+        return EnumFromFields(std.math.IntFittingRange(0, strings.len - 1), &fields, true);
     }
 }
 
@@ -20878,6 +20979,24 @@ All string processing happens at compile time, so:
 // manipulation utilities.
 
 const std = @import("std");
+
+/// `@Enum` takes parallel name and value arrays, so this adapts the
+/// `EnumField` list that `@Type` used before 0.16.
+fn EnumFromFields(
+    comptime Tag: type,
+    comptime fields: []const std.builtin.Type.EnumField,
+    comptime exhaustive: bool,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var values: [fields.len]Tag = undefined;
+        for (fields, &names, &values) |field, *name, *value| {
+            name.* = field.name;
+            value.* = @intCast(field.value);
+        }
+        return @Enum(Tag, if (exhaustive) .exhaustive else .nonexhaustive, &names, &values);
+    }
+}
 const testing = std.testing;
 const fmt = std.fmt;
 
@@ -21066,14 +21185,7 @@ fn makeEnum(comptime strings: []const []const u8) type {
             };
         }
 
-        return @Type(.{
-            .@"enum" = .{
-                .tag_type = std.math.IntFittingRange(0, strings.len - 1),
-                .fields = &fields,
-                .decls = &[_]std.builtin.Type.Declaration{},
-                .is_exhaustive = true,
-            },
-        });
+        return EnumFromFields(std.math.IntFittingRange(0, strings.len - 1), &fields, true);
     }
 }
 
@@ -22625,6 +22737,7 @@ fn CircularBuffer(comptime T: type, comptime size: usize) type {
 }
 
 test "circular buffer" {
+    const io = std.testing.io;
     var buf = CircularBuffer(u32, 4).init();
 
     try testing.expect(buf.write(1));
@@ -22654,6 +22767,44 @@ test "circular buffer" {
 Programmatically create tagged unions from type lists:
 
 ```zig
+
+/// `@Union` takes parallel arrays, so this adapts the `UnionField` list that
+/// `@Type` used before 0.16.
+fn UnionFromFields(
+    comptime layout: std.builtin.Type.ContainerLayout,
+    comptime Tag: ?type,
+    comptime fields: []const std.builtin.Type.UnionField,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var types: [fields.len]type = undefined;
+        var attrs: [fields.len]std.builtin.Type.UnionField.Attributes = undefined;
+        for (fields, &names, &types, &attrs) |field, *name, *Type, *attr| {
+            name.* = field.name;
+            Type.* = field.type;
+            attr.* = .{ .@"align" = field.alignment };
+        }
+        return @Union(layout, Tag, &names, &types, &attrs);
+    }
+}
+
+/// `@Enum` takes parallel name and value arrays, so this adapts the
+/// `EnumField` list that `@Type` used before 0.16.
+fn EnumFromFields(
+    comptime Tag: type,
+    comptime fields: []const std.builtin.Type.EnumField,
+    comptime exhaustive: bool,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var values: [fields.len]Tag = undefined;
+        for (fields, &names, &values) |field, *name, *value| {
+            name.* = field.name;
+            value.* = @intCast(field.value);
+        }
+        return @Enum(Tag, if (exhaustive) .exhaustive else .nonexhaustive, &names, &values);
+    }
+}
 /// Generate tagged union from type list
 fn TaggedUnion(comptime types: []const type) type {
     // First create the enum tag type
@@ -22667,14 +22818,7 @@ fn TaggedUnion(comptime types: []const type) type {
         };
     }
 
-    const TagEnum = @Type(.{
-        .@"enum" = .{
-            .tag_type = std.math.IntFittingRange(0, types.len - 1),
-            .fields = &enum_fields,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_exhaustive = true,
-        },
-    });
+    const TagEnum = EnumFromFields(std.math.IntFittingRange(0, types.len - 1), &enum_fields, true);
 
     // Now create the union fields
     var union_fields: [types.len]std.builtin.Type.UnionField = undefined;
@@ -22688,14 +22832,7 @@ fn TaggedUnion(comptime types: []const type) type {
         };
     }
 
-    return @Type(.{
-        .@"union" = .{
-            .layout = .auto,
-            .tag_type = TagEnum,
-            .fields = &union_fields,
-            .decls = &[_]std.builtin.Type.Declaration{},
-        },
-    });
+    return UnionFromFields(.auto, TagEnum, &union_fields);
 }
 
 test "tagged union generation" {
@@ -22857,6 +22994,44 @@ Test generic code with:
 // to payload types at compile time, creating zero-overhead generic data structures.
 
 const std = @import("std");
+
+/// `@Union` takes parallel arrays, so this adapts the `UnionField` list that
+/// `@Type` used before 0.16.
+fn UnionFromFields(
+    comptime layout: std.builtin.Type.ContainerLayout,
+    comptime Tag: ?type,
+    comptime fields: []const std.builtin.Type.UnionField,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var types: [fields.len]type = undefined;
+        var attrs: [fields.len]std.builtin.Type.UnionField.Attributes = undefined;
+        for (fields, &names, &types, &attrs) |field, *name, *Type, *attr| {
+            name.* = field.name;
+            Type.* = field.type;
+            attr.* = .{ .@"align" = field.alignment };
+        }
+        return @Union(layout, Tag, &names, &types, &attrs);
+    }
+}
+
+/// `@Enum` takes parallel name and value arrays, so this adapts the
+/// `EnumField` list that `@Type` used before 0.16.
+fn EnumFromFields(
+    comptime Tag: type,
+    comptime fields: []const std.builtin.Type.EnumField,
+    comptime exhaustive: bool,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var values: [fields.len]Tag = undefined;
+        for (fields, &names, &values) |field, *name, *value| {
+            name.* = field.name;
+            value.* = @intCast(field.value);
+        }
+        return @Enum(Tag, if (exhaustive) .exhaustive else .nonexhaustive, &names, &values);
+    }
+}
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
 
@@ -23287,14 +23462,7 @@ fn TaggedUnion(comptime types: []const type) type {
         };
     }
 
-    const TagEnum = @Type(.{
-        .@"enum" = .{
-            .tag_type = std.math.IntFittingRange(0, types.len - 1),
-            .fields = &enum_fields,
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_exhaustive = true,
-        },
-    });
+    const TagEnum = EnumFromFields(std.math.IntFittingRange(0, types.len - 1), &enum_fields, true);
 
     // Now create the union fields
     var union_fields: [types.len]std.builtin.Type.UnionField = undefined;
@@ -23308,14 +23476,7 @@ fn TaggedUnion(comptime types: []const type) type {
         };
     }
 
-    return @Type(.{
-        .@"union" = .{
-            .layout = .auto,
-            .tag_type = TagEnum,
-            .fields = &union_fields,
-            .decls = &[_]std.builtin.Type.Declaration{},
-        },
-    });
+    return UnionFromFields(.auto, TagEnum, &union_fields);
 }
 
 test "tagged union generation" {
@@ -23543,7 +23704,7 @@ test "multiple dependencies" {
     var app = Application(MockDatabase, MockCache, NoopLogger).init(db, cache, logger);
 
     const result = try app.getData("test");
-    try testing.expect(result != null);
+    try testing.expect((result) != null);
     try testing.expectEqualStrings("db_value", result.?);
 }
 ```
@@ -24168,7 +24329,7 @@ test "multiple dependencies" {
     var app = Application(MockDatabase, MockCache, NoopLogger).init(db, cache, logger);
 
     const result = try app.getData("test");
-    try testing.expect(result != null);
+    try testing.expect((result) != null);
     try testing.expectEqualStrings("db_value", result.?);
 }
 // ANCHOR_END: multi_dependency
@@ -24489,6 +24650,29 @@ test "basic file embedding" {
 Process embedded configuration files during compilation:
 
 ```zig
+
+/// 0.16 replaced `@Type` with per-kind builtins. `@Struct` takes parallel
+/// arrays, so this adapts the `StructField` list the old API used.
+fn StructFromFields(
+    comptime layout: std.builtin.Type.ContainerLayout,
+    comptime fields: []const std.builtin.Type.StructField,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var types: [fields.len]type = undefined;
+        var attrs: [fields.len]std.builtin.Type.StructField.Attributes = undefined;
+        for (fields, &names, &types, &attrs) |field, *name, *Type, *attr| {
+            name.* = field.name;
+            Type.* = field.type;
+            attr.* = .{
+                .default_value_ptr = field.default_value_ptr,
+                .@"comptime" = field.is_comptime,
+                .@"align" = field.alignment,
+            };
+        }
+        return @Struct(layout, null, &names, &types, &attrs);
+    }
+}
 /// Parse embedded configuration at compile time
 const embedded_config = @embedFile("assets/config.txt");
 
@@ -24539,14 +24723,7 @@ fn parseConfig(comptime content: []const u8) type {
         }
     }
 
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = fields[0..field_idx],
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    return StructFromFields(.auto, fields[0..field_idx]);
 }
 
 test "parse config at compile time" {
@@ -24674,17 +24851,17 @@ const Resources = createResourceMap(&[_]ResourceEntry{
 
 test "resource map" {
     const message = Resources.get("message");
-    try testing.expect(message != null);
+    try testing.expect((message) != null);
     try testing.expect(message.?.len > 0);
 
     const config = Resources.get("config");
-    try testing.expect(config != null);
+    try testing.expect((config) != null);
 
     const missing = Resources.get("nonexistent");
     try testing.expectEqual(@as(?[]const u8, null), missing);
 
     const size = Resources.getSize("message");
-    try testing.expect(size != null);
+    try testing.expect((size) != null);
     try testing.expectEqual(message.?.len, size.?);
 }
 ```
@@ -24827,7 +25004,7 @@ Capture build-time information:
 /// Embed build-time metadata
 const build_info = struct {
     const timestamp = "2025-01-20T12:00:00Z"; // Would come from build system
-    const compiler = "zig 0.15.2";
+    const compiler = "zig 0.16.0";
     const target = "x86_64-linux";
 
     pub fn summary() []const u8 {
@@ -25007,6 +25184,29 @@ Combine `@embedFile` with build.zig to:
 // compile assets into your binary using @embedFile and comptime processing.
 
 const std = @import("std");
+
+/// 0.16 replaced `@Type` with per-kind builtins. `@Struct` takes parallel
+/// arrays, so this adapts the `StructField` list the old API used.
+fn StructFromFields(
+    comptime layout: std.builtin.Type.ContainerLayout,
+    comptime fields: []const std.builtin.Type.StructField,
+) type {
+    comptime {
+        var names: [fields.len][]const u8 = undefined;
+        var types: [fields.len]type = undefined;
+        var attrs: [fields.len]std.builtin.Type.StructField.Attributes = undefined;
+        for (fields, &names, &types, &attrs) |field, *name, *Type, *attr| {
+            name.* = field.name;
+            Type.* = field.type;
+            attr.* = .{
+                .default_value_ptr = field.default_value_ptr,
+                .@"comptime" = field.is_comptime,
+                .@"align" = field.alignment,
+            };
+        }
+        return @Struct(layout, null, &names, &types, &attrs);
+    }
+}
 const testing = std.testing;
 
 // ANCHOR: basic_embed
@@ -25070,14 +25270,7 @@ fn parseConfig(comptime content: []const u8) type {
         }
     }
 
-    return @Type(.{
-        .@"struct" = .{
-            .layout = .auto,
-            .fields = fields[0..field_idx],
-            .decls = &[_]std.builtin.Type.Declaration{},
-            .is_tuple = false,
-        },
-    });
+    return StructFromFields(.auto, fields[0..field_idx]);
 }
 
 test "parse config at compile time" {
@@ -25193,17 +25386,17 @@ const Resources = createResourceMap(&[_]ResourceEntry{
 
 test "resource map" {
     const message = Resources.get("message");
-    try testing.expect(message != null);
+    try testing.expect((message) != null);
     try testing.expect(message.?.len > 0);
 
     const config = Resources.get("config");
-    try testing.expect(config != null);
+    try testing.expect((config) != null);
 
     const missing = Resources.get("nonexistent");
     try testing.expectEqual(@as(?[]const u8, null), missing);
 
     const size = Resources.getSize("message");
-    try testing.expect(size != null);
+    try testing.expect((size) != null);
     try testing.expectEqual(message.?.len, size.?);
 }
 // ANCHOR_END: resource_map
@@ -25330,7 +25523,7 @@ test "compile-time compression" {
 /// Embed build-time metadata
 const build_info = struct {
     const timestamp = "2025-01-20T12:00:00Z"; // Would come from build system
-    const compiler = "zig 0.15.2";
+    const compiler = "zig 0.16.0";
     const target = "x86_64-linux";
 
     pub fn summary() []const u8 {
@@ -25614,7 +25807,7 @@ test "string hash table" {
     try testing.expect(!Keywords.contains("unknown"));
 
     const hash = Keywords.getHash("return");
-    try testing.expect(hash != null);
+    try testing.expect((hash) != null);
 }
 ```
 
@@ -26190,7 +26383,7 @@ test "string hash table" {
     try testing.expect(!Keywords.contains("unknown"));
 
     const hash = Keywords.getHash("return");
-    try testing.expect(hash != null);
+    try testing.expect((hash) != null);
 }
 // ANCHOR_END: string_hash_table
 
