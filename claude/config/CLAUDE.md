@@ -58,6 +58,22 @@ Everything else in the gh-stack skill stands, including its rule that every comm
 - When dealing with terraform use the Terraform MCP
 - When working with Rails use the `rails` command for migrations and generators
 
+## Absolute paths in Bash, never `cd X && <read>`
+
+Always give file paths to Bash commands in absolute form. Never combine `cd` with a
+file read in one compound command (`cd dir && cat foo.log`, `cd dir && wc -l *.txt`,
+`cd dir && grep pattern file`).
+
+Why: I keep `Read()` deny rules on my credential paths (`~/.ssh/**`, `~/.aws/**`,
+`~/.kube/**`, and more). Claude Code resolves paths statically, before it runs
+anything. After a `cd`, a relative path has no fixed base, so the checker cannot
+prove the read misses those globs — and it stops for approval. Deny rules outrank
+every permission mode, so bypass mode does not skip this. One `cd` compound halts
+the whole run.
+
+Note that the working directory persists between Bash calls. If you truly need to
+change directory, do it in its own call, then use absolute paths anyway.
+
 ## Shell tools for data processing
   - JSON: use `jq`
   - YAML/XML: use `yq`
