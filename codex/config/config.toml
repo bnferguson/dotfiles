@@ -1,6 +1,6 @@
 personality = "pragmatic"
-model = "gpt-5.6-sol"
-model_reasoning_effort = "medium"
+model = "gpt-5.6-luna"
+model_reasoning_effort = "xhigh"
 
 [tui]
 # Mirror the Claude status line with the closest native Codex fields.
@@ -54,3 +54,23 @@ trust_level = "trusted"
 
 [projects."/Users/bnferguson/.dotfiles"]
 trust_level = "trusted"
+
+[projects."/home/bnferguson/.dotfiles"]
+trust_level = "trusted"
+
+[hooks.state]
+
+[hooks.state."/home/bnferguson/.codex/hooks.json:pre_tool_use:0:0"]
+trusted_hash = "sha256:b69f891b6b7e25e0d6bd6e10e5654691170f2e1909b15b0e9cbe7678813fc5b9"
+
+[hooks.state."/home/bnferguson/.codex/hooks.json:pre_tool_use:0:1"]
+trusted_hash = "sha256:3a539b4c8cc9bc94780c19022d237703946d4ca41d24126faa6bc27f14c098ac"
+
+[hooks.state."/home/bnferguson/.codex/hooks.json:pre_tool_use:0:2"]
+trusted_hash = "sha256:a4483974926f997d27c62aa0df436c19061670d44bec294b923f532484074ad3"
+
+[hooks.state."/home/bnferguson/.codex/hooks.json:post_tool_use:0:0"]
+trusted_hash = "sha256:ebd2d8065d85ba3289e3d90c767bc2da44db81dc465b4dae21d692746761a6ae"
+
+[hooks.state."/home/bnferguson/.codex/hooks.json:post_tool_use:1:0"]
+trusted_hash = "sha256:ebbe8f98629162c9f02b18bdc32d5cb27f01e664d2387f98aff08d7ff8dac5ea"
