@@ -2,6 +2,7 @@
 *~
 *.swp
 .vera/
+.vera.lock
 .codegraph/
 graphify-out/
 
