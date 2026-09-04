@@ -89,11 +89,21 @@ Read that number precisely, because compiling is weaker than checking in two way
 Eleven recipes do not yet compile, and each recipe file says so in its header. None of them
 are blocked on the I/O change:
 
-- `build-system` 10.3-10.6 reference module files the markdown never included.
-- `files-io` 5.16/5.18 and `networking` 20.1/20.2/20.5/20.6 are built on the raw `std.posix`
-  socket, `poll`, termios and file-descriptor calls that 0.16 removed in favour of
-  `std.Io.net`. They need rewriting, not translating.
-- `strings-text` 2.14 links ICU and needs a matching local ICU version.
+- `build-system` 10.3-10.6 reference module files the markdown never included. The content
+  is missing rather than wrong, so the compiler names exactly what each one needs.
+- `files-io` 5.18 (serial ports) and `networking` 20.5 (UDP multicast) are reachable.
+  `std.posix` kept `poll`, `setsockopt`, `tcgetattr` and `tcsetattr`, the termios flags
+  moved to `std.c` / `std.os.linux` as packed struct fields rather than disappearing, and
+  both `Io.File.handle` and `net.Socket.handle` are still `std.posix.fd_t`. `IpAddress.bind`
+  with `.mode = .dgram` gives the datagram socket.
+- `networking` 20.1 can be made to compile the same way, but the idiomatic 0.16 answer to
+  "non-blocking server" is concurrent tasks over `std.Io.Group`, so it wants rethinking
+  rather than porting.
+- `files-io` 5.16 and `networking` 20.2/20.6 have no standard-library path in 0.16:
+  `std.posix.socket`, `sendfile`, `dup`, `fcntl` and `pipe` are all gone. They need direct
+  syscalls, or they need to go.
+- `strings-text` 2.14 links ICU and needs a matching local ICU version. This one is an
+  environment problem, not a code problem.
 
 **Finding recipes by topic:**
 - `recipes/fundamentals.md` - Philosophy, basics (19 recipes)
