@@ -1,6 +1,6 @@
 # Data Structures Recipes
 
-*20 tested recipes for Zig 0.15.2*
+*20 recipes, all compiled against Zig 0.16.0*
 
 ## Quick Reference
 
@@ -165,7 +165,7 @@ y += 2;
 
 ```zig
 // Recipe 1.1: Unpacking and Destructuring
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Demonstrates how to unpack tuples and arrays into separate variables.
 // Run: zig test code/02-core/01-data-structures/recipe_1_1.zig
@@ -548,7 +548,7 @@ const index = std.mem.indexOf(i32, &haystack, &needle);  // Some(2)
 For dynamically-sized collections, use `ArrayList`:
 
 ```zig
-var list = std.ArrayList(i32).init(allocator);
+var list = std.ArrayList(i32).empty;
 defer list.deinit();
 
 try list.append(1);
@@ -581,7 +581,7 @@ const str: [:0]const u8 = "hello";  // Null-terminated
 
 ```zig
 // Recipe 1.2: Working with Slices
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Demonstrates how to work with Zig's slice type for safe array manipulation.
 // Run: zig test code/02-core/01-data-structures/recipe_1_2.zig
@@ -818,8 +818,8 @@ test "checking if slice ends with suffix" {
 test "ArrayList provides dynamic slices" {
     const allocator = testing.allocator;
 
-    var list = std.ArrayList(i32){};
-    defer list.deinit(allocator);
+    var list = std.ArrayList(i32).empty;
+    defer list.deinit(testing.allocator);
 
     try list.append(allocator, 1);
     try list.append(allocator, 2);
@@ -1128,7 +1128,7 @@ const RollingAverage = struct {
 
 ```zig
 // Recipe 1.3: Ring Buffers and Keeping Last N Items
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Demonstrates how to use circular buffers to track the most recent N elements.
 // Run: zig test code/02-core/01-data-structures/recipe_1_3.zig
@@ -1316,7 +1316,7 @@ fn DynamicRingBuffer(comptime T: type) type {
             if (capacity == 0) return error.InvalidCapacity;
 
             return .{
-                .data = std.ArrayList(T){},
+                .data = std.ArrayList(T).empty,
                 .write_index = 0,
                 .capacity = capacity,
                 .allocator = allocator,
@@ -1602,19 +1602,19 @@ fn findLargestNWithPriorityQueue(
     if (n == 0) return &[_]i32{};
 
     // Create a min-heap to track the N largest items
-    var pq = std.PriorityQueue(i32, void, compareLargest).init(allocator, {});
+    var pq = std.PriorityQueue(i32, void, compareLargest).empty;
     defer pq.deinit();
 
     for (items) |item| {
         if (pq.count() < n) {
             // Still filling up to N items
-            try pq.add(item);
+            try pq.push(allocator, item);
         } else {
             // Check if this item should replace the smallest of our top N
             const min_of_top_n = pq.peek() orelse unreachable;
             if (item > min_of_top_n) {
-                _ = pq.remove(); // Remove smallest
-                try pq.add(item); // Add new larger item
+                _ = pq.pop(); // Remove smallest
+                try pq.push(allocator, item); // Add new larger item
             }
         }
     }
@@ -1622,7 +1622,7 @@ fn findLargestNWithPriorityQueue(
     // Extract results (will be in heap order, not sorted)
     const result = try allocator.alloc(i32, pq.count());
     var i: usize = 0;
-    while (pq.removeOrNull()) |val| {
+    while (pq.pop()) |val| {
         result[i] = val;
         i += 1;
     }
@@ -1786,7 +1786,7 @@ Learning/interview prep?
 
 ```zig
 // Recipe 1.4: Finding Largest or Smallest N Items
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Demonstrates different approaches to finding top/bottom N elements efficiently.
 //
@@ -1921,19 +1921,19 @@ fn findLargestNWithPriorityQueue(
     if (n == 0) return &[_]i32{};
 
     // Create a min-heap to track the N largest items
-    var pq = std.PriorityQueue(i32, void, compareLargest).init(allocator, {});
-    defer pq.deinit();
+    var pq = std.PriorityQueue(i32, void, compareLargest).empty;
+    defer pq.deinit(testing.allocator);
 
     for (items) |item| {
         if (pq.count() < n) {
             // Still filling up to N items
-            try pq.add(item);
+            try pq.push(allocator, item);
         } else {
             // Check if this item should replace the smallest of our top N
             const min_of_top_n = pq.peek() orelse unreachable;
             if (item > min_of_top_n) {
-                _ = pq.remove(); // Remove smallest
-                try pq.add(item); // Add new larger item
+                _ = pq.pop(); // Remove smallest
+                try pq.push(allocator, item); // Add new larger item
             }
         }
     }
@@ -1941,7 +1941,7 @@ fn findLargestNWithPriorityQueue(
     // Extract results (will be in heap order, not sorted)
     const result = try allocator.alloc(i32, pq.count());
     var i: usize = 0;
-    while (pq.removeOrNull()) |val| {
+    while (pq.pop()) |val| {
         result[i] = val;
         i += 1;
     }
@@ -1958,24 +1958,24 @@ fn findSmallestNWithPriorityQueue(
     if (n == 0) return &[_]i32{};
 
     // Create a max-heap to track the N smallest items
-    var pq = std.PriorityQueue(i32, void, compareSmallest).init(allocator, {});
-    defer pq.deinit();
+    var pq = std.PriorityQueue(i32, void, compareSmallest).empty;
+    defer pq.deinit(testing.allocator);
 
     for (items) |item| {
         if (pq.count() < n) {
-            try pq.add(item);
+            try pq.push(allocator, item);
         } else {
             const max_of_bottom_n = pq.peek() orelse unreachable;
             if (item < max_of_bottom_n) {
-                _ = pq.remove();
-                try pq.add(item);
+                _ = pq.pop();
+                try pq.push(allocator, item);
             }
         }
     }
 
     const result = try allocator.alloc(i32, pq.count());
     var i: usize = 0;
-    while (pq.removeOrNull()) |val| {
+    while (pq.pop()) |val| {
         result[i] = val;
         i += 1;
     }
@@ -2162,7 +2162,7 @@ const MaxNTracker = struct {
 
     pub fn init(allocator: std.mem.Allocator, n: usize) MaxNTracker {
         return .{
-            .heap = std.ArrayList(i32){},
+            .heap = std.ArrayList(i32).empty,
             .capacity = n,
             .allocator = allocator,
         };
@@ -2323,8 +2323,8 @@ fn topKFrequent(allocator: std.mem.Allocator, items: []const i32, k: usize) ![]i
     }
 
     // Convert to array
-    var freq_list = std.ArrayList(FrequencyItem){};
-    defer freq_list.deinit(allocator);
+    var freq_list = std.ArrayList(FrequencyItem).empty;
+    defer freq_list.deinit(testing.allocator);
 
     var iter = freq_map.iterator();
     while (iter.next()) |entry| {
@@ -2391,19 +2391,19 @@ fn compareMin(_: void, a: i32, b: i32) std.math.Order {
 test "basic priority queue - min heap" {
     const allocator = testing.allocator;
 
-    var pq = std.PriorityQueue(i32, void, compareMin).init(allocator, {});
+    var pq = std.PriorityQueue(i32, void, compareMin).empty;
     defer pq.deinit();
 
-    try pq.add(5);
-    try pq.add(2);
-    try pq.add(9);
-    try pq.add(1);
+    try pq.push(allocator, 5);
+    try pq.push(allocator, 2);
+    try pq.push(allocator, 9);
+    try pq.push(allocator, 1);
 
     // Remove in priority order (smallest first)
-    try testing.expectEqual(@as(i32, 1), pq.remove());
-    try testing.expectEqual(@as(i32, 2), pq.remove());
-    try testing.expectEqual(@as(i32, 5), pq.remove());
-    try testing.expectEqual(@as(i32, 9), pq.remove());
+    try testing.expectEqual(@as(i32, 1), pq.pop());
+    try testing.expectEqual(@as(i32, 2), pq.pop());
+    try testing.expectEqual(@as(i32, 5), pq.pop());
+    try testing.expectEqual(@as(i32, 9), pq.pop());
     try testing.expectEqual(@as(usize, 0), pq.count());
 }
 
@@ -2414,19 +2414,19 @@ fn compareMax(_: void, a: i32, b: i32) std.math.Order {
 test "basic priority queue - max heap" {
     const allocator = testing.allocator;
 
-    var pq = std.PriorityQueue(i32, void, compareMax).init(allocator, {});
+    var pq = std.PriorityQueue(i32, void, compareMax).empty;
     defer pq.deinit();
 
-    try pq.add(5);
-    try pq.add(2);
-    try pq.add(9);
-    try pq.add(1);
+    try pq.push(allocator, 5);
+    try pq.push(allocator, 2);
+    try pq.push(allocator, 9);
+    try pq.push(allocator, 1);
 
     // Remove in priority order (largest first)
-    try testing.expectEqual(@as(i32, 9), pq.remove());
-    try testing.expectEqual(@as(i32, 5), pq.remove());
-    try testing.expectEqual(@as(i32, 2), pq.remove());
-    try testing.expectEqual(@as(i32, 1), pq.remove());
+    try testing.expectEqual(@as(i32, 9), pq.pop());
+    try testing.expectEqual(@as(i32, 5), pq.pop());
+    try testing.expectEqual(@as(i32, 2), pq.pop());
+    try testing.expectEqual(@as(i32, 1), pq.pop());
     try testing.expectEqual(@as(usize, 0), pq.count());
 }
 ```
@@ -2474,7 +2474,7 @@ fn compareTasks(_: void, a: Task, b: Task) std.math.Order {
     return std.math.order(b.priority, a.priority);
 }
 
-var pq = std.PriorityQueue(Task, void, compareTasks).init(allocator, {});
+var pq = std.PriorityQueue(Task, void, compareTasks).empty;
 ```
 
 ### Context Parameter
@@ -2495,17 +2495,17 @@ fn compareWithContext(ctx: CompareContext, a: i32, b: i32) std.math.Order {
 
 const context = CompareContext{ .reverse = true };
 var pq = std.PriorityQueue(i32, CompareContext, compareWithContext)
-    .init(allocator, context);
+    .initContext(context);
 ```
 
 ### Common Operations
 
 ```zig
 // Add elements
-try pq.add(value);
+try pq.push(allocator, value);
 
 // Remove highest priority
-const item = pq.remove();  // Returns ?T (null if empty)
+const item = pq.pop().?;  // Returns ?T (null if empty)
 
 // Peek at highest priority without removing
 const top = pq.peek();  // Returns ?T
@@ -2542,17 +2542,17 @@ fn compareDeadline(_: void, a: Task, b: Task) std.math.Order {
 
 // Use it
 var scheduler = std.PriorityQueue(Task, void, compareDeadline)
-    .init(allocator, {});
+    .empty;
 defer scheduler.deinit();
 
-try scheduler.add(.{
+try scheduler.push(testing.allocator, .{
     .name = "Write report",
     .priority = 2,
     .deadline = 1704067200,  // Unix timestamp
 });
 
 // Process tasks in deadline order
-while (scheduler.remove()) |task| {
+while (scheduler.pop().?) |task| {
     // Execute task
 }
 ```
@@ -2586,7 +2586,7 @@ Memory: O(n) where n is the number of elements.
 
 ```zig
 // Recipe 1.5: Implementing a Priority Queue
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Demonstrates using std.PriorityQueue for efficient priority-based ordering.
 // Run: zig test code/02-core/01-data-structures/recipe_1_5.zig
@@ -2606,19 +2606,19 @@ fn compareMin(_: void, a: i32, b: i32) std.math.Order {
 test "basic priority queue - min heap" {
     const allocator = testing.allocator;
 
-    var pq = std.PriorityQueue(i32, void, compareMin).init(allocator, {});
-    defer pq.deinit();
+    var pq = std.PriorityQueue(i32, void, compareMin).empty;
+    defer pq.deinit(testing.allocator);
 
-    try pq.add(5);
-    try pq.add(2);
-    try pq.add(9);
-    try pq.add(1);
+    try pq.push(allocator, 5);
+    try pq.push(allocator, 2);
+    try pq.push(allocator, 9);
+    try pq.push(allocator, 1);
 
     // Remove in priority order (smallest first)
-    try testing.expectEqual(@as(i32, 1), pq.remove());
-    try testing.expectEqual(@as(i32, 2), pq.remove());
-    try testing.expectEqual(@as(i32, 5), pq.remove());
-    try testing.expectEqual(@as(i32, 9), pq.remove());
+    try testing.expectEqual(@as(i32, 1), pq.pop());
+    try testing.expectEqual(@as(i32, 2), pq.pop());
+    try testing.expectEqual(@as(i32, 5), pq.pop());
+    try testing.expectEqual(@as(i32, 9), pq.pop());
     try testing.expectEqual(@as(usize, 0), pq.count());
 }
 
@@ -2629,19 +2629,19 @@ fn compareMax(_: void, a: i32, b: i32) std.math.Order {
 test "basic priority queue - max heap" {
     const allocator = testing.allocator;
 
-    var pq = std.PriorityQueue(i32, void, compareMax).init(allocator, {});
-    defer pq.deinit();
+    var pq = std.PriorityQueue(i32, void, compareMax).empty;
+    defer pq.deinit(testing.allocator);
 
-    try pq.add(5);
-    try pq.add(2);
-    try pq.add(9);
-    try pq.add(1);
+    try pq.push(allocator, 5);
+    try pq.push(allocator, 2);
+    try pq.push(allocator, 9);
+    try pq.push(allocator, 1);
 
     // Remove in priority order (largest first)
-    try testing.expectEqual(@as(i32, 9), pq.remove());
-    try testing.expectEqual(@as(i32, 5), pq.remove());
-    try testing.expectEqual(@as(i32, 2), pq.remove());
-    try testing.expectEqual(@as(i32, 1), pq.remove());
+    try testing.expectEqual(@as(i32, 9), pq.pop());
+    try testing.expectEqual(@as(i32, 5), pq.pop());
+    try testing.expectEqual(@as(i32, 2), pq.pop());
+    try testing.expectEqual(@as(i32, 1), pq.pop());
     try testing.expectEqual(@as(usize, 0), pq.count());
 }
 // ANCHOR_END: basic_priority_queue
@@ -2653,19 +2653,19 @@ test "basic priority queue - max heap" {
 test "peek without removing" {
     const allocator = testing.allocator;
 
-    var pq = std.PriorityQueue(i32, void, compareMin).init(allocator, {});
-    defer pq.deinit();
+    var pq = std.PriorityQueue(i32, void, compareMin).empty;
+    defer pq.deinit(testing.allocator);
 
-    try pq.add(5);
-    try pq.add(2);
-    try pq.add(9);
+    try pq.push(allocator, 5);
+    try pq.push(allocator, 2);
+    try pq.push(allocator, 9);
 
     // Peek returns the min element without removing
     try testing.expectEqual(@as(i32, 2), pq.peek().?);
     try testing.expectEqual(@as(i32, 2), pq.peek().?);  // Still there
 
     // Now remove it
-    try testing.expectEqual(@as(i32, 2), pq.remove());
+    try testing.expectEqual(@as(i32, 2), pq.pop());
     try testing.expectEqual(@as(i32, 5), pq.peek().?);  // Next smallest
 }
 
@@ -2676,19 +2676,19 @@ test "peek without removing" {
 test "count and empty operations" {
     const allocator = testing.allocator;
 
-    var pq = std.PriorityQueue(i32, void, compareMin).init(allocator, {});
-    defer pq.deinit();
+    var pq = std.PriorityQueue(i32, void, compareMin).empty;
+    defer pq.deinit(testing.allocator);
 
     try testing.expectEqual(@as(usize, 0), pq.count());
 
-    try pq.add(1);
+    try pq.push(allocator, 1);
     try testing.expectEqual(@as(usize, 1), pq.count());
 
-    try pq.add(2);
-    try pq.add(3);
+    try pq.push(allocator, 2);
+    try pq.push(allocator, 3);
     try testing.expectEqual(@as(usize, 3), pq.count());
 
-    _ = pq.remove();
+    _ = pq.pop();
     try testing.expectEqual(@as(usize, 2), pq.count());
 }
 
@@ -2710,22 +2710,22 @@ fn compareTasks(_: void, a: Task, b: Task) std.math.Order {
 test "priority queue with custom type" {
     const allocator = testing.allocator;
 
-    var pq = std.PriorityQueue(Task, void, compareTasks).init(allocator, {});
-    defer pq.deinit();
+    var pq = std.PriorityQueue(Task, void, compareTasks).empty;
+    defer pq.deinit(testing.allocator);
 
-    try pq.add(.{ .name = "Low priority", .priority = 1 });
-    try pq.add(.{ .name = "High priority", .priority = 10 });
-    try pq.add(.{ .name = "Medium priority", .priority = 5 });
+    try pq.push(allocator, .{ .name = "Low priority", .priority = 1 });
+    try pq.push(allocator, .{ .name = "High priority", .priority = 10 });
+    try pq.push(allocator, .{ .name = "Medium priority", .priority = 5 });
 
-    const first = pq.remove();
+    const first = pq.pop().?;
     try testing.expectEqualStrings("High priority", first.name);
     try testing.expectEqual(@as(u32, 10), first.priority);
 
-    const second = pq.remove();
+    const second = pq.pop().?;
     try testing.expectEqualStrings("Medium priority", second.name);
     try testing.expectEqual(@as(u32, 5), second.priority);
 
-    const third = pq.remove();
+    const third = pq.pop().?;
     try testing.expectEqualStrings("Low priority", third.name);
     try testing.expectEqual(@as(u32, 1), third.priority);
 }
@@ -2751,17 +2751,17 @@ test "priority queue with context" {
 
     const context = CompareContext{ .reverse = true };
     var pq = std.PriorityQueue(i32, CompareContext, compareWithContext)
-        .init(allocator, context);
-    defer pq.deinit();
+        .initContext(context);
+    defer pq.deinit(testing.allocator);
 
-    try pq.add(5);
-    try pq.add(2);
-    try pq.add(9);
+    try pq.push(allocator, 5);
+    try pq.push(allocator, 2);
+    try pq.push(allocator, 9);
 
     // Reversed order (max heap)
-    try testing.expectEqual(@as(i32, 9), pq.remove());
-    try testing.expectEqual(@as(i32, 5), pq.remove());
-    try testing.expectEqual(@as(i32, 2), pq.remove());
+    try testing.expectEqual(@as(i32, 9), pq.pop());
+    try testing.expectEqual(@as(i32, 5), pq.pop());
+    try testing.expectEqual(@as(i32, 2), pq.pop());
 }
 
 // ==============================================================================
@@ -2780,37 +2780,36 @@ fn compareDeadline(_: void, a: ScheduledTask, b: ScheduledTask) std.math.Order {
 }
 
 test "task scheduler by deadline" {
-    const allocator = testing.allocator;
 
     var scheduler = std.PriorityQueue(ScheduledTask, void, compareDeadline)
-        .init(allocator, {});
-    defer scheduler.deinit();
+        .empty;
+    defer scheduler.deinit(testing.allocator);
 
-    try scheduler.add(.{
+    try scheduler.push(testing.allocator, .{
         .name = "Task C",
         .priority = 1,
         .deadline = 300,
     });
-    try scheduler.add(.{
+    try scheduler.push(testing.allocator, .{
         .name = "Task A",
         .priority = 10,
         .deadline = 100,
     });
-    try scheduler.add(.{
+    try scheduler.push(testing.allocator, .{
         .name = "Task B",
         .priority = 5,
         .deadline = 200,
     });
 
     // Process in deadline order
-    const first = scheduler.remove();
+    const first = scheduler.pop().?;
     try testing.expectEqualStrings("Task A", first.name);
     try testing.expectEqual(@as(i64, 100), first.deadline);
 
-    const second = scheduler.remove();
+    const second = scheduler.pop().?;
     try testing.expectEqualStrings("Task B", second.name);
 
-    const third = scheduler.remove();
+    const third = scheduler.pop().?;
     try testing.expectEqualStrings("Task C", third.name);
 }
 
@@ -2828,24 +2827,23 @@ fn compareTimestamp(_: void, a: Event, b: Event) std.math.Order {
 }
 
 test "event queue by timestamp" {
-    const allocator = testing.allocator;
 
     var events = std.PriorityQueue(Event, void, compareTimestamp)
-        .init(allocator, {});
-    defer events.deinit();
+        .empty;
+    defer events.deinit(testing.allocator);
 
-    try events.add(.{ .event_type = "click", .timestamp = 1000 });
-    try events.add(.{ .event_type = "hover", .timestamp = 500 });
-    try events.add(.{ .event_type = "scroll", .timestamp = 1500 });
+    try events.push(testing.allocator, .{ .event_type = "click", .timestamp = 1000 });
+    try events.push(testing.allocator, .{ .event_type = "hover", .timestamp = 500 });
+    try events.push(testing.allocator, .{ .event_type = "scroll", .timestamp = 1500 });
 
     // Process events in chronological order
-    const first = events.remove();
+    const first = events.pop().?;
     try testing.expectEqualStrings("hover", first.event_type);
 
-    const second = events.remove();
+    const second = events.pop().?;
     try testing.expectEqualStrings("click", second.event_type);
 
-    const third = events.remove();
+    const third = events.pop().?;
     try testing.expectEqualStrings("scroll", third.event_type);
 }
 
@@ -2856,20 +2854,20 @@ test "event queue by timestamp" {
 test "priority queue with duplicates" {
     const allocator = testing.allocator;
 
-    var pq = std.PriorityQueue(i32, void, compareMin).init(allocator, {});
-    defer pq.deinit();
+    var pq = std.PriorityQueue(i32, void, compareMin).empty;
+    defer pq.deinit(testing.allocator);
 
-    try pq.add(5);
-    try pq.add(5);
-    try pq.add(5);
-    try pq.add(2);
-    try pq.add(2);
+    try pq.push(allocator, 5);
+    try pq.push(allocator, 5);
+    try pq.push(allocator, 5);
+    try pq.push(allocator, 2);
+    try pq.push(allocator, 2);
 
-    try testing.expectEqual(@as(?i32, 2), pq.remove());
-    try testing.expectEqual(@as(?i32, 2), pq.remove());
-    try testing.expectEqual(@as(?i32, 5), pq.remove());
-    try testing.expectEqual(@as(?i32, 5), pq.remove());
-    try testing.expectEqual(@as(?i32, 5), pq.remove());
+    try testing.expectEqual(@as(?i32, 2), pq.pop());
+    try testing.expectEqual(@as(?i32, 2), pq.pop());
+    try testing.expectEqual(@as(?i32, 5), pq.pop());
+    try testing.expectEqual(@as(?i32, 5), pq.pop());
+    try testing.expectEqual(@as(?i32, 5), pq.pop());
 }
 
 // ==============================================================================
@@ -2896,22 +2894,22 @@ test "multi-level priority" {
     const allocator = testing.allocator;
 
     var pq = std.PriorityQueue(MultiPriorityTask, void, compareMultiPriority)
-        .init(allocator, {});
-    defer pq.deinit();
+        .empty;
+    defer pq.deinit(testing.allocator);
 
-    try pq.add(.{ .name = "Task A", .high_priority = 1, .low_priority = 5 });
-    try pq.add(.{ .name = "Task B", .high_priority = 2, .low_priority = 3 });
-    try pq.add(.{ .name = "Task C", .high_priority = 1, .low_priority = 8 });
+    try pq.push(allocator, .{ .name = "Task A", .high_priority = 1, .low_priority = 5 });
+    try pq.push(allocator, .{ .name = "Task B", .high_priority = 2, .low_priority = 3 });
+    try pq.push(allocator, .{ .name = "Task C", .high_priority = 1, .low_priority = 8 });
 
     // Task B has highest high_priority
-    const first = pq.remove();
+    const first = pq.pop().?;
     try testing.expectEqualStrings("Task B", first.name);
 
     // Task C and A have same high_priority, but C has higher low_priority
-    const second = pq.remove();
+    const second = pq.pop().?;
     try testing.expectEqualStrings("Task C", second.name);
 
-    const third = pq.remove();
+    const third = pq.pop().?;
     try testing.expectEqualStrings("Task A", third.name);
 }
 
@@ -2930,8 +2928,8 @@ fn compareListItem(_: void, a: ListItem, b: ListItem) std.math.Order {
 }
 
 fn mergeKSorted(allocator: std.mem.Allocator, lists: []const []const i32) ![]i32 {
-    var pq = std.PriorityQueue(ListItem, void, compareListItem).init(allocator, {});
-    defer pq.deinit();
+    var pq = std.PriorityQueue(ListItem, void, compareListItem).empty;
+    defer pq.deinit(testing.allocator);
 
     var indices = try allocator.alloc(usize, lists.len);
     defer allocator.free(indices);
@@ -2940,22 +2938,22 @@ fn mergeKSorted(allocator: std.mem.Allocator, lists: []const []const i32) ![]i32
     // Add first element from each list
     for (lists, 0..) |list, i| {
         if (list.len > 0) {
-            try pq.add(.{ .value = list[0], .list_index = i });
+            try pq.push(allocator, .{ .value = list[0], .list_index = i });
             indices[i] = 1;
         }
     }
 
-    var result = std.ArrayList(i32){};
-    defer result.deinit(allocator);
+    var result = std.ArrayList(i32).empty;
+    defer result.deinit(testing.allocator);
 
     // Extract minimum and add next from same list
     while (pq.count() > 0) {
-        const item = pq.remove();
+        const item = pq.pop().?;
         try result.append(allocator, item.value);
 
         const list_idx = item.list_index;
         if (indices[list_idx] < lists[list_idx].len) {
-            try pq.add(.{
+            try pq.push(allocator, .{
                 .value = lists[list_idx][indices[list_idx]],
                 .list_index = list_idx,
             });
@@ -3031,7 +3029,7 @@ fn MultiMap(comptime K: type, comptime V: type) type {
         pub fn add(self: *Self, key: K, value: V) !void {
             const entry = try self.map.getOrPut(key);
             if (!entry.found_existing) {
-                entry.value_ptr.* = std.ArrayList(V){};
+                entry.value_ptr.* = std.ArrayList(V).empty;
             }
             try entry.value_ptr.append(self.allocator, value);
         }
@@ -3108,12 +3106,12 @@ For string keys, use `StringArrayHashMap` which handles string comparison proper
 
 ```zig
 const Tags = struct {
-    tags: std.StringArrayHashMap(std.ArrayList([]const u8)),
+    tags: std.StringArrayHashMapUnmanaged(std.ArrayList([]const u8)),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) Tags {
         return .{
-            .tags = std.StringArrayHashMap(std.ArrayList([]const u8)).init(allocator),
+            .tags = std.StringArrayHashMapUnmanaged(std.ArrayList([]const u8)).empty,
             .allocator = allocator,
         };
     }
@@ -3121,7 +3119,7 @@ const Tags = struct {
     pub fn addTag(self: *Tags, tag: []const u8, item: []const u8) !void {
         const entry = try self.tags.getOrPut(tag);
         if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList([]const u8){};
+            entry.value_ptr.* = std.ArrayList([]const u8).empty;
         }
         try entry.value_ptr.append(self.allocator, item);
     }
@@ -3245,7 +3243,7 @@ For small datasets, a simple array of key-value pairs might be simpler:
 
 ```zig
 const Entry = struct { key: []const u8, value: i32 };
-var entries = std.ArrayList(Entry).init(allocator);
+var entries = std.ArrayList(Entry).empty;
 
 // Add
 try entries.append(.{ .key = "score", .value = 100 });
@@ -3279,7 +3277,7 @@ while (it.next()) |entry| {
 
 ```zig
 // Recipe 1.6: Mapping Keys to Multiple Values
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Demonstrates how to create multimap structures where keys have multiple values.
 // Run: zig test code/02-core/01-data-structures/recipe_1_6.zig
@@ -3317,7 +3315,7 @@ fn MultiMap(comptime K: type, comptime V: type) type {
         pub fn add(self: *Self, key: K, value: V) !void {
             const entry = try self.map.getOrPut(key);
             if (!entry.found_existing) {
-                entry.value_ptr.* = std.ArrayList(V){};
+                entry.value_ptr.* = std.ArrayList(V).empty;
             }
             try entry.value_ptr.append(self.allocator, value);
         }
@@ -3502,20 +3500,20 @@ test "MultiMap - remove entire key" {
 // ==============================================================================
 
 const Tags = struct {
-    tags: std.StringArrayHashMap(std.ArrayList([]const u8)),
+    tags: std.StringArrayHashMapUnmanaged(std.ArrayList([]const u8)),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) Tags {
         return .{
-            .tags = std.StringArrayHashMap(std.ArrayList([]const u8)).init(allocator),
+            .tags = std.StringArrayHashMapUnmanaged(std.ArrayList([]const u8)).empty,
             .allocator = allocator,
         };
     }
 
     pub fn addTag(self: *Tags, tag: []const u8, item: []const u8) !void {
-        const entry = try self.tags.getOrPut(tag);
+        const entry = try self.tags.getOrPut(self.allocator, tag);
         if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList([]const u8){};
+            entry.value_ptr.* = std.ArrayList([]const u8).empty;
         }
         try entry.value_ptr.append(self.allocator, item);
     }
@@ -3537,7 +3535,7 @@ const Tags = struct {
             var list = entry.value_ptr.*;
             list.deinit(self.allocator);
         }
-        self.tags.deinit();
+        self.tags.deinit(self.allocator);
     }
 };
 
@@ -3568,7 +3566,7 @@ test "Tags - string-based multimap" {
 
 // ANCHOR: category_system
 const CategorySystem = struct {
-    categories: std.StringArrayHashMap(std.ArrayList(Product)),
+    categories: std.StringArrayHashMapUnmanaged(std.ArrayList(Product)),
     allocator: std.mem.Allocator,
 
     const Product = struct {
@@ -3578,15 +3576,15 @@ const CategorySystem = struct {
 
     pub fn init(allocator: std.mem.Allocator) CategorySystem {
         return .{
-            .categories = std.StringArrayHashMap(std.ArrayList(Product)).init(allocator),
+            .categories = std.StringArrayHashMapUnmanaged(std.ArrayList(Product)).empty,
             .allocator = allocator,
         };
     }
 
     pub fn addProduct(self: *CategorySystem, category: []const u8, product: Product) !void {
-        const entry = try self.categories.getOrPut(category);
+        const entry = try self.categories.getOrPut(self.allocator, category);
         if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList(Product){};
+            entry.value_ptr.* = std.ArrayList(Product).empty;
         }
         try entry.value_ptr.append(self.allocator, product);
     }
@@ -3604,7 +3602,7 @@ const CategorySystem = struct {
             var list = entry.value_ptr.*;
             list.deinit(self.allocator);
         }
-        self.categories.deinit();
+        self.categories.deinit(self.allocator);
     }
 };
 // ANCHOR_END: category_system
@@ -3643,7 +3641,7 @@ const SimpleTupleMap = struct {
 
     pub fn init(allocator: std.mem.Allocator) SimpleTupleMap {
         return .{
-            .entries = std.ArrayList(Entry){},
+            .entries = std.ArrayList(Entry).empty,
             .allocator = allocator,
         };
     }
@@ -3675,8 +3673,8 @@ test "SimpleTupleMap - array-based multimap" {
     try map.add("score", 88);
     try map.add("count", 5);
 
-    var scores = std.ArrayList(i32){};
-    defer scores.deinit(allocator);
+    var scores = std.ArrayList(i32).empty;
+    defer scores.deinit(testing.allocator);
     try map.getAll("score", &scores);
 
     try testing.expectEqual(@as(usize, 3), scores.items.len);
@@ -3771,7 +3769,7 @@ Use `ArrayHashMap` or `StringArrayHashMap` instead of `AutoHashMap`. These varia
 test "ArrayHashMap - maintains insertion order" {
     const allocator = testing.allocator;
 
-    var map = std.AutoArrayHashMap(u32, []const u8).init(allocator);
+    var map = std.AutoArrayHashMapUnmanaged(u32, []const u8).empty;
     defer map.deinit();
 
     try map.put(3, "third");
@@ -3813,7 +3811,7 @@ test "ArrayHashMap - maintains insertion order" {
 For string keys, always use `StringArrayHashMap` which handles string comparison correctly:
 
 ```zig
-var settings = std.StringArrayHashMap(i32).init(allocator);
+var settings = std.StringArrayHashMapUnmanaged(i32).empty;
 defer settings.deinit();
 
 try settings.put("width", 1920);
@@ -3928,12 +3926,12 @@ const len = map.count();
 
 ```zig
 const Config = struct {
-    settings: std.StringArrayHashMap([]const u8),
+    settings: std.StringArrayHashMapUnmanaged([]const u8),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) Config {
         return .{
-            .settings = std.StringArrayHashMap([]const u8).init(allocator),
+            .settings = std.StringArrayHashMapUnmanaged([]const u8).empty,
             .allocator = allocator,
         };
     }
@@ -3975,7 +3973,7 @@ const Config = struct {
 
 ```zig
 // Recipe 1.7: Keeping Dictionaries in Order
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Demonstrates ArrayHashMap for maintaining insertion order in hash maps.
 // Run: zig test code/02-core/01-data-structures/recipe_1_7.zig
@@ -3991,12 +3989,12 @@ const testing = std.testing;
 test "ArrayHashMap - maintains insertion order" {
     const allocator = testing.allocator;
 
-    var map = std.AutoArrayHashMap(u32, []const u8).init(allocator);
-    defer map.deinit();
+    var map = std.AutoArrayHashMapUnmanaged(u32, []const u8).empty;
+    defer map.deinit(testing.allocator);
 
-    try map.put(3, "third");
-    try map.put(1, "first");
-    try map.put(2, "second");
+    try map.put(allocator, 3, "third");
+    try map.put(allocator, 1, "first");
+    try map.put(allocator, 2, "second");
 
     // Keys are in insertion order, not sorted
     const keys = map.keys();
@@ -4038,15 +4036,15 @@ test "AutoHashMap - no order guarantees" {
 test "StringArrayHashMap - ordered string keys" {
     const allocator = testing.allocator;
 
-    var config = std.StringArrayHashMap(i32).init(allocator);
-    defer config.deinit();
+    var config = std.StringArrayHashMapUnmanaged(i32).empty;
+    defer config.deinit(testing.allocator);
 
     // Note: String keys are stored as references. String literals are safe
     // because they have static lifetime. For dynamic keys, duplicate them or
     // use an arena allocator. See idiomatic_examples.zig Cache.put() for details.
-    try config.put("port", 8080);
-    try config.put("timeout", 30);
-    try config.put("retries", 3);
+    try config.put(allocator, "port", 8080);
+    try config.put(allocator, "timeout", 30);
+    try config.put(allocator, "retries", 3);
 
     // Check insertion order
     const keys = config.keys();
@@ -4068,12 +4066,12 @@ test "StringArrayHashMap - ordered string keys" {
 test "ArrayHashMap - access by index" {
     const allocator = testing.allocator;
 
-    var map = std.StringArrayHashMap(i32).init(allocator);
-    defer map.deinit();
+    var map = std.StringArrayHashMapUnmanaged(i32).empty;
+    defer map.deinit(testing.allocator);
 
-    try map.put("a", 10);
-    try map.put("b", 20);
-    try map.put("c", 30);
+    try map.put(allocator, "a", 10);
+    try map.put(allocator, "b", 20);
+    try map.put(allocator, "c", 30);
 
     // Direct index access
     const first_key = map.keys()[0];
@@ -4094,13 +4092,13 @@ test "ArrayHashMap - access by index" {
 test "ArrayHashMap - put overwrites existing keys" {
     const allocator = testing.allocator;
 
-    var map = std.AutoArrayHashMap(i32, []const u8).init(allocator);
-    defer map.deinit();
+    var map = std.AutoArrayHashMapUnmanaged(i32, []const u8).empty;
+    defer map.deinit(testing.allocator);
 
-    try map.put(1, "first");
+    try map.put(allocator, 1, "first");
     try testing.expectEqual(@as(usize, 1), map.count());
 
-    try map.put(1, "updated");
+    try map.put(allocator, 1, "updated");
     try testing.expectEqual(@as(usize, 1), map.count());
     try testing.expectEqualStrings("updated", map.get(1).?);
 }
@@ -4108,16 +4106,16 @@ test "ArrayHashMap - put overwrites existing keys" {
 test "ArrayHashMap - contains and get" {
     const allocator = testing.allocator;
 
-    var map = std.AutoArrayHashMap(i32, []const u8).init(allocator);
-    defer map.deinit();
+    var map = std.AutoArrayHashMapUnmanaged(i32, []const u8).empty;
+    defer map.deinit(testing.allocator);
 
-    try map.put(42, "answer");
+    try map.put(allocator, 42, "answer");
 
     try testing.expect(map.contains(42));
     try testing.expect(!map.contains(99));
 
     const value = map.get(42);
-    try testing.expect(value != null);
+    try testing.expect((value) != null);
     try testing.expectEqualStrings("answer", value.?);
 
     const missing = map.get(99);
@@ -4127,12 +4125,12 @@ test "ArrayHashMap - contains and get" {
 test "ArrayHashMap - remove operations" {
     const allocator = testing.allocator;
 
-    var map = std.AutoArrayHashMap(i32, []const u8).init(allocator);
-    defer map.deinit();
+    var map = std.AutoArrayHashMapUnmanaged(i32, []const u8).empty;
+    defer map.deinit(testing.allocator);
 
-    try map.put(1, "one");
-    try map.put(2, "two");
-    try map.put(3, "three");
+    try map.put(allocator, 1, "one");
+    try map.put(allocator, 2, "two");
+    try map.put(allocator, 3, "three");
 
     // Remove returns true if key existed
     try testing.expect(map.swapRemove(2));
@@ -4145,11 +4143,11 @@ test "ArrayHashMap - remove operations" {
 test "ArrayHashMap - clear operations" {
     const allocator = testing.allocator;
 
-    var map = std.AutoArrayHashMap(i32, i32).init(allocator);
-    defer map.deinit();
+    var map = std.AutoArrayHashMapUnmanaged(i32, i32).empty;
+    defer map.deinit(testing.allocator);
 
-    try map.put(1, 100);
-    try map.put(2, 200);
+    try map.put(allocator, 1, 100);
+    try map.put(allocator, 2, 200);
 
     // Clear but keep capacity
     const old_capacity = map.capacity();
@@ -4158,11 +4156,11 @@ test "ArrayHashMap - clear operations" {
     try testing.expectEqual(old_capacity, map.capacity());
 
     // Can add again
-    try map.put(3, 300);
+    try map.put(allocator, 3, 300);
     try testing.expectEqual(@as(usize, 1), map.count());
 
     // Clear and free memory
-    map.clearAndFree();
+    map.clearAndFree(allocator);
     try testing.expectEqual(@as(usize, 0), map.count());
 }
 
@@ -4173,12 +4171,12 @@ test "ArrayHashMap - clear operations" {
 test "ArrayHashMap - iterate keys and values" {
     const allocator = testing.allocator;
 
-    var map = std.AutoArrayHashMap(i32, i32).init(allocator);
-    defer map.deinit();
+    var map = std.AutoArrayHashMapUnmanaged(i32, i32).empty;
+    defer map.deinit(testing.allocator);
 
-    try map.put(1, 10);
-    try map.put(2, 20);
-    try map.put(3, 30);
+    try map.put(allocator, 1, 10);
+    try map.put(allocator, 2, 20);
+    try map.put(allocator, 3, 30);
 
     var key_sum: i32 = 0;
     var value_sum: i32 = 0;
@@ -4195,12 +4193,12 @@ test "ArrayHashMap - iterate keys and values" {
 test "ArrayHashMap - iterate with index" {
     const allocator = testing.allocator;
 
-    var map = std.StringArrayHashMap(i32).init(allocator);
-    defer map.deinit();
+    var map = std.StringArrayHashMapUnmanaged(i32).empty;
+    defer map.deinit(testing.allocator);
 
-    try map.put("a", 1);
-    try map.put("b", 2);
-    try map.put("c", 3);
+    try map.put(allocator, "a", 1);
+    try map.put(allocator, "b", 2);
+    try map.put(allocator, "c", 3);
 
     for (map.keys(), 0..) |key, i| {
         const value = map.values()[i];
@@ -4215,11 +4213,11 @@ test "ArrayHashMap - iterate with index" {
 test "ArrayHashMap - iterator method" {
     const allocator = testing.allocator;
 
-    var map = std.AutoArrayHashMap(i32, i32).init(allocator);
-    defer map.deinit();
+    var map = std.AutoArrayHashMapUnmanaged(i32, i32).empty;
+    defer map.deinit(testing.allocator);
 
-    try map.put(1, 100);
-    try map.put(2, 200);
+    try map.put(allocator, 1, 100);
+    try map.put(allocator, 2, 200);
 
     var count: usize = 0;
     var it = map.iterator();
@@ -4238,12 +4236,12 @@ test "ArrayHashMap - iterator method" {
 test "ArrayHashMap - modify values during iteration" {
     const allocator = testing.allocator;
 
-    var map = std.AutoArrayHashMap(i32, i32).init(allocator);
-    defer map.deinit();
+    var map = std.AutoArrayHashMapUnmanaged(i32, i32).empty;
+    defer map.deinit(testing.allocator);
 
-    try map.put(1, 10);
-    try map.put(2, 20);
-    try map.put(3, 30);
+    try map.put(allocator, 1, 10);
+    try map.put(allocator, 2, 20);
+    try map.put(allocator, 3, 30);
 
     // Double all values
     for (map.values()) |*value| {
@@ -4258,11 +4256,11 @@ test "ArrayHashMap - modify values during iteration" {
 test "ArrayHashMap - modify with iterator" {
     const allocator = testing.allocator;
 
-    var map = std.AutoArrayHashMap(i32, i32).init(allocator);
-    defer map.deinit();
+    var map = std.AutoArrayHashMapUnmanaged(i32, i32).empty;
+    defer map.deinit(testing.allocator);
 
-    try map.put(1, 5);
-    try map.put(2, 10);
+    try map.put(allocator, 1, 5);
+    try map.put(allocator, 2, 10);
 
     var it = map.iterator();
     while (it.next()) |entry| {
@@ -4280,16 +4278,16 @@ test "ArrayHashMap - modify with iterator" {
 test "ArrayHashMap - capacity management" {
     const allocator = testing.allocator;
 
-    var map = std.AutoArrayHashMap(i32, i32).init(allocator);
-    defer map.deinit();
+    var map = std.AutoArrayHashMapUnmanaged(i32, i32).empty;
+    defer map.deinit(testing.allocator);
 
     // Pre-allocate capacity
-    try map.ensureTotalCapacity(100);
+    try map.ensureTotalCapacity(allocator, 100);
     try testing.expect(map.capacity() >= 100);
 
     // Add items without reallocation
     for (0..50) |i| {
-        try map.put(@as(i32, @intCast(i)), @as(i32, @intCast(i * 10)));
+        try map.put(allocator, @as(i32, @intCast(i)), @as(i32, @intCast(i * 10)));
     }
 
     try testing.expectEqual(@as(usize, 50), map.count());
@@ -4300,12 +4298,12 @@ test "ArrayHashMap - capacity management" {
 // ==============================================================================
 
 const Config = struct {
-    settings: std.StringArrayHashMap([]const u8),
+    settings: std.StringArrayHashMapUnmanaged([]const u8),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) Config {
         return .{
-            .settings = std.StringArrayHashMap([]const u8).init(allocator),
+            .settings = std.StringArrayHashMapUnmanaged([]const u8).empty,
             .allocator = allocator,
         };
     }
@@ -4315,7 +4313,7 @@ const Config = struct {
         errdefer self.allocator.free(owned_value);
 
         // Use getOrPut to safely handle existing keys
-        const entry = try self.settings.getOrPut(key);
+        const entry = try self.settings.getOrPut(self.allocator, key);
         if (entry.found_existing) {
             // Free old value before replacing
             self.allocator.free(entry.value_ptr.*);
@@ -4336,7 +4334,7 @@ const Config = struct {
         for (self.settings.values()) |value| {
             self.allocator.free(value);
         }
-        self.settings.deinit();
+        self.settings.deinit(self.allocator);
     }
 };
 
@@ -4384,18 +4382,18 @@ test "Config - handles value updates" {
 
 // ANCHOR: ordered_counter
 const OrderedCounter = struct {
-    counts: std.StringArrayHashMap(usize),
+    counts: std.StringArrayHashMapUnmanaged(usize),
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator) OrderedCounter {
         return .{
-            .counts = std.StringArrayHashMap(usize).init(allocator),
+            .counts = std.StringArrayHashMapUnmanaged(usize).empty,
             .allocator = allocator,
         };
     }
 
     pub fn increment(self: *OrderedCounter, item: []const u8) !void {
-        const entry = try self.counts.getOrPut(item);
+        const entry = try self.counts.getOrPut(self.allocator, item);
         if (entry.found_existing) {
             entry.value_ptr.* += 1;
         } else {
@@ -4417,7 +4415,7 @@ const OrderedCounter = struct {
     }
 
     pub fn deinit(self: *OrderedCounter) void {
-        self.counts.deinit();
+        self.counts.deinit(self.allocator);
     }
 };
 // ANCHOR_END: ordered_counter
@@ -4455,8 +4453,8 @@ test "OrderedCounter - topN items" {
     try counter.increment("third");
     try counter.increment("fourth");
 
-    var results = std.ArrayList([]const u8){};
-    defer results.deinit(allocator);
+    var results = std.ArrayList([]const u8).empty;
+    defer results.deinit(testing.allocator);
 
     try counter.topN(2, &results);
 
@@ -4489,7 +4487,7 @@ You need to perform calculations on dictionary values like finding minimums, max
 Iterate over the map's values or entries and apply calculations. Zig's for loops make this straightforward:
 
 ```zig
-fn findMin(map: std.AutoArrayHashMap(u32, i32)) ?i32 {
+fn findMin(map: std.AutoArrayHashMapUnmanaged(u32, i32)) ?i32 {
     if (map.count() == 0) return null;
 
     var min_value = map.values()[0];
@@ -4501,7 +4499,7 @@ fn findMin(map: std.AutoArrayHashMap(u32, i32)) ?i32 {
     return min_value;
 }
 
-fn findMax(map: std.AutoArrayHashMap(u32, i32)) ?i32 {
+fn findMax(map: std.AutoArrayHashMapUnmanaged(u32, i32)) ?i32 {
     if (map.count() == 0) return null;
 
     var max_value = map.values()[0];
@@ -4730,7 +4728,7 @@ fn groupBy(
         const key = keyFn(item);
         const entry = try groups.getOrPut(key);
         if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList(i32).init(allocator);
+            entry.value_ptr.* = std.ArrayList(i32).empty;
         }
         try entry.value_ptr.append(item);
     }
@@ -4812,7 +4810,7 @@ fn countWhere(map: std.AutoHashMap([]const u8, i32), min: i32) usize {
 
 ```zig
 // Recipe 1.8: Calculating with Dictionaries
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Demonstrates calculations and transformations on HashMap values.
 // Run: zig test code/02-core/01-data-structures/recipe_1_8.zig
@@ -4825,7 +4823,7 @@ const testing = std.testing;
 // ==============================================================================
 
 // ANCHOR: min_max_values
-fn findMin(map: std.AutoArrayHashMap(u32, i32)) ?i32 {
+fn findMin(map: std.AutoArrayHashMapUnmanaged(u32, i32)) ?i32 {
     if (map.count() == 0) return null;
 
     var min_value = map.values()[0];
@@ -4837,7 +4835,7 @@ fn findMin(map: std.AutoArrayHashMap(u32, i32)) ?i32 {
     return min_value;
 }
 
-fn findMax(map: std.AutoArrayHashMap(u32, i32)) ?i32 {
+fn findMax(map: std.AutoArrayHashMapUnmanaged(u32, i32)) ?i32 {
     if (map.count() == 0) return null;
 
     var max_value = map.values()[0];
@@ -4853,23 +4851,22 @@ fn findMax(map: std.AutoArrayHashMap(u32, i32)) ?i32 {
 test "finding min and max values" {
     const allocator = testing.allocator;
 
-    var prices = std.AutoArrayHashMap(u32, i32).init(allocator);
-    defer prices.deinit();
+    var prices = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    defer prices.deinit(testing.allocator);
 
-    try prices.put(1, 45);
-    try prices.put(2, 12);
-    try prices.put(3, 99);
-    try prices.put(4, 5);
+    try prices.put(allocator, 1, 45);
+    try prices.put(allocator, 2, 12);
+    try prices.put(allocator, 3, 99);
+    try prices.put(allocator, 4, 5);
 
     try testing.expectEqual(@as(?i32, 5), findMin(prices));
     try testing.expectEqual(@as(?i32, 99), findMax(prices));
 }
 
 test "min/max on empty map" {
-    const allocator = testing.allocator;
 
-    var map = std.AutoArrayHashMap(u32, i32).init(allocator);
-    defer map.deinit();
+    var map = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    defer map.deinit(testing.allocator);
 
     try testing.expectEqual(@as(?i32, null), findMin(map));
     try testing.expectEqual(@as(?i32, null), findMax(map));
@@ -4879,7 +4876,7 @@ test "min/max on empty map" {
 // Finding Key with Min/Max Value
 // ==============================================================================
 
-fn findKeyWithMaxValue(map: std.AutoArrayHashMap(u32, i32)) ?u32 {
+fn findKeyWithMaxValue(map: std.AutoArrayHashMapUnmanaged(u32, i32)) ?u32 {
     if (map.count() == 0) return null;
 
     var max_key = map.keys()[0];
@@ -4894,7 +4891,7 @@ fn findKeyWithMaxValue(map: std.AutoArrayHashMap(u32, i32)) ?u32 {
     return max_key;
 }
 
-fn findKeyWithMinValue(map: std.AutoArrayHashMap(u32, i32)) ?u32 {
+fn findKeyWithMinValue(map: std.AutoArrayHashMapUnmanaged(u32, i32)) ?u32 {
     if (map.count() == 0) return null;
 
     var min_key = map.keys()[0];
@@ -4912,12 +4909,12 @@ fn findKeyWithMinValue(map: std.AutoArrayHashMap(u32, i32)) ?u32 {
 test "finding keys with min/max values" {
     const allocator = testing.allocator;
 
-    var scores = std.AutoArrayHashMap(u32, i32).init(allocator);
-    defer scores.deinit();
+    var scores = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    defer scores.deinit(testing.allocator);
 
-    try scores.put(1, 85);
-    try scores.put(2, 92);
-    try scores.put(3, 78);
+    try scores.put(allocator, 1, 85);
+    try scores.put(allocator, 2, 92);
+    try scores.put(allocator, 3, 78);
 
     try testing.expectEqual(@as(?u32, 2), findKeyWithMaxValue(scores));
     try testing.expectEqual(@as(?u32, 3), findKeyWithMinValue(scores));
@@ -4928,7 +4925,7 @@ test "finding keys with min/max values" {
 // ==============================================================================
 
 // ANCHOR: sum_average
-fn sumValues(map: std.AutoArrayHashMap(u32, i32)) i32 {
+fn sumValues(map: std.AutoArrayHashMapUnmanaged(u32, i32)) i32 {
     var total: i32 = 0;
     for (map.values()) |value| {
         total += value;
@@ -4936,7 +4933,7 @@ fn sumValues(map: std.AutoArrayHashMap(u32, i32)) i32 {
     return total;
 }
 
-fn averageValues(map: std.AutoArrayHashMap(u32, f64)) f64 {
+fn averageValues(map: std.AutoArrayHashMapUnmanaged(u32, f64)) f64 {
     if (map.count() == 0) return 0.0;
 
     var total: f64 = 0.0;
@@ -4950,12 +4947,12 @@ fn averageValues(map: std.AutoArrayHashMap(u32, f64)) f64 {
 test "sum values" {
     const allocator = testing.allocator;
 
-    var numbers = std.AutoArrayHashMap(u32, i32).init(allocator);
-    defer numbers.deinit();
+    var numbers = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    defer numbers.deinit(testing.allocator);
 
-    try numbers.put(1, 10);
-    try numbers.put(2, 20);
-    try numbers.put(3, 30);
+    try numbers.put(allocator, 1, 10);
+    try numbers.put(allocator, 2, 20);
+    try numbers.put(allocator, 3, 30);
 
     try testing.expectEqual(@as(i32, 60), sumValues(numbers));
 }
@@ -4963,12 +4960,12 @@ test "sum values" {
 test "average values" {
     const allocator = testing.allocator;
 
-    var scores = std.AutoArrayHashMap(u32, f64).init(allocator);
-    defer scores.deinit();
+    var scores = std.AutoArrayHashMapUnmanaged(u32, f64).empty;
+    defer scores.deinit(testing.allocator);
 
-    try scores.put(1, 85.0);
-    try scores.put(2, 90.0);
-    try scores.put(3, 95.0);
+    try scores.put(allocator, 1, 85.0);
+    try scores.put(allocator, 2, 90.0);
+    try scores.put(allocator, 3, 95.0);
 
     try testing.expectEqual(@as(f64, 90.0), averageValues(scores));
 }
@@ -4980,16 +4977,16 @@ test "average values" {
 // ANCHOR: filter_map
 fn filterByValue(
     allocator: std.mem.Allocator,
-    map: std.AutoArrayHashMap(u32, i32),
+    map: std.AutoArrayHashMapUnmanaged(u32, i32),
     min_value: i32,
-) !std.AutoArrayHashMap(u32, i32) {
-    var result = std.AutoArrayHashMap(u32, i32).init(allocator);
-    errdefer result.deinit();
+) !std.AutoArrayHashMapUnmanaged(u32, i32) {
+    var result = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    errdefer result.deinit(testing.allocator);
 
     var it = map.iterator();
     while (it.next()) |entry| {
         if (entry.value_ptr.* >= min_value) {
-            try result.put(entry.key_ptr.*, entry.value_ptr.*);
+            try result.put(allocator, entry.key_ptr.*, entry.value_ptr.*);
         }
     }
     return result;
@@ -4999,16 +4996,16 @@ fn filterByValue(
 test "filter map by value" {
     const allocator = testing.allocator;
 
-    var scores = std.AutoArrayHashMap(u32, i32).init(allocator);
-    defer scores.deinit();
+    var scores = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    defer scores.deinit(testing.allocator);
 
-    try scores.put(1, 85);
-    try scores.put(2, 92);
-    try scores.put(3, 78);
-    try scores.put(4, 95);
+    try scores.put(allocator, 1, 85);
+    try scores.put(allocator, 2, 92);
+    try scores.put(allocator, 3, 78);
+    try scores.put(allocator, 4, 95);
 
     var passing = try filterByValue(allocator, scores, 80);
-    defer passing.deinit();
+    defer passing.deinit(testing.allocator);
 
     try testing.expectEqual(@as(usize, 3), passing.count());
     try testing.expect(passing.contains(1));
@@ -5021,7 +5018,7 @@ test "filter map by value" {
 // Transforming Values
 // ==============================================================================
 
-fn multiplyValues(map: *std.AutoArrayHashMap(u32, i32), multiplier: i32) void {
+fn multiplyValues(map: *std.AutoArrayHashMapUnmanaged(u32, i32), multiplier: i32) void {
     for (map.values()) |*value| {
         value.* *= multiplier;
     }
@@ -5033,15 +5030,15 @@ fn doubleValue(value: i32) i32 {
 
 fn mapValues(
     allocator: std.mem.Allocator,
-    map: std.AutoArrayHashMap(u32, i32),
+    map: std.AutoArrayHashMapUnmanaged(u32, i32),
     comptime transform: fn (i32) i32,
-) !std.AutoArrayHashMap(u32, i32) {
-    var result = std.AutoArrayHashMap(u32, i32).init(allocator);
-    errdefer result.deinit();
+) !std.AutoArrayHashMapUnmanaged(u32, i32) {
+    var result = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    errdefer result.deinit(testing.allocator);
 
     var it = map.iterator();
     while (it.next()) |entry| {
-        try result.put(entry.key_ptr.*, transform(entry.value_ptr.*));
+        try result.put(allocator, entry.key_ptr.*, transform(entry.value_ptr.*));
     }
     return result;
 }
@@ -5049,12 +5046,12 @@ fn mapValues(
 test "multiply all values in place" {
     const allocator = testing.allocator;
 
-    var prices = std.AutoArrayHashMap(u32, i32).init(allocator);
-    defer prices.deinit();
+    var prices = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    defer prices.deinit(testing.allocator);
 
-    try prices.put(1, 10);
-    try prices.put(2, 20);
-    try prices.put(3, 30);
+    try prices.put(allocator, 1, 10);
+    try prices.put(allocator, 2, 20);
+    try prices.put(allocator, 3, 30);
 
     multiplyValues(&prices, 2);
 
@@ -5066,14 +5063,14 @@ test "multiply all values in place" {
 test "transform values creating new map" {
     const allocator = testing.allocator;
 
-    var original = std.AutoArrayHashMap(u32, i32).init(allocator);
-    defer original.deinit();
+    var original = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    defer original.deinit(testing.allocator);
 
-    try original.put(1, 5);
-    try original.put(2, 10);
+    try original.put(allocator, 1, 5);
+    try original.put(allocator, 2, 10);
 
     var doubled = try mapValues(allocator, original, doubleValue);
-    defer doubled.deinit();
+    defer doubled.deinit(testing.allocator);
 
     try testing.expectEqual(@as(i32, 10), doubled.get(1).?);
     try testing.expectEqual(@as(i32, 20), doubled.get(2).?);
@@ -5089,12 +5086,12 @@ test "transform values creating new map" {
 fn countOccurrences(
     allocator: std.mem.Allocator,
     items: []const u32,
-) !std.AutoArrayHashMap(u32, usize) {
-    var counts = std.AutoArrayHashMap(u32, usize).init(allocator);
-    errdefer counts.deinit();
+) !std.AutoArrayHashMapUnmanaged(u32, usize) {
+    var counts = std.AutoArrayHashMapUnmanaged(u32, usize).empty;
+    errdefer counts.deinit(testing.allocator);
 
     for (items) |item| {
-        const entry = try counts.getOrPut(item);
+        const entry = try counts.getOrPut(allocator, item);
         if (entry.found_existing) {
             entry.value_ptr.* += 1;
         } else {
@@ -5109,7 +5106,7 @@ test "count occurrences" {
 
     const numbers = [_]u32{ 1, 2, 1, 3, 2, 1, 4, 2, 1 };
     var counts = try countOccurrences(allocator, &numbers);
-    defer counts.deinit();
+    defer counts.deinit(testing.allocator);
 
     try testing.expectEqual(@as(usize, 4), counts.get(1).?);
     try testing.expectEqual(@as(usize, 3), counts.get(2).?);
@@ -5123,16 +5120,15 @@ test "count occurrences" {
 
 fn mergeMaps(
     allocator: std.mem.Allocator,
-    map1: std.AutoArrayHashMap(u32, i32),
-    map2: std.AutoArrayHashMap(u32, i32),
-) !std.AutoArrayHashMap(u32, i32) {
-    _ = allocator;
-    var result = try map1.clone();
-    errdefer result.deinit();
+    map1: std.AutoArrayHashMapUnmanaged(u32, i32),
+    map2: std.AutoArrayHashMapUnmanaged(u32, i32),
+) !std.AutoArrayHashMapUnmanaged(u32, i32) {
+    var result = try map1.clone(allocator);
+    errdefer result.deinit(testing.allocator);
 
     var it = map2.iterator();
     while (it.next()) |entry| {
-        try result.put(entry.key_ptr.*, entry.value_ptr.*);
+        try result.put(allocator, entry.key_ptr.*, entry.value_ptr.*);
     }
     return result;
 }
@@ -5143,20 +5139,19 @@ fn addValues(a: i32, b: i32) i32 {
 
 fn mergeWith(
     allocator: std.mem.Allocator,
-    map1: std.AutoArrayHashMap(u32, i32),
-    map2: std.AutoArrayHashMap(u32, i32),
+    map1: std.AutoArrayHashMapUnmanaged(u32, i32),
+    map2: std.AutoArrayHashMapUnmanaged(u32, i32),
     comptime combine: fn (i32, i32) i32,
-) !std.AutoArrayHashMap(u32, i32) {
-    _ = allocator;
-    var result = try map1.clone();
-    errdefer result.deinit();
+) !std.AutoArrayHashMapUnmanaged(u32, i32) {
+    var result = try map1.clone(allocator);
+    errdefer result.deinit(testing.allocator);
 
     var it = map2.iterator();
     while (it.next()) |entry| {
         if (result.getPtr(entry.key_ptr.*)) |existing| {
             existing.* = combine(existing.*, entry.value_ptr.*);
         } else {
-            try result.put(entry.key_ptr.*, entry.value_ptr.*);
+            try result.put(allocator, entry.key_ptr.*, entry.value_ptr.*);
         }
     }
     return result;
@@ -5165,19 +5160,19 @@ fn mergeWith(
 test "merge maps - second overwrites first" {
     const allocator = testing.allocator;
 
-    var map1 = std.AutoArrayHashMap(u32, i32).init(allocator);
-    defer map1.deinit();
-    var map2 = std.AutoArrayHashMap(u32, i32).init(allocator);
-    defer map2.deinit();
+    var map1 = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    defer map1.deinit(testing.allocator);
+    var map2 = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    defer map2.deinit(testing.allocator);
 
-    try map1.put(1, 10);
-    try map1.put(2, 20);
+    try map1.put(allocator, 1, 10);
+    try map1.put(allocator, 2, 20);
 
-    try map2.put(2, 25);
-    try map2.put(3, 30);
+    try map2.put(allocator, 2, 25);
+    try map2.put(allocator, 3, 30);
 
     var merged = try mergeMaps(allocator, map1, map2);
-    defer merged.deinit();
+    defer merged.deinit(testing.allocator);
 
     try testing.expectEqual(@as(i32, 10), merged.get(1).?);
     try testing.expectEqual(@as(i32, 25), merged.get(2).?); // Overwritten
@@ -5187,19 +5182,19 @@ test "merge maps - second overwrites first" {
 test "merge maps with combining function" {
     const allocator = testing.allocator;
 
-    var map1 = std.AutoArrayHashMap(u32, i32).init(allocator);
-    defer map1.deinit();
-    var map2 = std.AutoArrayHashMap(u32, i32).init(allocator);
-    defer map2.deinit();
+    var map1 = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    defer map1.deinit(testing.allocator);
+    var map2 = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    defer map2.deinit(testing.allocator);
 
-    try map1.put(1, 10);
-    try map1.put(2, 20);
+    try map1.put(allocator, 1, 10);
+    try map1.put(allocator, 2, 20);
 
-    try map2.put(2, 5);
-    try map2.put(3, 30);
+    try map2.put(allocator, 2, 5);
+    try map2.put(allocator, 3, 30);
 
     var merged = try mergeWith(allocator, map1, map2, addValues);
-    defer merged.deinit();
+    defer merged.deinit(testing.allocator);
 
     try testing.expectEqual(@as(i32, 10), merged.get(1).?);
     try testing.expectEqual(@as(i32, 25), merged.get(2).?); // 20 + 5
@@ -5212,14 +5207,14 @@ test "merge maps with combining function" {
 
 fn invertMap(
     allocator: std.mem.Allocator,
-    map: std.AutoArrayHashMap(u32, u32),
-) !std.AutoArrayHashMap(u32, u32) {
-    var result = std.AutoArrayHashMap(u32, u32).init(allocator);
-    errdefer result.deinit();
+    map: std.AutoArrayHashMapUnmanaged(u32, u32),
+) !std.AutoArrayHashMapUnmanaged(u32, u32) {
+    var result = std.AutoArrayHashMapUnmanaged(u32, u32).empty;
+    errdefer result.deinit(testing.allocator);
 
     var it = map.iterator();
     while (it.next()) |entry| {
-        try result.put(entry.value_ptr.*, entry.key_ptr.*);
+        try result.put(allocator, entry.value_ptr.*, entry.key_ptr.*);
     }
     return result;
 }
@@ -5227,15 +5222,15 @@ fn invertMap(
 test "invert map - swap keys and values" {
     const allocator = testing.allocator;
 
-    var original = std.AutoArrayHashMap(u32, u32).init(allocator);
-    defer original.deinit();
+    var original = std.AutoArrayHashMapUnmanaged(u32, u32).empty;
+    defer original.deinit(testing.allocator);
 
-    try original.put(1, 100);
-    try original.put(2, 200);
-    try original.put(3, 300);
+    try original.put(allocator, 1, 100);
+    try original.put(allocator, 2, 200);
+    try original.put(allocator, 3, 300);
 
     var inverted = try invertMap(allocator, original);
-    defer inverted.deinit();
+    defer inverted.deinit(testing.allocator);
 
     try testing.expectEqual(@as(u32, 1), inverted.get(100).?);
     try testing.expectEqual(@as(u32, 2), inverted.get(200).?);
@@ -5253,7 +5248,7 @@ const Entry = struct {
 
 fn topN(
     allocator: std.mem.Allocator,
-    map: std.AutoArrayHashMap(u32, i32),
+    map: std.AutoArrayHashMapUnmanaged(u32, i32),
     n: usize,
 ) ![]Entry {
     // Collect all entries
@@ -5286,14 +5281,14 @@ fn topN(
 test "top N items by value" {
     const allocator = testing.allocator;
 
-    var scores = std.AutoArrayHashMap(u32, i32).init(allocator);
-    defer scores.deinit();
+    var scores = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    defer scores.deinit(testing.allocator);
 
-    try scores.put(1, 85);
-    try scores.put(2, 92);
-    try scores.put(3, 78);
-    try scores.put(4, 95);
-    try scores.put(5, 88);
+    try scores.put(allocator, 1, 85);
+    try scores.put(allocator, 2, 92);
+    try scores.put(allocator, 3, 78);
+    try scores.put(allocator, 4, 95);
+    try scores.put(allocator, 5, 88);
 
     const top3 = try topN(allocator, scores, 3);
     defer allocator.free(top3);
@@ -5311,21 +5306,21 @@ test "top N items by value" {
 // Common Condition Checks
 // ==============================================================================
 
-fn allValuesAbove(map: std.AutoArrayHashMap(u32, i32), min: i32) bool {
+fn allValuesAbove(map: std.AutoArrayHashMapUnmanaged(u32, i32), min: i32) bool {
     for (map.values()) |value| {
         if (value < min) return false;
     }
     return true;
 }
 
-fn anyValueEquals(map: std.AutoArrayHashMap(u32, i32), target: i32) bool {
+fn anyValueEquals(map: std.AutoArrayHashMapUnmanaged(u32, i32), target: i32) bool {
     for (map.values()) |value| {
         if (value == target) return true;
     }
     return false;
 }
 
-fn countWhere(map: std.AutoArrayHashMap(u32, i32), min: i32) usize {
+fn countWhere(map: std.AutoArrayHashMapUnmanaged(u32, i32), min: i32) usize {
     var count: usize = 0;
     for (map.values()) |value| {
         if (value >= min) count += 1;
@@ -5336,12 +5331,12 @@ fn countWhere(map: std.AutoArrayHashMap(u32, i32), min: i32) usize {
 test "check all values meet condition" {
     const allocator = testing.allocator;
 
-    var scores = std.AutoArrayHashMap(u32, i32).init(allocator);
-    defer scores.deinit();
+    var scores = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    defer scores.deinit(testing.allocator);
 
-    try scores.put(1, 85);
-    try scores.put(2, 90);
-    try scores.put(3, 95);
+    try scores.put(allocator, 1, 85);
+    try scores.put(allocator, 2, 90);
+    try scores.put(allocator, 3, 95);
 
     try testing.expect(allValuesAbove(scores, 80));
     try testing.expect(!allValuesAbove(scores, 90));
@@ -5350,12 +5345,12 @@ test "check all values meet condition" {
 test "check any value matches" {
     const allocator = testing.allocator;
 
-    var numbers = std.AutoArrayHashMap(u32, i32).init(allocator);
-    defer numbers.deinit();
+    var numbers = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    defer numbers.deinit(testing.allocator);
 
-    try numbers.put(1, 10);
-    try numbers.put(2, 20);
-    try numbers.put(3, 30);
+    try numbers.put(allocator, 1, 10);
+    try numbers.put(allocator, 2, 20);
+    try numbers.put(allocator, 3, 30);
 
     try testing.expect(anyValueEquals(numbers, 20));
     try testing.expect(!anyValueEquals(numbers, 25));
@@ -5364,13 +5359,13 @@ test "check any value matches" {
 test "count values matching condition" {
     const allocator = testing.allocator;
 
-    var scores = std.AutoArrayHashMap(u32, i32).init(allocator);
-    defer scores.deinit();
+    var scores = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    defer scores.deinit(testing.allocator);
 
-    try scores.put(1, 85);
-    try scores.put(2, 92);
-    try scores.put(3, 78);
-    try scores.put(4, 95);
+    try scores.put(allocator, 1, 85);
+    try scores.put(allocator, 2, 92);
+    try scores.put(allocator, 3, 78);
+    try scores.put(allocator, 4, 95);
 
     try testing.expectEqual(@as(usize, 3), countWhere(scores, 85));
     try testing.expectEqual(@as(usize, 2), countWhere(scores, 92));
@@ -5387,7 +5382,7 @@ const Statistics = struct {
     average: f64,
     count: usize,
 
-    pub fn calculate(map: std.AutoArrayHashMap(u32, i32)) ?Statistics {
+    pub fn calculate(map: std.AutoArrayHashMapUnmanaged(u32, i32)) ?Statistics {
         if (map.count() == 0) return null;
 
         var min_val = map.values()[0];
@@ -5413,13 +5408,13 @@ const Statistics = struct {
 test "statistics calculator" {
     const allocator = testing.allocator;
 
-    var data = std.AutoArrayHashMap(u32, i32).init(allocator);
-    defer data.deinit();
+    var data = std.AutoArrayHashMapUnmanaged(u32, i32).empty;
+    defer data.deinit(testing.allocator);
 
-    try data.put(1, 10);
-    try data.put(2, 20);
-    try data.put(3, 30);
-    try data.put(4, 40);
+    try data.put(allocator, 1, 10);
+    try data.put(allocator, 2, 20);
+    try data.put(allocator, 3, 30);
+    try data.put(allocator, 4, 40);
 
     const stats = Statistics.calculate(data).?;
 
@@ -5761,7 +5756,7 @@ fn removeAll(set: *std.AutoHashMap(i32, void), to_remove: std.AutoHashMap(i32, v
 
 ```zig
 // Recipe 1.9: Finding Commonalities in Sets
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Demonstrates set operations using HashMap with void values.
 // Run: zig test code/02-core/01-data-structures/recipe_1_9.zig
@@ -6404,8 +6399,8 @@ fn removeDuplicates(
     var seen = std.AutoHashMap(T, void).init(allocator);
     defer seen.deinit();
 
-    var result = std.ArrayList(T){};
-    errdefer result.deinit(allocator);
+    var result = std.ArrayList(T).empty;
+    errdefer result.deinit(testing.allocator);
 
     for (items) |item| {
         if (!seen.contains(item)) {
@@ -6441,7 +6436,7 @@ fn removeDuplicates(
     var seen = std.AutoHashMap(T, void).init(allocator);
     defer seen.deinit();
 
-    var result = std.ArrayList(T).init(allocator);
+    var result = std.ArrayList(T).empty;
     errdefer result.deinit();
 
     for (items) |item| {
@@ -6467,7 +6462,7 @@ fn removeDuplicateStrings(
     var seen = std.StringHashMap(void).init(allocator);
     defer seen.deinit();
 
-    var result = std.ArrayList([]const u8).init(allocator);
+    var result = std.ArrayList([]const u8).empty;
     errdefer result.deinit();
 
     for (strings) |str| {
@@ -6527,7 +6522,7 @@ fn removeDuplicateIds(
     var seen = std.AutoHashMap(u32, void).init(allocator);
     defer seen.deinit();
 
-    var result = std.ArrayList(Person).init(allocator);
+    var result = std.ArrayList(Person).empty;
     errdefer result.deinit();
 
     for (people) |person| {
@@ -6560,7 +6555,7 @@ fn keepLastOccurrence(
     }
 
     // Build result keeping only last occurrences in order
-    var result = std.ArrayList(T).init(allocator);
+    var result = std.ArrayList(T).empty;
     errdefer result.deinit();
 
     for (items, 0..) |item, i| {
@@ -6610,7 +6605,7 @@ fn removeDuplicatePoints(
     var seen = std.HashMap(Point, void, Context, std.hash_map.default_max_load_percentage).init(allocator);
     defer seen.deinit();
 
-    var result = std.ArrayList(Point).init(allocator);
+    var result = std.ArrayList(Point).empty;
     errdefer result.deinit();
 
     for (points) |point| {
@@ -6641,7 +6636,7 @@ fn cleanTagList(
     var seen = std.StringHashMap(void).init(allocator);
     defer seen.deinit();
 
-    var result = std.ArrayList([]const u8).init(allocator);
+    var result = std.ArrayList([]const u8).empty;
     errdefer result.deinit();
 
     for (tags) |tag| {
@@ -6696,7 +6691,7 @@ fn removeDuplicatesUnordered(
 
 ```zig
 // Recipe 1.10: Removing Duplicates While Maintaining Order
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Demonstrates deduplication techniques while preserving insertion order.
 // Run: zig test code/02-core/01-data-structures/recipe_1_10.zig
@@ -6717,8 +6712,8 @@ fn removeDuplicates(
     var seen = std.AutoHashMap(T, void).init(allocator);
     defer seen.deinit();
 
-    var result = std.ArrayList(T){};
-    errdefer result.deinit(allocator);
+    var result = std.ArrayList(T).empty;
+    errdefer result.deinit(testing.allocator);
 
     for (items) |item| {
         if (!seen.contains(item)) {
@@ -6806,8 +6801,8 @@ fn removeDuplicateStrings(
     var seen = std.StringHashMap(void).init(allocator);
     defer seen.deinit();
 
-    var result = std.ArrayList([]const u8){};
-    errdefer result.deinit(allocator);
+    var result = std.ArrayList([]const u8).empty;
+    errdefer result.deinit(testing.allocator);
 
     for (strings) |str| {
         if (!seen.contains(str)) {
@@ -6918,8 +6913,8 @@ fn removeDuplicateIds(
     var seen = std.AutoHashMap(u32, void).init(allocator);
     defer seen.deinit();
 
-    var result = std.ArrayList(Person){};
-    errdefer result.deinit(allocator);
+    var result = std.ArrayList(Person).empty;
+    errdefer result.deinit(testing.allocator);
 
     for (people) |person| {
         if (!seen.contains(person.id)) {
@@ -6972,8 +6967,8 @@ fn keepLastOccurrence(
     }
 
     // Build result keeping only last occurrences in order
-    var result = std.ArrayList(T){};
-    errdefer result.deinit(allocator);
+    var result = std.ArrayList(T).empty;
+    errdefer result.deinit(testing.allocator);
 
     for (items, 0..) |item, i| {
         if (last_index.get(item).? == i) {
@@ -7046,8 +7041,8 @@ fn removeDuplicatePoints(
     var seen = std.HashMap(Point, void, Context, std.hash_map.default_max_load_percentage).init(allocator);
     defer seen.deinit();
 
-    var result = std.ArrayList(Point){};
-    errdefer result.deinit(allocator);
+    var result = std.ArrayList(Point).empty;
+    errdefer result.deinit(testing.allocator);
 
     for (points) |point| {
         if (!seen.contains(point)) {
@@ -7146,7 +7141,7 @@ fn cleanTagList(
     var seen = std.StringHashMap(void).init(allocator);
     defer seen.deinit();
 
-    var result = std.ArrayList([]const u8){};
+    var result = std.ArrayList([]const u8).empty;
     errdefer {
         for (result.items) |tag| {
             allocator.free(tag);
@@ -7639,7 +7634,7 @@ const Position = struct {
 
 ```zig
 // Recipe 1.11: Naming Slices and Indices
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Demonstrates using named constants and descriptive patterns for slice operations.
 // Run: zig test code/02-core/01-data-structures/recipe_1_11.zig
@@ -7919,7 +7914,7 @@ test "grid with named position access" {
     const allocator = testing.allocator;
 
     var grid = try Grid.init(allocator, 3, 3);
-    defer grid.deinit(allocator);
+    defer grid.deinit(testing.allocator);
 
     // Initialize with values
     var val: i32 = 1;
@@ -8307,17 +8302,17 @@ fn topN(
 ) ![]FreqEntry {
     if (n == 0 or freq_map.count() == 0) return allocator.alloc(FreqEntry, 0);
 
-    var queue = std.PriorityQueue(FreqEntry, void, freqEntryOrder).init(allocator, {});
+    var queue = std.PriorityQueue(FreqEntry, void, freqEntryOrder).empty;
     defer queue.deinit();
 
     var it = freq_map.iterator();
     while (it.next()) |entry| {
-        try queue.add(.{
+        try queue.push(allocator, .{
             .item = entry.key_ptr.*,
             .count = entry.value_ptr.*,
         });
         if (queue.count() > n) {
-            _ = queue.remove(); // drop the smallest count
+            _ = queue.pop(); // drop the smallest count
         }
     }
 
@@ -8325,7 +8320,7 @@ fn topN(
     var result = try allocator.alloc(FreqEntry, result_size);
     while (queue.count() > 0) {
         const idx = queue.count() - 1;
-        result[idx] = queue.remove(); // outputs biggest counts last
+        result[idx] = queue.pop(); // outputs biggest counts last
     }
     return result;
 }
@@ -8339,8 +8334,8 @@ Use ArrayHashMap when you need predictable ordering:
 fn countFrequenciesOrdered(
     allocator: std.mem.Allocator,
     words: []const []const u8,
-) !std.StringArrayHashMap(usize) {
-    var freq_map = std.StringArrayHashMap(usize).init(allocator);
+) !std.StringArrayHashMapUnmanaged(usize) {
+    var freq_map = std.StringArrayHashMapUnmanaged(usize).empty;
     errdefer freq_map.deinit();
 
     for (words) |word| {
@@ -8382,17 +8377,17 @@ fn topNGeneric(
         }
     };
 
-    var queue = std.PriorityQueue(FreqResult(T), void, Ctx.order).init(allocator, {});
+    var queue = std.PriorityQueue(FreqResult(T), void, Ctx.order).empty;
     defer queue.deinit();
 
     var it = freq_map.iterator();
     while (it.next()) |entry| {
-        try queue.add(.{
+        try queue.push(allocator, .{
             .item = entry.key_ptr.*,
             .count = entry.value_ptr.*,
         });
         if (queue.count() > n) {
-            _ = queue.remove();
+            _ = queue.pop();
         }
     }
 
@@ -8400,7 +8395,7 @@ fn topNGeneric(
     var result = try allocator.alloc(FreqResult(T), result_size);
     while (queue.count() > 0) {
         const idx = queue.count() - 1;
-        result[idx] = queue.remove();
+        result[idx] = queue.pop();
     }
     return result;
 }
@@ -8417,8 +8412,8 @@ fn itemsWithMinFrequency(
     freq_map: std.AutoHashMap(T, usize),
     min_count: usize,
 ) ![]T {
-    var result = std.ArrayList(T){};
-    errdefer result.deinit(allocator);
+    var result = std.ArrayList(T).empty;
+    errdefer result.deinit(testing.allocator);
 
     var it = freq_map.iterator();
     while (it.next()) |entry| {
@@ -8506,8 +8501,8 @@ fn topPercentile(
     const threshold = @as(usize, @intFromFloat(@as(f32, @floatFromInt(total)) * percentile));
 
     // Collect entries above threshold
-    var result = std.ArrayList(FreqEntry){};
-    errdefer result.deinit(allocator);
+    var result = std.ArrayList(FreqEntry).empty;
+    errdefer result.deinit(testing.allocator);
 
     it = freq_map.iterator();
     while (it.next()) |entry| {
@@ -8561,8 +8556,8 @@ fn analyzeText(
     top_n: usize,
 ) ![]FreqEntry {
     // Split into words (simple whitespace split)
-    var words = std.ArrayList([]const u8){};
-    defer words.deinit(allocator);
+    var words = std.ArrayList([]const u8).empty;
+    defer words.deinit(testing.allocator);
 
     var iter = std.mem.tokenizeAny(u8, text, " \t\n\r");
     while (iter.next()) |word| {
@@ -8665,7 +8660,7 @@ while (it.next()) |count| {
 }
 
 // Filter by frequency
-var filtered = std.ArrayList(T){};
+var filtered = std.ArrayList(T).empty;
 var it2 = map.iterator();
 while (it2.next()) |entry| {
     if (entry.value_ptr.* >= threshold) {
@@ -8678,7 +8673,7 @@ while (it2.next()) |entry| {
 
 ```zig
 // Recipe 1.12: Determining Most Frequently Occurring Items
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Demonstrates frequency counting and finding most common elements using HashMaps.
 // Run: zig test code/02-core/01-data-structures/recipe_1_12.zig
@@ -8838,17 +8833,17 @@ fn topN(
 ) ![]FreqEntry {
     if (n == 0 or freq_map.count() == 0) return allocator.alloc(FreqEntry, 0);
 
-    var queue = std.PriorityQueue(FreqEntry, void, freqEntryOrder).init(allocator, {});
-    defer queue.deinit();
+    var queue = std.PriorityQueue(FreqEntry, void, freqEntryOrder).empty;
+    defer queue.deinit(testing.allocator);
 
     var it = freq_map.iterator();
     while (it.next()) |entry| {
-        try queue.add(.{
+        try queue.push(allocator, .{
             .item = entry.key_ptr.*,
             .count = entry.value_ptr.*,
         });
         if (queue.count() > n) {
-            _ = queue.remove();
+            _ = queue.pop();
         }
     }
 
@@ -8856,7 +8851,7 @@ fn topN(
     var result = try allocator.alloc(FreqEntry, result_size);
     while (queue.count() > 0) {
         const idx = queue.count() - 1;
-        result[idx] = queue.remove();
+        result[idx] = queue.pop().?;
     }
     return result;
 }
@@ -8938,17 +8933,17 @@ fn topNGeneric(
         }
     };
 
-    var queue = std.PriorityQueue(FreqResult(T), void, Compare.order).init(allocator, {});
-    defer queue.deinit();
+    var queue = std.PriorityQueue(FreqResult(T), void, Compare.order).empty;
+    defer queue.deinit(testing.allocator);
 
     var it = freq_map.iterator();
     while (it.next()) |entry| {
-        try queue.add(.{
+        try queue.push(allocator, .{
             .item = entry.key_ptr.*,
             .count = entry.value_ptr.*,
         });
         if (queue.count() > n) {
-            _ = queue.remove();
+            _ = queue.pop();
         }
     }
 
@@ -8956,7 +8951,7 @@ fn topNGeneric(
     var result = try allocator.alloc(FreqResult(T), result_size);
     while (queue.count() > 0) {
         const idx = queue.count() - 1;
-        result[idx] = queue.remove();
+        result[idx] = queue.pop().?;
     }
     return result;
 }
@@ -8988,8 +8983,8 @@ fn itemsWithMinFrequency(
     freq_map: std.AutoHashMap(T, usize),
     min_count: usize,
 ) ![]T {
-    var result = std.ArrayList(T){};
-    errdefer result.deinit(allocator);
+    var result = std.ArrayList(T).empty;
+    errdefer result.deinit(testing.allocator);
 
     var it = freq_map.iterator();
     while (it.next()) |entry| {
@@ -9139,7 +9134,7 @@ test "mode with uniform distribution" {
     const mode_value = try mode(i32, allocator, &data);
 
     // Any value is valid as mode when all have same frequency
-    try testing.expect(mode_value != null);
+    try testing.expect((mode_value) != null);
 }
 
 // ==============================================================================
@@ -9503,6 +9498,7 @@ Here is the proxy-based version from the recipe:
 
 ```zig
 fn sortByNameCaseInsensitiveOptimized(allocator: std.mem.Allocator, people: []Person) !void {
+```zig
     if (people.len <= 1) return;
 
     const Proxy = struct {
@@ -9564,6 +9560,7 @@ const IndexedPerson = struct {
 
 fn stableSort(people: []Person, allocator: std.mem.Allocator) !void {
     // Create indexed array
+```zig
     var indexed = try allocator.alloc(IndexedPerson, people.len);
     defer allocator.free(indexed);
 
@@ -9834,7 +9831,7 @@ return a.optional.? < b.optional.?;
 
 ```zig
 // Recipe 1.13: Sorting a List of Structs by a Common Field
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates various sorting techniques, with special attention to
 // performance pitfalls when sorting by expensive-to-compute keys.
@@ -12026,7 +12023,7 @@ fn groupBy(
         const key = keyFn(item);
         const entry = try groups.getOrPut(key);
         if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList(T){};
+            entry.value_ptr.* = std.ArrayList(T).empty;
         }
         try entry.value_ptr.append(allocator, item);
     }
@@ -12060,7 +12057,7 @@ fn groupBy(
         const key = keyFn(item);
         const entry = try groups.getOrPut(key);
         if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList(T).init(allocator);
+            entry.value_ptr.* = std.ArrayList(T).empty;
         }
         try entry.value_ptr.append(item);
     }
@@ -12180,8 +12177,8 @@ fn groupByOrdered(
     allocator: std.mem.Allocator,
     items: []const T,
     keyFn: fn (T) []const u8,
-) !std.StringArrayHashMap(std.ArrayList(T)) {
-    var groups = std.StringArrayHashMap(std.ArrayList(T)).init(allocator);
+) !std.StringArrayHashMapUnmanaged(std.ArrayList(T)) {
+    var groups = std.StringArrayHashMapUnmanaged(std.ArrayList(T)).empty;
     errdefer {
         for (groups.values()) |*list| list.deinit();
         groups.deinit();
@@ -12191,7 +12188,7 @@ fn groupByOrdered(
         const key = keyFn(item);
         const entry = try groups.getOrPut(key);
         if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList(T).init(allocator);
+            entry.value_ptr.* = std.ArrayList(T).empty;
         }
         try entry.value_ptr.append(item);
     }
@@ -12326,7 +12323,7 @@ fn groupByNested(
 
         const inner_entry = try outer_entry.value_ptr.getOrPut(sale.product);
         if (!inner_entry.found_existing) {
-            inner_entry.value_ptr.* = std.ArrayList(Sale).init(allocator);
+            inner_entry.value_ptr.* = std.ArrayList(Sale).empty;
         }
         try inner_entry.value_ptr.append(sale);
     }
@@ -12361,7 +12358,7 @@ fn groupAndTransform(
         const value = transformFn(item);
         const entry = try groups.getOrPut(key);
         if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList(ValueType).init(allocator);
+            entry.value_ptr.* = std.ArrayList(ValueType).empty;
         }
         try entry.value_ptr.append(value);
     }
@@ -12396,7 +12393,7 @@ fn groupWithPrealloc(
         const key = keyFn(item);
         const entry = try groups.getOrPut(key);
         if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList(T).init(allocator);
+            entry.value_ptr.* = std.ArrayList(T).empty;
         }
         try entry.value_ptr.append(item);
     }
@@ -12431,7 +12428,7 @@ fn groupByWhere(
         const key = keyFn(item);
         const entry = try groups.getOrPut(key);
         if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList(T).init(allocator);
+            entry.value_ptr.* = std.ArrayList(T).empty;
         }
         try entry.value_ptr.append(item);
     }
@@ -12626,7 +12623,7 @@ fn groupBy(
         const key = keyFn(item);
         const entry = try groups.getOrPut(key);
         if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList(T){};
+            entry.value_ptr.* = std.ArrayList(T).empty;
         }
         try entry.value_ptr.append(allocator, item);
     }
@@ -12654,7 +12651,7 @@ fn groupByGeneric(
         const key = keyFn(item);
         const entry = try groups.getOrPut(key);
         if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList(T){};
+            entry.value_ptr.* = std.ArrayList(T).empty;
         }
         try entry.value_ptr.append(allocator, item);
     }
@@ -12689,18 +12686,18 @@ fn groupByOrdered(
     allocator: std.mem.Allocator,
     items: []const T,
     keyFn: fn (T) []const u8,
-) !std.StringArrayHashMap(std.ArrayList(T)) {
-    var groups = std.StringArrayHashMap(std.ArrayList(T)).init(allocator);
+) !std.StringArrayHashMapUnmanaged(std.ArrayList(T)) {
+    var groups = std.StringArrayHashMapUnmanaged(std.ArrayList(T)).empty;
     errdefer {
         for (groups.values()) |*list| list.deinit(allocator);
-        groups.deinit();
+        groups.deinit(testing.allocator);
     }
 
     for (items) |item| {
         const key = keyFn(item);
-        const entry = try groups.getOrPut(key);
+        const entry = try groups.getOrPut(allocator, key);
         if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList(T){};
+            entry.value_ptr.* = std.ArrayList(T).empty;
         }
         try entry.value_ptr.append(allocator, item);
     }
@@ -12802,7 +12799,7 @@ fn groupByNested(
 
         const inner_entry = try outer_entry.value_ptr.getOrPut(sale.product);
         if (!inner_entry.found_existing) {
-            inner_entry.value_ptr.* = std.ArrayList(Sale){};
+            inner_entry.value_ptr.* = std.ArrayList(Sale).empty;
         }
         try inner_entry.value_ptr.append(allocator, sale);
     }
@@ -12831,7 +12828,7 @@ fn groupAndTransform(
         const value = transformFn(item);
         const entry = try groups.getOrPut(key);
         if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList(ValueType){};
+            entry.value_ptr.* = std.ArrayList(ValueType).empty;
         }
         try entry.value_ptr.append(allocator, value);
     }
@@ -12860,7 +12857,7 @@ fn groupByWhere(
         const key = keyFn(item);
         const entry = try groups.getOrPut(key);
         if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList(T){};
+            entry.value_ptr.* = std.ArrayList(T).empty;
         }
         try entry.value_ptr.append(allocator, item);
     }
@@ -12994,7 +12991,7 @@ test "grouping with ordered iteration" {
     var groups = try groupByOrdered(Sale, testing.allocator, &sales, getProduct);
     defer {
         for (groups.values()) |*list| list.deinit(testing.allocator);
-        groups.deinit();
+        groups.deinit(testing.allocator);
     }
 
     try testing.expectEqual(@as(usize, 3), groups.count());
@@ -13216,7 +13213,7 @@ test "grouping by composite key" {
         const key = getCompositeKey(sale);
         const entry = try groups.getOrPut(key);
         if (!entry.found_existing) {
-            entry.value_ptr.* = std.ArrayList(Sale){};
+            entry.value_ptr.* = std.ArrayList(Sale).empty;
         }
         try entry.value_ptr.append(testing.allocator, sale);
     }
@@ -13289,8 +13286,8 @@ pub fn filter(
     items: []const T,
     predicate: FilterFn(T),
 ) !ArrayList(T) {
-    var result = ArrayList(T){};
-    errdefer result.deinit(allocator);
+    var result = ArrayList(T).empty;
+    errdefer result.deinit(testing.allocator);
 
     for (items) |item| {
         if (predicate(item)) {
@@ -13306,7 +13303,7 @@ pub fn filter(
 // Usage
 const numbers = [_]i32{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 };
 var evens = try filter(i32, allocator, &numbers, isEven);
-defer evens.deinit(allocator);
+defer evens.deinit(testing.allocator);
 // evens.items is now [2, 4, 6, 8, 10]
 ```
 
@@ -13331,7 +13328,7 @@ pub fn filterInPlace(
 }
 
 // Usage
-var list = ArrayList(i32){};
+var list = ArrayList(i32).empty;
 try list.appendSlice(allocator, &[_]i32{ 1, 2, 3, 4, 5, 6 });
 filterInPlace(i32, &list, isEven);
 // list now contains [2, 4, 6]
@@ -13387,7 +13384,7 @@ const isAdult = struct {
 }.pred;
 
 var adults = try filter(Person, allocator, people, isAdult);
-defer adults.deinit(allocator);
+defer adults.deinit(testing.allocator);
 ```
 
 ### Idiomatic Zig
@@ -13400,7 +13397,7 @@ The pattern shown here - passing allocators explicitly, using `errdefer` for cle
 
 ```zig
 // Recipe 1.16: Filtering sequence elements
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates idiomatic filtering of sequence elements in Zig
 // using ArrayList and explicit loops rather than functional-style iterators.
@@ -13423,8 +13420,8 @@ pub fn filter(
     items: []const T,
     predicate: FilterFn(T),
 ) !ArrayList(T) {
-    var result = ArrayList(T){};
-    errdefer result.deinit(allocator);
+    var result = ArrayList(T).empty;
+    errdefer result.deinit(testing.allocator);
 
     for (items) |item| {
         if (predicate(item)) {
@@ -13511,7 +13508,7 @@ test "filter strings by length" {
 }
 
 test "filter in place - more efficient" {
-    var list = ArrayList(i32){};
+    var list = ArrayList(i32).empty;
     defer list.deinit(testing.allocator);
 
     try list.appendSlice(testing.allocator, &[_]i32{ 1, 2, 3, 4, 5, 6, 7, 8, 9, 10 });
@@ -13812,7 +13809,7 @@ Unlike languages with method chaining (`.filter().map().reduce()`), Zig prefers 
 
 ```zig
 // Recipe 1.17: Extracting a subset of a dictionary
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to extract a subset of key-value pairs from
 // a hashmap based on keys or value criteria.
@@ -14356,7 +14353,7 @@ The explicit approach to data modeling in Zig makes code more maintainable and c
 
 ```zig
 // Recipe 1.18: Mapping names to sequence elements
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates different approaches to naming and accessing
 // elements in sequences: structs, tuples, and enums. Each has different
@@ -14864,7 +14861,7 @@ This makes Zig ideal for systems programming where understanding exactly what th
 
 ```zig
 // Recipe 1.19: Transforming and reducing data simultaneously
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates idiomatic approaches to transforming and reducing
 // data in Zig using explicit loops rather than functional-style chains.
@@ -14901,8 +14898,8 @@ pub fn mapThenReduce(
     mapFn: *const fn (T) R,
     reduceFn: *const fn (R, R) R,
 ) !R {
-    var mapped = std.ArrayList(R){};
-    defer mapped.deinit(allocator);
+    var mapped = std.ArrayList(R).empty;
+    defer mapped.deinit(testing.allocator);
 
     // Transform phase
     for (items) |item| {
@@ -15526,7 +15523,7 @@ This is more efficient but destructive - use when you no longer need the origina
 
 ```zig
 // Recipe 1.20: Combining multiple mappings into a single mapping
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to merge multiple hashmaps into one,
 // handling key conflicts and preserving data from multiple sources.

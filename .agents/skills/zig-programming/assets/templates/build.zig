@@ -1,4 +1,4 @@
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 // For other versions, see references/version-differences.md
 
 const std = @import("std");
@@ -8,12 +8,19 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Create executable
-    const exe = b.addExecutable(.{
-        .name = "myapp",
+    // Since 0.15 an artifact takes a module, not loose source and target
+    // options -- 0.14 added `root_module` and deprecated the old fields, 0.15
+    // removed them. Build the module once and share it.
+    const exe_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
+    });
+
+    // Create executable
+    const exe = b.addExecutable(.{
+        .name = "myapp",
+        .root_module = exe_module,
     });
 
     // Install the executable
@@ -34,9 +41,7 @@ pub fn build(b: *std.Build) void {
 
     // Create unit tests
     const unit_tests = b.addTest(.{
-        .root_source_file = b.path("src/main.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = exe_module,
     });
 
     const run_unit_tests = b.addRunArtifact(unit_tests);

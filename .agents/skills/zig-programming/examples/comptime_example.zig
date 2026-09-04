@@ -50,33 +50,30 @@ fn genericFunctions() void {
 }
 
 /// Example 3: Generic data structures
+/// Follows the stdlib's unmanaged shape: the container holds no allocator, so
+/// every method that allocates takes one. `std.ArrayList` has worked this way
+/// since 0.15 -- a container that stores its own allocator is the older design.
 fn ArrayList(comptime T: type) type {
     return struct {
-        items: []T,
-        len: usize,
-        allocator: std.mem.Allocator,
+        items: []T = &.{},
+        len: usize = 0,
 
         const Self = @This();
 
-        pub fn init(allocator: std.mem.Allocator) Self {
-            return .{
-                .items = &[_]T{},
-                .len = 0,
-                .allocator = allocator,
-            };
-        }
+        pub const empty: Self = .{};
 
-        pub fn deinit(self: *Self) void {
+        pub fn deinit(self: *Self, allocator: std.mem.Allocator) void {
             if (self.items.len > 0) {
-                self.allocator.free(self.items);
+                allocator.free(self.items);
             }
+            self.* = undefined;
         }
 
-        pub fn append(self: *Self, item: T) !void {
-            const new_items = try self.allocator.alloc(T, self.len + 1);
+        pub fn append(self: *Self, allocator: std.mem.Allocator, item: T) !void {
+            const new_items = try allocator.alloc(T, self.len + 1);
             if (self.len > 0) {
                 @memcpy(new_items[0..self.len], self.items);
-                self.allocator.free(self.items);
+                allocator.free(self.items);
             }
             new_items[self.len] = item;
             self.items = new_items;
@@ -89,17 +86,17 @@ fn genericStructures() !void {
     std.debug.print("\n=== Generic Data Structures ===\n", .{});
     std.debug.print("Type-parameterized containers\n\n", .{});
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
     // Create ArrayList for integers
-    var int_list = ArrayList(i32).init(allocator);
-    defer int_list.deinit();
+    var int_list: ArrayList(i32) = .empty;
+    defer int_list.deinit(allocator);
 
-    try int_list.append(10);
-    try int_list.append(20);
-    try int_list.append(30);
+    try int_list.append(allocator, 10);
+    try int_list.append(allocator, 20);
+    try int_list.append(allocator, 30);
 
     std.debug.print("ArrayList(i32): ", .{});
     for (int_list.items) |item| {
@@ -108,11 +105,11 @@ fn genericStructures() !void {
     std.debug.print("\n", .{});
 
     // Create ArrayList for floats
-    var float_list = ArrayList(f64).init(allocator);
-    defer float_list.deinit();
+    var float_list: ArrayList(f64) = .empty;
+    defer float_list.deinit(allocator);
 
-    try float_list.append(3.14);
-    try float_list.append(2.71);
+    try float_list.append(allocator, 3.14);
+    try float_list.append(allocator, 2.71);
 
     std.debug.print("ArrayList(f64): ", .{});
     for (float_list.items) |item| {
@@ -136,17 +133,17 @@ fn typeIntrospection() void {
     const type_info = @typeInfo(Point);
     std.debug.print("Type: {s}\n", .{@typeName(Point)});
     std.debug.print("Kind: Struct\n", .{});
-    std.debug.print("Fields: {d}\n", .{type_info.Struct.fields.len});
+    std.debug.print("Fields: {d}\n", .{type_info.@"struct".fields.len});
 
-    inline for (type_info.Struct.fields) |field| {
+    inline for (type_info.@"struct".fields) |field| {
         std.debug.print("  - {s}: {s}\n", .{ field.name, @typeName(field.type) });
     }
 
     // Check type properties
     std.debug.print("\nType checks:\n", .{});
-    std.debug.print("  i32 is signed: {}\n", .{@typeInfo(i32).Int.signedness == .signed});
-    std.debug.print("  u32 is signed: {}\n", .{@typeInfo(u32).Int.signedness == .signed});
-    std.debug.print("  i32 bit size: {d}\n", .{@typeInfo(i32).Int.bits});
+    std.debug.print("  i32 is signed: {}\n", .{@typeInfo(i32).int.signedness == .signed});
+    std.debug.print("  u32 is signed: {}\n", .{@typeInfo(u32).int.signedness == .signed});
+    std.debug.print("  i32 bit size: {d}\n", .{@typeInfo(i32).int.bits});
 }
 
 /// Example 5: Comptime string manipulation
@@ -171,10 +168,10 @@ fn printValue(comptime T: type, value: T) void {
     const type_info = @typeInfo(T);
 
     switch (type_info) {
-        .Int => std.debug.print("Integer: {d}\n", .{value}),
-        .Float => std.debug.print("Float: {d}\n", .{value}),
-        .Bool => std.debug.print("Boolean: {}\n", .{value}),
-        .Pointer => |ptr_info| {
+        .int => std.debug.print("Integer: {d}\n", .{value}),
+        .float => std.debug.print("Float: {d}\n", .{value}),
+        .bool => std.debug.print("Boolean: {}\n", .{value}),
+        .pointer => |ptr_info| {
             if (ptr_info.child == u8) {
                 std.debug.print("String: {s}\n", .{value});
             } else {
@@ -200,7 +197,7 @@ fn Vector(comptime T: type, comptime size: usize) type {
     // Comptime assertions
     comptime {
         if (size == 0) @compileError("Vector size must be > 0");
-        if (@typeInfo(T) != .Int and @typeInfo(T) != .Float) {
+        if (@typeInfo(T) != .int and @typeInfo(T) != .float) {
             @compileError("Vector only supports numeric types");
         }
     }
@@ -281,33 +278,33 @@ pub fn main() !void {
 
 // Tests
 test "generic maximum function" {
-    try testing.expectEqual(@as(i32, 20), maximum(i32, 10, 20));
-    try testing.expectEqual(@as(f64, 3.14), maximum(f64, 3.14, 2.71));
+    try testing.expectEqual(20, maximum(i32, 10, 20));
+    try testing.expectEqual(3.14, maximum(f64, 3.14, 2.71));
 }
 
 test "generic ArrayList" {
     const allocator = testing.allocator;
 
-    var list = ArrayList(i32).init(allocator);
-    defer list.deinit();
+    var list: ArrayList(i32) = .empty;
+    defer list.deinit(allocator);
 
-    try list.append(1);
-    try list.append(2);
-    try list.append(3);
+    try list.append(allocator, 1);
+    try list.append(allocator, 2);
+    try list.append(allocator, 3);
 
-    try testing.expectEqual(@as(usize, 3), list.len);
-    try testing.expectEqual(@as(i32, 1), list.items[0]);
-    try testing.expectEqual(@as(i32, 2), list.items[1]);
-    try testing.expectEqual(@as(i32, 3), list.items[2]);
+    try testing.expectEqual(3, list.len);
+    try testing.expectEqual(1, list.items[0]);
+    try testing.expectEqual(2, list.items[1]);
+    try testing.expectEqual(3, list.items[2]);
 }
 
 test "type introspection" {
     const T = i32;
     const info = @typeInfo(T);
 
-    try testing.expect(info == .Int);
-    try testing.expectEqual(@as(u16, 32), info.Int.bits);
-    try testing.expect(info.Int.signedness == .signed);
+    try testing.expect(info == .int);
+    try testing.expectEqual(32, info.int.bits);
+    try testing.expect(info.int.signedness == .signed);
 }
 
 test "Vector type" {
@@ -320,7 +317,7 @@ test "Vector type" {
     v2.data = .{ 1, 2 };
 
     const dot = v1.dot(v2);
-    try testing.expectEqual(@as(i32, 11), dot); // 3*1 + 4*2 = 11
+    try testing.expectEqual(11, dot); // 3*1 + 4*2 = 11
 }
 
 test "comptime string operations" {
@@ -329,7 +326,7 @@ test "comptime string operations" {
     const combined = comptime str1 ++ " " ++ str2;
 
     try testing.expectEqualStrings("Hello World", combined);
-    try testing.expectEqual(@as(usize, 11), combined.len);
+    try testing.expectEqual(11, combined.len);
 }
 
 test "conditional type printing" {
@@ -343,8 +340,8 @@ test "conditional type printing" {
         const info2 = @typeInfo(T2);
         const info3 = @typeInfo(T3);
 
-        try testing.expect(info1 == .Int);
-        try testing.expect(info2 == .Float);
-        try testing.expect(info3 == .Bool);
+        try testing.expect(info1 == .int);
+        try testing.expect(info2 == .float);
+        try testing.expect(info3 == .bool);
     }
 }

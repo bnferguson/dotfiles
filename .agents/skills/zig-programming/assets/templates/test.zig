@@ -1,4 +1,4 @@
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 // For other versions, see references/version-differences.md
 
 const std = @import("std");
@@ -27,17 +27,17 @@ fn divide(a: i32, b: i32) !i32 {
 // Tests
 test "add function" {
     try testing.expect(add(1, 2) == 3);
-    try testing.expectEqual(@as(i32, 42), add(40, 2));
+    try testing.expectEqual(42, add(40, 2));
 }
 
 test "multiply function" {
-    try testing.expectEqual(@as(i32, 20), multiply(4, 5));
-    try testing.expectEqual(@as(i32, 0), multiply(0, 100));
+    try testing.expectEqual(20, multiply(4, 5));
+    try testing.expectEqual(0, multiply(0, 100));
 }
 
 test "divide function - success" {
     const result = try divide(10, 2);
-    try testing.expectEqual(@as(i32, 5), result);
+    try testing.expectEqual(5, result);
 }
 
 test "divide function - error" {
@@ -65,6 +65,6 @@ test "allocator usage" {
         item.* = @intCast(i * 2);
     }
 
-    try testing.expectEqual(@as(i32, 0), list[0]);
-    try testing.expectEqual(@as(i32, 8), list[4]);
+    try testing.expectEqual(0, list[0]);
+    try testing.expectEqual(8, list[4]);
 }

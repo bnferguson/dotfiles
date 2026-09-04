@@ -101,7 +101,7 @@ Use templates for common tasks:
 
 ### For Writing Zig Code
 
-1. Identify the Zig version (default to 0.15.2 if unspecified)
+1. Identify the Zig version (default to 0.16.0 if unspecified)
 2. Use appropriate error handling patterns
 3. Implement proper memory management
 4. Follow Zig style conventions
@@ -126,7 +126,7 @@ Use templates for common tasks:
 
 ## Version Awareness
 
-Default to Zig 0.15.2 (latest stable). Key version differences:
+Default to Zig 0.16.0 (latest stable). Key version differences:
 - 0.11+ removed async/await (being redesigned)
 - 0.13+ uses modern for loop syntax
 - 0.11+ has updated build.zig API

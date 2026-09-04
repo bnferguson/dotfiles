@@ -15,6 +15,9 @@ const DynamicArray = struct {
 
     pub fn deinit(self: *DynamicArray) void {
         self.allocator.free(self.items);
+        // Poisoning turns a use-after-free into a loud failure in Debug rather
+        // than a silent read of a dangling slice.
+        self.* = undefined;
     }
 
     pub fn fill(self: *DynamicArray, value: i32) void {
@@ -29,7 +32,7 @@ fn demonstrateGPA() !void {
     std.debug.print("\n=== GeneralPurposeAllocator (GPA) ===\n", .{});
     std.debug.print("Use case: General-purpose allocations with safety checks\n\n", .{});
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -58,7 +61,7 @@ fn demonstrateArena() !void {
     std.debug.print("\n=== ArenaAllocator ===\n", .{});
     std.debug.print("Use case: Many allocations freed all at once\n\n", .{});
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
 
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
@@ -129,7 +132,7 @@ fn demonstrateDefer() !void {
     std.debug.print("\n=== Defer and Errdefer ===\n", .{});
     std.debug.print("Use case: Automatic cleanup on scope exit\n\n", .{});
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -148,23 +151,34 @@ fn demonstrateErrdefer() !void {
     std.debug.print("\n=== Errdefer Example ===\n", .{});
     std.debug.print("Use case: Cleanup only on error path\n\n", .{});
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Simulate a function that might fail after allocation
-    const data = try allocator.alloc(i32, 100);
-    errdefer allocator.free(data); // Only called if an error occurs after this point
+    // `errdefer` is for the window where ownership is still in flight: the
+    // callee has allocated, but the caller has nothing to clean up yet.
+    // `makeRange` below is that window.
+    const data = try makeRange(allocator, 100);
+    // Here the scope owns the value, so `defer` is the whole cleanup story.
+    // Registering `errdefer` as well would free it twice on an error path,
+    // because both run, in reverse registration order.
+    defer allocator.free(data);
 
-    // If this line failed, data would be freed by errdefer
-    // Since it succeeds, caller is responsible for freeing
-    defer allocator.free(data); // Normal cleanup on success
+    std.debug.print("Successfully allocated and filled {d} items\n", .{data.len});
+}
+
+/// Allocates and fills a slice, returning ownership to the caller.
+fn makeRange(allocator: std.mem.Allocator, len: usize) ![]i32 {
+    const data = try allocator.alloc(i32, len);
+    // If anything below fails, the caller never receives `data`, so this scope
+    // is the only one that can free it.
+    errdefer allocator.free(data);
 
     for (data, 0..) |*item, i| {
         item.* = @intCast(i);
     }
 
-    std.debug.print("Successfully allocated and filled {d} items\n", .{data.len});
+    return data;
 }
 
 pub fn main() !void {
@@ -194,12 +208,12 @@ test "DynamicArray with GPA" {
     array.fill(99);
 
     for (array.items) |item| {
-        try testing.expectEqual(@as(i32, 99), item);
+        try testing.expectEqual(99, item);
     }
 }
 
 test "ArenaAllocator frees all" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
 
     var arena = std.heap.ArenaAllocator.init(gpa.allocator());
@@ -222,11 +236,11 @@ test "FixedBufferAllocator bounds" {
 
     // Should succeed
     const array1 = try allocator.alloc(u8, 50);
-    try testing.expectEqual(@as(usize, 50), array1.len);
+    try testing.expectEqual(50, array1.len);
 
     // Should succeed
     const array2 = try allocator.alloc(u8, 50);
-    try testing.expectEqual(@as(usize, 50), array2.len);
+    try testing.expectEqual(50, array2.len);
 
     // Next allocation would fail (out of memory)
     const result = allocator.alloc(u8, 1);
@@ -245,16 +259,14 @@ test "defer and errdefer behavior" {
         // This block exits normally
     }
 
-    try testing.expectEqual(@as(u32, 1), cleanup_count);
+    try testing.expectEqual(1, cleanup_count);
 
     // errdefer only runs on error
     const result = blk: {
         const data = try allocator.alloc(i32, 10);
-        errdefer allocator.free(data); // Would run if we returned error
-
-        defer allocator.free(data); // Always runs
+        defer allocator.free(data); // Always runs, error or not
         break :blk data.len;
     };
 
-    try testing.expectEqual(@as(usize, 10), result);
+    try testing.expectEqual(10, result);
 }

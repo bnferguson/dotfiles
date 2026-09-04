@@ -5,6 +5,7 @@
 1. [Overview](#overview)
 2. [Major Version Changes](#major-version-changes)
 3. [Detailed Migration Guides](#detailed-migration-guides)
+   - [0.15.x → 0.16.x Migration](#015x--016x-migration)
    - [0.10.x → 0.11.x Migration](#010x--011x-migration)
    - [0.12.x → 0.13.x Migration](#012x--013x-migration)
    - [0.13.x → 0.14.x → 0.15.x Migration](#013x--014x--015x-migration)
@@ -23,11 +24,12 @@ This document provides comprehensive guidance for migrating between Zig versions
 - Understanding why code works in one version but not another
 - Interpreting version-specific error messages
 
-**Current stable:** Zig 0.15.2 (as of this documentation)
+**Current stable:** Zig 0.16.0
 
 **Recommended versions for production:**
-- **0.15.2** - Current stable, recommended for new projects
-- **0.14.1** - Previous stable, still widely used
+- **0.16.0** - Current stable, recommended for new projects
+- **0.15.2** - Previous stable
+- **0.14.1** - Older stable
 - **0.13.0** - Older stable with good ecosystem support
 
 **Legacy versions:**
@@ -37,10 +39,31 @@ This document provides comprehensive guidance for migrating between Zig versions
 
 ## Major Version Changes
 
-### 0.15.x (Current Stable)
+### 0.16.x (Current Stable)
+
+**Status:** Current stable release
+
+**Key features:**
+
+- `std.Io` owns operations that can block or introduce nondeterminism.
+- `std.process.Init` gives `main` an application-owned `Io`, allocators, arguments, environment data, and preopens.
+- `std.Io.Future`, `std.Io.Group`, and `std.Io.Batch` add implementation-independent task APIs.
+- Build commands can override dependencies locally and fetch them into a project-local directory.
+
+**Breaking changes from 0.15:**
+
+- Filesystem, networking, time, entropy, process, and blocking synchronization APIs now take `std.Io`.
+- Process arguments and environment variables are no longer global.
+- `@cImport` is deprecated in favor of build-system C translation.
+- `@Type` is replaced with type-specific builtins.
+- `std.Thread.Pool`, `GenericReader`, `AnyReader`, and `FixedBufferStream` are removed.
+
+Read `v0.16.0/io.md` for the I/O model and migration patterns.
+
+### 0.15.x
 
 **Release:** January 2025
-**Status:** Current stable release
+**Status:** Previous stable release
 
 **Key Features:**
 - Refined build system API (incremental improvements over 0.14)
@@ -135,6 +158,35 @@ This document provides comprehensive guidance for migrating between Zig versions
 - Migration from these versions requires complete rewrite
 
 ## Detailed Migration Guides
+
+### 0.15.x → 0.16.x Migration
+
+Start at the application boundary. Change `main` to accept `std.process.Init`, then pass `init.io` through each function that performs I/O.
+
+```zig
+// 0.15
+pub fn main() !void {
+    try std.fs.File.stdout().writeAll("Hello\n");
+}
+
+// 0.16
+pub fn main(init: std.process.Init) !void {
+    try std.Io.File.stdout().writeStreamingAll(init.io, "Hello\n");
+}
+```
+
+Use `std.testing.io` in tests. For a temporary migration bridge, create `std.Io.Threaded` with `.init_single_threaded`.
+
+Then complete these changes:
+
+1. Pass `std.Io` into filesystem, networking, time, entropy, process, and blocking synchronization calls.
+2. Get arguments from `init.minimal.args` and environment data from `init.environ_map`.
+3. Move C translation from `@cImport` to `b.addTranslateC`.
+4. Replace `@Type` with the matching type-specific builtin.
+5. Replace removed reader, writer, stream, thread pool, and synchronization APIs.
+6. Run `zig fmt`, `zig build`, and `zig build test`.
+
+Read `v0.16.0/version-differences.md` for a concise breaking-change list. Read `v0.16.0/io.md` for tasks and cancellation.
 
 ### 0.10.x → 0.11.x Migration
 
@@ -1216,11 +1268,11 @@ pub fn build(b: *std.Build) void {
    ├─ Has `for (items, 0..)` → 0.13+
    ├─ Has `async`/`await` → 0.9-0.10
    ├─ Modern error sets → 0.11+
-   └─ No clear markers → Ask user or default to latest (0.15.2)
+   └─ No clear markers → Ask user or default to latest (0.16.0)
 
 5. If still uncertain
    ├─ Prompt user to specify version
-   ├─ Or default to current stable (0.15.2)
+   ├─ Or default to current stable (0.16.0)
    └─ Or run `zig version` in project directory
 ```
 
@@ -1442,18 +1494,22 @@ pub fn build(b: anytype) void {
 
 **Recommendations:**
 
-- **Use Zig 0.15.2** (current stable) for new projects
-- Avoid async/await (not available in current versions)
+- **Use Zig 0.16.0** (current stable) for new projects
+- Use `std.Io` tasks instead of the unavailable language-level async functions
 - Use modern for loop syntax (0.13+)
 - Follow current build system patterns
 - Plan for future Zig evolution
 
 ### Quick Version Selection Guide
 
-**Choose Zig 0.15.2 if:**
+**Choose Zig 0.16.0 if:**
 - Starting a new project
 - Want latest features and fixes
 - No compatibility constraints
+
+**Choose Zig 0.15.2 if:**
+- A dependency has not migrated to `std.Io`
+- Existing code depends on the 0.15 standard library APIs
 
 **Choose Zig 0.14.1 if:**
 - Need stability with slightly older dependencies
@@ -1471,8 +1527,8 @@ pub fn build(b: anytype) void {
 ---
 
 **Document Version:** 2.0
-**Last Updated:** 2025-01-10
-**Target Zig Versions:** 0.15.2 (primary), 0.14.1, 0.13.0, 0.11.0 (reference)
+**Last Updated:** 2026-09-03
+**Target Zig Versions:** 0.16.0 (primary), 0.15.2, 0.14.1, 0.13.0, 0.11.0 (reference)
 **Maintainer:** Zig Programming Skill
 
 For questions or corrections, please refer to official Zig documentation at https://ziglang.org/documentation/

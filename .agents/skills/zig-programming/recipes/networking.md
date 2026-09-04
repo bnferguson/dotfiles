@@ -1,6 +1,6 @@
 # Networking & Web Recipes
 
-*18 tested recipes for Zig 0.15.2*
+*18 recipes for Zig 0.16.0 — 4 not yet migrated (see `scripts/verify_recipes.py`)*
 
 ## Quick Reference
 
@@ -603,7 +603,7 @@ try testing.expectEqual(ContentType.json, parsed.?);
 
 ```zig
 // Recipe 11.1: Making HTTP Requests
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Educational demonstration of HTTP client patterns in Zig.
 // This code shows the structure and API design for HTTP clients
@@ -892,7 +892,7 @@ test "header builder" {
 
     const headers = builder.build();
     const user_agent = headers.get("User-Agent");
-    try testing.expect(user_agent != null);
+    try testing.expect((user_agent) != null);
     try testing.expectEqualStrings("Zig HTTP Client/1.0", user_agent.?);
 }
 // ANCHOR_END: header_builder
@@ -1515,7 +1515,7 @@ pub const JsonBuilder = struct {
     pub fn init(allocator: std.mem.Allocator) JsonBuilder {
         return .{
             .allocator = allocator,
-            .buffer = std.ArrayList(u8){},
+            .buffer = std.ArrayList(u8).empty,
         };
     }
 
@@ -1537,8 +1537,8 @@ pub const JsonBuilder = struct {
         return self;
     }
 
-    pub fn field(self: *JsonBuilder, name: []const u8, value: anytype) !*JsonBuilder {
-        const writer = self.buffer.writer(self.allocator);
+    pub fn field(self: *JsonBuilder, io: std.Io, name: []const u8, value: anytype) !*JsonBuilder {
+        const writer = self.buffer.writer(io, self.allocator);
         try writer.print("\"{s}\":", .{name});
 
         const value_json = try std.json.Stringify.valueAlloc(self.allocator, value, .{});
@@ -1676,7 +1676,7 @@ try testing.expectEqualStrings("value", nested.get("key").?.string);
 
 ```zig
 // Recipe 11.2: Working with JSON APIs
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Educational demonstration of JSON API patterns in Zig.
 // Shows JSON parsing, serialization, and API interaction patterns.
@@ -1984,7 +1984,7 @@ pub const JsonBuilder = struct {
     pub fn init(allocator: std.mem.Allocator) JsonBuilder {
         return .{
             .allocator = allocator,
-            .buffer = std.ArrayList(u8){},
+            .buffer = std.ArrayList(u8).empty,
         };
     }
 
@@ -2007,7 +2007,9 @@ pub const JsonBuilder = struct {
     }
 
     pub fn field(self: *JsonBuilder, name: []const u8, value: anytype) !*JsonBuilder {
-        const writer = self.buffer.writer(self.allocator);
+        var aw: std.Io.Writer.Allocating = .fromArrayList(self.allocator, &self.buffer);
+        defer self.buffer = aw.toArrayList();
+        const writer = &aw.writer;
         try writer.print("\"{s}\":", .{name});
 
         // Serialize the value to a temporary string
@@ -2349,10 +2351,11 @@ pub const HandshakeRequest = struct {
     protocol: ?[]const u8 = null,
 
     pub fn build(self: HandshakeRequest, allocator: std.mem.Allocator) ![]u8 {
-        var result = std.ArrayList(u8){};
+        var result = std.ArrayList(u8).empty;
         errdefer result.deinit(allocator);
 
-        const writer = result.writer(allocator);
+        var result_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &result);
+        const writer = &result_writer.writer;
 
         try writer.print("GET {s} HTTP/1.1\r\n", .{self.path});
         try writer.print("Host: {s}\r\n", .{self.host});
@@ -2426,7 +2429,7 @@ pub const FrameBuilder = struct {
     pub fn init(allocator: std.mem.Allocator) FrameBuilder {
         return .{
             .allocator = allocator,
-            .buffer = std.ArrayList(u8){},
+            .buffer = std.ArrayList(u8).empty,
         };
     }
 
@@ -2451,7 +2454,7 @@ pub const FrameBuilder = struct {
     }
 
     pub fn close(self: *FrameBuilder, code: u16, reason: []const u8) !void {
-        var close_data = std.ArrayList(u8){};
+        var close_data = std.ArrayList(u8).empty;
         defer close_data.deinit(self.allocator);
 
         // Close frame payload: 2-byte status code + reason (big-endian)
@@ -2624,7 +2627,7 @@ conn.open();
 try testing.expect(conn.isOpen());
 try testing.expect(conn.canSend());
 
-conn.close();
+conn.close(io);
 try testing.expect(!conn.isOpen());
 try testing.expect(conn.canSend()); // Can still send close frame
 ```
@@ -2689,7 +2692,7 @@ pub const MessageFragmenter = struct {
         allocator: std.mem.Allocator,
         data: []const u8,
     ) !std.ArrayList([]const u8) {
-        var fragments = std.ArrayList([]const u8){};
+        var fragments = std.ArrayList([]const u8).empty;
         errdefer {
             for (fragments.items) |frag| {
                 allocator.free(frag);
@@ -2772,7 +2775,7 @@ handler.sendPing(1000);
 // Later: check if alive
 if (!handler.isAlive(6000, 4000)) {
     // No pong received within timeout - connection dead
-    conn.close();
+    conn.close(io);
 }
 
 // When pong received
@@ -2784,7 +2787,7 @@ handler.receivePong(2000);
 
 ```zig
 // Recipe 11.3: WebSocket Communication
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Educational demonstration of WebSocket patterns in Zig.
 // Shows WebSocket frame structure, handshake, and message handling patterns.
@@ -2883,10 +2886,11 @@ pub const HandshakeRequest = struct {
     protocol: ?[]const u8 = null,
 
     pub fn build(self: HandshakeRequest, allocator: std.mem.Allocator) ![]u8 {
-        var result = std.ArrayList(u8){};
+        var result = std.ArrayList(u8).empty;
         errdefer result.deinit(allocator);
 
-        const writer = result.writer(allocator);
+        var result_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &result);
+        const writer = &result_writer.writer;
 
         try writer.print("GET {s} HTTP/1.1\r\n", .{self.path});
         try writer.print("Host: {s}\r\n", .{self.host});
@@ -2988,7 +2992,7 @@ pub const FrameBuilder = struct {
     pub fn init(allocator: std.mem.Allocator) FrameBuilder {
         return .{
             .allocator = allocator,
-            .buffer = std.ArrayList(u8){},
+            .buffer = std.ArrayList(u8).empty,
         };
     }
 
@@ -3013,7 +3017,7 @@ pub const FrameBuilder = struct {
     }
 
     pub fn close(self: *FrameBuilder, code: u16, reason: []const u8) !void {
-        var close_data = std.ArrayList(u8){};
+        var close_data = std.ArrayList(u8).empty;
         defer close_data.deinit(self.allocator);
 
         // Close frame payload: 2-byte status code + reason (big-endian)
@@ -3256,7 +3260,7 @@ pub const MessageFragmenter = struct {
         allocator: std.mem.Allocator,
         data: []const u8,
     ) !std.ArrayList([]const u8) {
-        var fragments = std.ArrayList([]const u8){};
+        var fragments = std.ArrayList([]const u8).empty;
         errdefer {
             for (fragments.items) |frag| {
                 allocator.free(frag);
@@ -3657,10 +3661,11 @@ pub const HttpResponse = struct {
     }
 
     pub fn build(self: HttpResponse, allocator: std.mem.Allocator) ![]u8 {
-        var result = std.ArrayList(u8){};
+        var result = std.ArrayList(u8).empty;
         errdefer result.deinit(allocator);
 
-        const writer = result.writer(allocator);
+        var result_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &result);
+        const writer = &result_writer.writer;
 
         // Status line
         try writer.print("HTTP/1.1 {d} {s}\r\n", .{
@@ -3726,7 +3731,7 @@ pub const Router = struct {
 
     pub fn init(allocator: std.mem.Allocator) Router {
         return .{
-            .routes = std.ArrayList(Route){},
+            .routes = std.ArrayList(Route).empty,
             .allocator = allocator,
         };
     }
@@ -3799,7 +3804,7 @@ pub const MiddlewareChain = struct {
 
     pub fn init(allocator: std.mem.Allocator) MiddlewareChain {
         return .{
-            .middlewares = std.ArrayList(Middleware){},
+            .middlewares = std.ArrayList(Middleware).empty,
             .allocator = allocator,
         };
     }
@@ -3991,7 +3996,7 @@ try testing.expectEqualStrings("application/json", content_type.?);
 
 ```zig
 // Recipe 11.4: Building a Simple HTTP Server
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // Educational demonstration of HTTP server patterns in Zig.
 // Shows request parsing, response building, routing, and middleware patterns.
@@ -4198,7 +4203,7 @@ pub const HttpRequest = struct {
         }
 
         // Remaining is body (simplified - real parsing would use Content-Length)
-        var body_parts: std.ArrayList(u8) = .{};
+        var body_parts: std.ArrayList(u8) = .empty;
         defer body_parts.deinit(allocator);
 
         while (lines.next()) |line| {
@@ -4231,7 +4236,7 @@ test "http request parsing" {
     try testing.expectEqualStrings("/api/users", request.path);
 
     const host = request.getHeader("Host");
-    try testing.expect(host != null);
+    try testing.expect((host) != null);
     try testing.expectEqualStrings("example.com", host.?);
 }
 
@@ -4252,11 +4257,11 @@ test "http request parsing with duplicate headers - no memory leak" {
 
     // Last value should win for duplicate headers
     const content_type = request.getHeader("Content-Type");
-    try testing.expect(content_type != null);
+    try testing.expect((content_type) != null);
     try testing.expectEqualStrings("text/plain", content_type.?);
 
     const auth = request.getHeader("Authorization");
-    try testing.expect(auth != null);
+    try testing.expect((auth) != null);
     try testing.expectEqualStrings("Bearer token2", auth.?);
 
     // Only 3 unique headers should exist (Host, Content-Type, Authorization)
@@ -4312,10 +4317,11 @@ pub const HttpResponse = struct {
     }
 
     pub fn build(self: HttpResponse, allocator: std.mem.Allocator) ![]u8 {
-        var result: std.ArrayList(u8) = .{};
+        var result: std.ArrayList(u8) = .empty;
         errdefer result.deinit(allocator);
 
-        const writer = result.writer(allocator);
+        var result_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &result);
+        const writer = &result_writer.writer;
 
         // Status line
         try writer.print("HTTP/1.1 {d} {s}\r\n", .{
@@ -4362,7 +4368,7 @@ test "http response header overwriting" {
     try response.setHeader("Content-Type", "text/html");
 
     const ct = response.headers.get("Content-Type");
-    try testing.expect(ct != null);
+    try testing.expect((ct) != null);
     try testing.expectEqualStrings("text/html", ct.?);
 
     // Ensure only one header exists (no memory leak)
@@ -4403,7 +4409,7 @@ pub const Router = struct {
 
     pub fn init(allocator: std.mem.Allocator) Router {
         return .{
-            .routes = .{},
+            .routes = .empty,
             .allocator = allocator,
         };
     }
@@ -4487,7 +4493,7 @@ pub const MiddlewareChain = struct {
 
     pub fn init(allocator: std.mem.Allocator) MiddlewareChain {
         return .{
-            .middlewares = .{},
+            .middlewares = .empty,
             .allocator = allocator,
         };
     }
@@ -4601,7 +4607,7 @@ test "static file handler" {
     try testing.expectEqual(HttpStatus.ok, response.status);
 
     const content_type = response.headers.get("Content-Type");
-    try testing.expect(content_type != null);
+    try testing.expect((content_type) != null);
     try testing.expectEqualStrings("text/html", content_type.?);
 }
 // ANCHOR_END: static_file_handler
@@ -4682,7 +4688,7 @@ test "json response helper" {
     try testing.expectEqual(HttpStatus.ok, response.status);
 
     const content_type = response.headers.get("Content-Type");
-    try testing.expect(content_type != null);
+    try testing.expect((content_type) != null);
     try testing.expectEqualStrings("application/json", content_type.?);
 }
 // ANCHOR_END: json_response_helper
@@ -4891,7 +4897,7 @@ The implementation uses explicit allocator passing and proper cleanup:
 ```zig
 pub const XmlElement = struct {
     name: []const u8,
-    attributes: std.StringArrayHashMap([]const u8),
+    attributes: std.StringArrayHashMapUnmanaged([]const u8),
     content: ?[]const u8,
     children: std.ArrayList(*XmlElement),
     allocator: std.mem.Allocator,
@@ -5101,7 +5107,7 @@ const testing = std.testing;
 // ANCHOR: xml_element
 pub const XmlElement = struct {
     name: []const u8,
-    attributes: std.StringArrayHashMap([]const u8),
+    attributes: std.StringArrayHashMapUnmanaged([]const u8),
     content: ?[]const u8,
     children: std.ArrayList(*XmlElement),
     allocator: std.mem.Allocator,
@@ -5110,9 +5116,9 @@ pub const XmlElement = struct {
         const elem = try allocator.create(XmlElement);
         elem.* = .{
             .name = try allocator.dupe(u8, name),
-            .attributes = std.StringArrayHashMap([]const u8).init(allocator),
+            .attributes = std.StringArrayHashMapUnmanaged([]const u8).empty,
             .content = null,
-            .children = std.ArrayList(*XmlElement){},
+            .children = std.ArrayList(*XmlElement).empty,
             .allocator = allocator,
         };
         return elem;
@@ -5126,7 +5132,7 @@ pub const XmlElement = struct {
             self.allocator.free(entry.key_ptr.*);
             self.allocator.free(entry.value_ptr.*);
         }
-        self.attributes.deinit();
+        self.attributes.deinit(self.allocator);
 
         if (self.content) |content| {
             self.allocator.free(content);
@@ -5143,7 +5149,7 @@ pub const XmlElement = struct {
         const owned_value = try self.allocator.dupe(u8, value);
         errdefer self.allocator.free(owned_value);
 
-        const result = try self.attributes.getOrPut(key);
+        const result = try self.attributes.getOrPut(self.allocator, key);
         if (result.found_existing) {
             // Free old value when overwriting
             self.allocator.free(result.value_ptr.*);
@@ -5184,7 +5190,7 @@ pub const XmlWriter = struct {
     }
 
     pub fn writeElement(self: *XmlWriter, element: *const XmlElement) ![]const u8 {
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
         try self.writeElementInternal(&buffer, element);
@@ -5393,7 +5399,7 @@ pub const XmlParser = struct {
     }
 
     fn unescapeXml(self: *XmlParser, text: []const u8) ![]const u8 {
-        var result = std.ArrayList(u8){};
+        var result = std.ArrayList(u8).empty;
         defer result.deinit(self.allocator);
 
         var i: usize = 0;
@@ -5455,11 +5461,11 @@ test "element with attributes" {
     try element.setAttribute("age", "30");
 
     const name = element.attributes.get("name");
-    try testing.expect(name != null);
+    try testing.expect((name) != null);
     try testing.expectEqualStrings("Alice", name.?);
 
     const age = element.attributes.get("age");
-    try testing.expect(age != null);
+    try testing.expect((age) != null);
     try testing.expectEqualStrings("30", age.?);
 }
 // ANCHOR_END: test_element_attributes
@@ -5608,7 +5614,7 @@ test "parse simple XML" {
     try testing.expectEqualStrings("Software Engineer", element.content.?);
 
     const name = element.attributes.get("name");
-    try testing.expect(name != null);
+    try testing.expect((name) != null);
     try testing.expectEqualStrings("Alice", name.?);
 }
 // ANCHOR_END: test_parse_simple
@@ -5687,7 +5693,7 @@ test "XML roundtrip (write then parse)" {
     try testing.expectEqualStrings(original.content.?, parsed.content.?);
 
     const id = parsed.attributes.get("id");
-    try testing.expect(id != null);
+    try testing.expect((id) != null);
     try testing.expectEqualStrings("123", id.?);
 }
 // ANCHOR_END: test_roundtrip
@@ -6092,7 +6098,7 @@ The `buildUrl` method constructs URLs with query parameters:
 
 ```zig
 pub fn buildUrl(self: *const RestRequest) ![]const u8 {
-    var url = std.ArrayList(u8){};
+    var url = std.ArrayList(u8).empty;
     defer url.deinit(self.allocator);
 
     try url.appendSlice(self.allocator, self.path);
@@ -6201,7 +6207,7 @@ pub fn execute(self: *RestClient, request: *RestRequest) !RestResponse {
     defer self.allocator.free(url);
 
     // Build full URL with base_url
-    var full_url = std.ArrayList(u8){};
+    var full_url = std.ArrayList(u8).empty;
     defer full_url.deinit(self.allocator);
     try full_url.appendSlice(self.allocator, self.base_url);
     try full_url.appendSlice(self.allocator, url);
@@ -6488,7 +6494,7 @@ pub const RestRequest = struct {
     }
 
     pub fn buildUrl(self: *const RestRequest) ![]const u8 {
-        var url = std.ArrayList(u8){};
+        var url = std.ArrayList(u8).empty;
         defer url.deinit(self.allocator);
 
         try url.appendSlice(self.allocator, self.path);
@@ -6668,7 +6674,7 @@ pub const ResourceHandler = struct {
 
     pub fn handleGet(self: *ResourceHandler, id: []const u8) !RestResponse {
         var response = RestResponse.init(self.allocator, .ok);
-        var body = std.ArrayList(u8){};
+        var body = std.ArrayList(u8).empty;
         defer body.deinit(self.allocator);
 
         try body.appendSlice(self.allocator, "{\"id\":");
@@ -6771,11 +6777,11 @@ test "REST request with duplicate query parameters - no memory leak" {
 
     // Last values should win
     const page = request.query.get("page");
-    try testing.expect(page != null);
+    try testing.expect((page) != null);
     try testing.expectEqualStrings("2", page.?);
 
     const sort = request.query.get("sort");
-    try testing.expect(sort != null);
+    try testing.expect((sort) != null);
     try testing.expectEqualStrings("desc", sort.?);
 }
 
@@ -6788,11 +6794,11 @@ test "REST request with headers" {
     try request.addHeader("Authorization", "Bearer token123");
 
     const content_type = request.headers.get("Content-Type");
-    try testing.expect(content_type != null);
+    try testing.expect((content_type) != null);
     try testing.expectEqualStrings("application/json", content_type.?);
 
     const auth = request.headers.get("Authorization");
-    try testing.expect(auth != null);
+    try testing.expect((auth) != null);
     try testing.expectEqualStrings("Bearer token123", auth.?);
 }
 // ANCHOR_END: test_request_headers
@@ -6812,11 +6818,11 @@ test "REST request with duplicate headers - no memory leak" {
 
     // Last values should win
     const auth = request.headers.get("Authorization");
-    try testing.expect(auth != null);
+    try testing.expect((auth) != null);
     try testing.expectEqualStrings("Bearer newtoken", auth.?);
 
     const content_type = request.headers.get("Content-Type");
-    try testing.expect(content_type != null);
+    try testing.expect((content_type) != null);
     try testing.expectEqualStrings("application/json", content_type.?);
 }
 
@@ -6856,7 +6862,7 @@ test "REST response with body and headers" {
     try testing.expectEqualStrings("{\"id\":123}", response.body.?);
 
     const location = response.headers.get("Location");
-    try testing.expect(location != null);
+    try testing.expect((location) != null);
     try testing.expectEqualStrings("/users/123", location.?);
 }
 // ANCHOR_END: test_response_with_body
@@ -6923,7 +6929,7 @@ test "REST client with default headers" {
     try client.setDefaultHeader("Accept", "application/json");
 
     const user_agent = client.default_headers.get("User-Agent");
-    try testing.expect(user_agent != null);
+    try testing.expect((user_agent) != null);
     try testing.expectEqualStrings("Zig REST Client/1.0", user_agent.?);
 }
 // ANCHOR_END: test_client_default_headers
@@ -6952,7 +6958,7 @@ test "resource handler CREATE operation" {
     try testing.expectEqual(HttpStatus.created, response.status);
 
     const location = response.headers.get("Location");
-    try testing.expect(location != null);
+    try testing.expect((location) != null);
     try testing.expectEqualStrings("/resources/123", location.?);
 }
 // ANCHOR_END: test_resource_create
@@ -7299,10 +7305,10 @@ cookie.same_site = .none;   // Requires Secure=true
 The implementation uses cryptographically secure random IDs:
 
 ```zig
-pub fn create(self: *SessionStore) ![]const u8 {
+pub fn create(self: *SessionStore, io: std.Io) ![]const u8 {
     // Generate cryptographically secure session ID
     var random_bytes: [16]u8 = undefined;
-    std.crypto.random.bytes(&random_bytes);
+    try io.randomSecure(&random_bytes);
 
     // Encode as hex string (32 chars)
     var id_buf: [32]u8 = undefined;
@@ -7374,8 +7380,8 @@ This prevents memory leaks from duplicate keys.
 Sessions track last access time and support expiration:
 
 ```zig
-pub fn isExpired(self: *const Session, timeout_seconds: i64) bool {
-    const now = std.time.timestamp();
+pub fn isExpired(self: *const Session, io: std.Io, timeout_seconds: i64) bool {
+    const now = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
     return (now - self.last_accessed) >= timeout_seconds;
 }
 ```
@@ -7519,6 +7525,7 @@ The order of attributes doesn't matter - browsers parse all of them.
 5. **Validate session data:**
    ```zig
    if (store.get(session_id)) |session| {
+```zig
        const user_id = session.data.get("user_id") orelse return error.InvalidSession;
        // Verify user_id is valid
    }
@@ -7529,7 +7536,7 @@ The order of attributes doesn't matter - browsers parse all of them.
    // Generate CSRF token per session
    if (store.get(session_id)) |session| {
        var token_bytes: [16]u8 = undefined;
-       std.crypto.random.bytes(&token_bytes);
+       try io.randomSecure(&token_bytes);
        const token = std.fmt.bytesToHex(token_bytes, .lower);
        try session.data.set("csrf_token", &token);
    }
@@ -7549,6 +7556,7 @@ This recipe provides educational patterns but lacks some production features:
 - Rate limiting for session creation
 
 **Security Improvements Needed:**
+```
 ```zig
 // TODO: Add cookie value encoding
 pub fn encodeValue(allocator: std.mem.Allocator, value: []const u8) ![]const u8 {
@@ -7608,7 +7616,7 @@ All three threads access `store.sessions` (a `StringHashMap`) concurrently. Hash
 
 #### Solution: Add Mutex Synchronization
 
-For production multi-threaded servers, protect the `SessionStore` with `std.Thread.Mutex`:
+For production multi-threaded servers, protect the `SessionStore` with `std.Io.Mutex`:
 
 ```zig
 /// Thread-Safe Session Store for Production Web Servers
@@ -7618,7 +7626,7 @@ For production multi-threaded servers, protect the `SessionStore` with `std.Thre
 /// multi-threaded HTTP servers where requests are handled in parallel.
 ///
 /// Key Differences from Basic SessionStore:
-/// - std.Thread.Mutex protects all HashMap operations
+/// - std.Io.Mutex protects all HashMap operations
 /// - lock()/unlock() pattern ensures atomic operations
 /// - defer unlock() prevents lock leaks on early returns
 ///
@@ -7630,14 +7638,14 @@ pub const ThreadSafeSessionStore = struct {
     sessions: std.StringHashMap(Session),
     allocator: std.mem.Allocator,
     default_timeout: i64,
-    mutex: std.Thread.Mutex,
+    mutex: std.Io.Mutex,
 
     pub fn init(allocator: std.mem.Allocator) ThreadSafeSessionStore {
         return .{
             .sessions = std.StringHashMap(Session).init(allocator),
             .allocator = allocator,
             .default_timeout = 3600, // 1 hour default
-            .mutex = .{}, // Zero-initialize mutex
+            .mutex = .init, // Zero-initialize mutex
         };
     }
 
@@ -7652,14 +7660,14 @@ pub const ThreadSafeSessionStore = struct {
         self.sessions.deinit();
     }
 
-    pub fn create(self: *ThreadSafeSessionStore) ![]const u8 {
+    pub fn create(self: *ThreadSafeSessionStore, io: std.Io) ![]const u8 {
         // Lock before accessing shared HashMap
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         // Generate cryptographically secure session ID
         var random_bytes: [16]u8 = undefined;
-        std.crypto.random.bytes(&random_bytes);
+        try io.randomSecure(&random_bytes);
 
         // Encode as hex string (32 chars)
         var id_buf: [32]u8 = undefined;
@@ -7675,10 +7683,10 @@ pub const ThreadSafeSessionStore = struct {
         return owned_id;
     }
 
-    pub fn get(self: *ThreadSafeSessionStore, session_id: []const u8) ?*Session {
+    pub fn get(self: *ThreadSafeSessionStore, io: std.Io, session_id: []const u8) !?*Session {
         // Lock prevents concurrent modification while reading
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         if (self.sessions.getPtr(session_id)) |session| {
             if (session.isExpired(self.default_timeout)) {
@@ -7690,9 +7698,9 @@ pub const ThreadSafeSessionStore = struct {
         return null;
     }
 
-    pub fn destroy(self: *ThreadSafeSessionStore, session_id: []const u8) void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    pub fn destroy(self: *ThreadSafeSessionStore, io: std.Io, session_id: []const u8) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
         if (self.sessions.getPtr(session_id)) |session| {
             session.deinit();
@@ -7702,11 +7710,11 @@ pub const ThreadSafeSessionStore = struct {
         }
     }
 
-    pub fn cleanup(self: *ThreadSafeSessionStore) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    pub fn cleanup(self: *ThreadSafeSessionStore, io: std.Io) !void {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
-        var to_remove = std.ArrayList([]const u8){};
+        var to_remove = std.ArrayList([]const u8).empty;
         defer to_remove.deinit(self.allocator);
 
         var it = self.sessions.iterator();
@@ -7733,14 +7741,15 @@ pub const ThreadSafeSessionStore = struct {
 
 1. **Add mutex field:**
    ```zig
-   mutex: std.Thread.Mutex,
+   mutex: std.Io.Mutex,
    ```
 
 2. **Lock before ALL HashMap operations:**
    ```zig
-   pub fn create(self: *ThreadSafeSessionStore) ![]const u8 {
-       self.mutex.lock();
-       defer self.mutex.unlock();
+   pub fn create(self: *ThreadSafeSessionStore, io: std.Io) ![]const u8 {
+```zig
+       try self.mutex.lock(io);
+       defer self.mutex.unlock(io);
        // ... HashMap operations are now atomic
    }
    ```
@@ -7799,6 +7808,7 @@ For extremely high-traffic servers (>10k req/s), consider:
 #### Testing Thread Safety
 
 The thread-safe implementation includes comprehensive concurrency tests:
+```
 
 ```zig
 test "concurrent session creation" {
@@ -7952,7 +7962,7 @@ pub const Cookie = struct {
     }
 
     pub fn toSetCookieHeader(self: *const Cookie) ![]const u8 {
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
         // Name=Value
@@ -8115,8 +8125,8 @@ pub const Session = struct {
     last_accessed: i64,
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, id: []const u8) !Session {
-        const now = std.time.timestamp();
+    pub fn init(io: std.Io, allocator: std.mem.Allocator, id: []const u8) !Session {
+        const now = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
         return .{
             .id = try allocator.dupe(u8, id),
             .data = SessionData.init(allocator),
@@ -8131,12 +8141,12 @@ pub const Session = struct {
         self.data.deinit();
     }
 
-    pub fn touch(self: *Session) void {
-        self.last_accessed = std.time.timestamp();
+    pub fn touch(self: *Session, io: std.Io) void {
+        self.last_accessed = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
     }
 
-    pub fn isExpired(self: *const Session, timeout_seconds: i64) bool {
-        const now = std.time.timestamp();
+    pub fn isExpired(self: *const Session, io: std.Io, timeout_seconds: i64) bool {
+        const now = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
         return (now - self.last_accessed) >= timeout_seconds;
     }
 };
@@ -8166,10 +8176,10 @@ pub const SessionStore = struct {
         self.sessions.deinit();
     }
 
-    pub fn create(self: *SessionStore) ![]const u8 {
+    pub fn create(self: *SessionStore, io: std.Io) ![]const u8 {
         // Generate cryptographically secure session ID
         var random_bytes: [16]u8 = undefined;
-        std.crypto.random.bytes(&random_bytes);
+        try io.randomSecure(&random_bytes);
 
         // Encode as hex string (32 chars)
         var id_buf: [32]u8 = undefined;
@@ -8179,18 +8189,18 @@ pub const SessionStore = struct {
         const owned_id = try self.allocator.dupe(u8, &id_buf);
         errdefer self.allocator.free(owned_id);
 
-        const session = try Session.init(self.allocator, owned_id);
+        const session = try Session.init(io, self.allocator, owned_id);
         try self.sessions.put(owned_id, session);
 
         return owned_id;
     }
 
-    pub fn get(self: *SessionStore, session_id: []const u8) ?*Session {
+    pub fn get(self: *SessionStore, io: std.Io, session_id: []const u8) ?*Session {
         if (self.sessions.getPtr(session_id)) |session| {
-            if (session.isExpired(self.default_timeout)) {
+            if (session.isExpired(io, self.default_timeout)) {
                 return null;
             }
-            session.touch();
+            session.touch(io);
             return session;
         }
         return null;
@@ -8205,13 +8215,13 @@ pub const SessionStore = struct {
         }
     }
 
-    pub fn cleanup(self: *SessionStore) !void {
-        var to_remove = std.ArrayList([]const u8){};
+    pub fn cleanup(self: *SessionStore, io: std.Io) !void {
+        var to_remove = std.ArrayList([]const u8).empty;
         defer to_remove.deinit(self.allocator);
 
         var it = self.sessions.iterator();
         while (it.next()) |entry| {
-            if (entry.value_ptr.isExpired(self.default_timeout)) {
+            if (entry.value_ptr.isExpired(io, self.default_timeout)) {
                 try to_remove.append(self.allocator, entry.key_ptr.*);
             }
         }
@@ -8310,15 +8320,15 @@ test "parse Cookie header" {
     try testing.expectEqual(@as(u32, 3), cookies.count());
 
     const session = cookies.get("session");
-    try testing.expect(session != null);
+    try testing.expect((session) != null);
     try testing.expectEqualStrings("abc123", session.?);
 
     const user_id = cookies.get("user_id");
-    try testing.expect(user_id != null);
+    try testing.expect((user_id) != null);
     try testing.expectEqualStrings("456", user_id.?);
 
     const theme = cookies.get("theme");
-    try testing.expect(theme != null);
+    try testing.expect((theme) != null);
     try testing.expectEqualStrings("dark", theme.?);
 }
 // ANCHOR_END: test_cookie_parsing
@@ -8343,11 +8353,11 @@ test "session data storage" {
     try session_data.set("role", "admin");
 
     const username = session_data.get("username");
-    try testing.expect(username != null);
+    try testing.expect((username) != null);
     try testing.expectEqualStrings("alice", username.?);
 
     const role = session_data.get("role");
-    try testing.expect(role != null);
+    try testing.expect((role) != null);
     try testing.expectEqualStrings("admin", role.?);
 }
 // ANCHOR_END: test_session_data
@@ -8361,7 +8371,7 @@ test "update session data" {
     try session_data.set("counter", "2");
 
     const counter = session_data.get("counter");
-    try testing.expect(counter != null);
+    try testing.expect((counter) != null);
     try testing.expectEqualStrings("2", counter.?);
 }
 // ANCHOR_END: test_session_data_update
@@ -8381,7 +8391,8 @@ test "remove session data" {
 
 // ANCHOR: test_session_creation
 test "create session" {
-    var session = try Session.init(testing.allocator, "session_123");
+    const io = std.testing.io;
+    var session = try Session.init(io, testing.allocator, "session_123");
     defer session.deinit();
 
     try testing.expectEqualStrings("session_123", session.id);
@@ -8392,11 +8403,12 @@ test "create session" {
 
 // ANCHOR: test_session_touch
 test "session touch updates last accessed" {
-    var session = try Session.init(testing.allocator, "session_123");
+    const io = std.testing.io;
+    var session = try Session.init(io, testing.allocator, "session_123");
     defer session.deinit();
 
     const initial_time = session.last_accessed;
-    session.touch();
+    session.touch(io);
 
     try testing.expect(session.last_accessed >= initial_time);
 }
@@ -8404,44 +8416,47 @@ test "session touch updates last accessed" {
 
 // ANCHOR: test_session_expiry
 test "session expiry check" {
-    var session = try Session.init(testing.allocator, "session_123");
+    const io = std.testing.io;
+    var session = try Session.init(io, testing.allocator, "session_123");
     defer session.deinit();
 
     // Not expired with 1 hour timeout
-    try testing.expect(!session.isExpired(3600));
+    try testing.expect(!session.isExpired(io, 3600));
 
     // Expired with 0 second timeout
-    try testing.expect(session.isExpired(0));
+    try testing.expect(session.isExpired(io, 0));
 }
 // ANCHOR_END: test_session_expiry
 
 // ANCHOR: test_session_store
 test "session store operations" {
+    const io = std.testing.io;
     var store = SessionStore.init(testing.allocator);
     defer store.deinit();
 
-    const session_id = try store.create();
+    const session_id = try store.create(io);
 
-    const session = store.get(session_id);
-    try testing.expect(session != null);
+    const session = store.get(io, session_id);
+    try testing.expect((session) != null);
     try testing.expectEqualStrings(session_id, session.?.id);
 }
 // ANCHOR_END: test_session_store
 
 // ANCHOR: test_session_store_data
 test "store and retrieve session data" {
+    const io = std.testing.io;
     var store = SessionStore.init(testing.allocator);
     defer store.deinit();
 
-    const session_id = try store.create();
+    const session_id = try store.create(io);
 
-    if (store.get(session_id)) |session| {
+    if (store.get(io, session_id)) |session| {
         try session.data.set("user", "alice");
     }
 
-    if (store.get(session_id)) |session| {
+    if (store.get(io, session_id)) |session| {
         const user = session.data.get("user");
-        try testing.expect(user != null);
+        try testing.expect((user) != null);
         try testing.expectEqualStrings("alice", user.?);
     }
 }
@@ -8449,31 +8464,33 @@ test "store and retrieve session data" {
 
 // ANCHOR: test_session_destroy
 test "destroy session" {
+    const io = std.testing.io;
     var store = SessionStore.init(testing.allocator);
     defer store.deinit();
 
-    const session_id = try store.create();
-    try testing.expect(store.get(session_id) != null);
+    const session_id = try store.create(io);
+    try testing.expect(store.get(io, session_id) != null);
 
     store.destroy(session_id);
-    try testing.expect(store.get(session_id) == null);
+    try testing.expect(store.get(io, session_id) == null);
 }
 // ANCHOR_END: test_session_destroy
 
 // ANCHOR: test_session_cleanup
 test "cleanup expired sessions" {
+    const io = std.testing.io;
     var store = SessionStore.init(testing.allocator);
     defer store.deinit();
 
     store.default_timeout = 0; // All sessions expire immediately
 
-    const session_id1 = try store.create();
-    const session_id2 = try store.create();
+    const session_id1 = try store.create(io);
+    const session_id2 = try store.create(io);
 
-    try store.cleanup();
+    try store.cleanup(io);
 
-    try testing.expect(store.get(session_id1) == null);
-    try testing.expect(store.get(session_id2) == null);
+    try testing.expect(store.get(io, session_id1) == null);
+    try testing.expect(store.get(io, session_id2) == null);
 }
 // ANCHOR_END: test_session_cleanup
 ```
@@ -8876,7 +8893,7 @@ This recipe demonstrates basic validation. Production code needs full chain veri
 The `Certificate.init` uses proper error handling:
 
 ```zig
-pub fn init(allocator: std.mem.Allocator, subject: []const u8, issuer: []const u8) !Certificate {
+pub fn init(io: std.Io, allocator: std.mem.Allocator, subject: []const u8, issuer: []const u8) !Certificate {
     const subject_copy = try allocator.dupe(u8, subject);
     errdefer allocator.free(subject_copy);
 
@@ -8888,8 +8905,8 @@ pub fn init(allocator: std.mem.Allocator, subject: []const u8, issuer: []const u
     return .{
         .subject = subject_copy,
         .issuer = issuer_copy,
-        .not_before = std.time.timestamp(),
-        .not_after = std.time.timestamp() + 31536000, // 1 year
+        .not_before = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))),
+        .not_after = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))) + 31536000, // 1 year
         .fingerprint = fingerprint_copy,
         .allocator = allocator,
     };
@@ -9035,7 +9052,6 @@ conn.verifyCertificate() catch |err| switch (err) {
         std.log.err("Server certificate not trusted", .{});
         return err;
     },
-    else => return err,
 };
 ```
 
@@ -9057,7 +9073,7 @@ if (days < 30) {
 }
 
 // Simulate expiration
-cert.not_after = std.time.timestamp() - 1;
+cert.not_after = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))) - 1;
 try testing.expect(cert.isExpired());
 ```
 
@@ -9235,7 +9251,7 @@ pub const Certificate = struct {
     fingerprint: []const u8,
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, subject: []const u8, issuer: []const u8) !Certificate {
+    pub fn init(io: std.Io, allocator: std.mem.Allocator, subject: []const u8, issuer: []const u8) !Certificate {
         const subject_copy = try allocator.dupe(u8, subject);
         errdefer allocator.free(subject_copy);
 
@@ -9247,8 +9263,8 @@ pub const Certificate = struct {
         return .{
             .subject = subject_copy,
             .issuer = issuer_copy,
-            .not_before = std.time.timestamp(),
-            .not_after = std.time.timestamp() + 31536000, // 1 year
+            .not_before = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))),
+            .not_after = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))) + 31536000, // 1 year
             .fingerprint = fingerprint_copy,
             .allocator = allocator,
         };
@@ -9269,17 +9285,17 @@ pub const Certificate = struct {
         self.fingerprint = new_fingerprint;
     }
 
-    pub fn isValid(self: *const Certificate) bool {
-        const now = std.time.timestamp();
+    pub fn isValid(self: *const Certificate, io: std.Io) bool {
+        const now = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
         return now >= self.not_before and now <= self.not_after;
     }
 
-    pub fn isExpired(self: *const Certificate) bool {
-        return std.time.timestamp() > self.not_after;
+    pub fn isExpired(self: *const Certificate, io: std.Io) bool {
+        return @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))) > self.not_after;
     }
 
-    pub fn daysUntilExpiry(self: *const Certificate) i64 {
-        const now = std.time.timestamp();
+    pub fn daysUntilExpiry(self: *const Certificate, io: std.Io) i64 {
+        const now = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
         const seconds_remaining = self.not_after - now;
         return @divFloor(seconds_remaining, 86400); // Convert to days
     }
@@ -9300,10 +9316,10 @@ pub const TlsConfig = struct {
         return .{
             .min_version = .tls_1_2, // Minimum secure version
             .max_version = .tls_1_3,
-            .allowed_ciphers = std.ArrayList(CipherSuite){},
+            .allowed_ciphers = std.ArrayList(CipherSuite).empty,
             .verify_certificates = true,
             .verify_hostname = true,
-            .trusted_certificates = std.ArrayList(Certificate){},
+            .trusted_certificates = std.ArrayList(Certificate).empty,
             .allocator = allocator,
         };
     }
@@ -9383,7 +9399,7 @@ pub const TlsConnection = struct {
         }
     }
 
-    pub fn handshake(self: *TlsConnection) !void {
+    pub fn handshake(self: *TlsConnection, io: std.Io) !void {
         // Simulate TLS handshake steps
         switch (self.state) {
             .client_hello => {
@@ -9400,7 +9416,7 @@ pub const TlsConnection = struct {
                 self.state = .key_exchange;
                 // Simulate receiving server certificate
                 if (self.config.verify_certificates) {
-                    const cert = try Certificate.init(
+                    const cert = try Certificate.init(io, 
                         self.allocator,
                         "CN=example.com",
                         "CN=Example CA",
@@ -9427,11 +9443,11 @@ pub const TlsConnection = struct {
         return self.state.isComplete();
     }
 
-    pub fn verifyCertificate(self: *const TlsConnection) !void {
+    pub fn verifyCertificate(self: *const TlsConnection, io: std.Io) !void {
         const cert = self.server_certificate orelse return error.NoCertificate;
 
         // Check validity period
-        if (!cert.isValid()) {
+        if (!cert.isValid(io)) {
             return error.CertificateExpired;
         }
 
@@ -9493,7 +9509,8 @@ test "cipher suite enum" {
 
 // ANCHOR: test_certificate_creation
 test "create certificate" {
-    var cert = try Certificate.init(
+    const io = std.testing.io;
+    var cert = try Certificate.init(io, 
         testing.allocator,
         "CN=example.com",
         "CN=Example CA",
@@ -9509,7 +9526,8 @@ test "create certificate" {
 
 // ANCHOR: test_certificate_validity
 test "certificate validity check" {
-    var cert = try Certificate.init(
+    const io = std.testing.io;
+    var cert = try Certificate.init(io, 
         testing.allocator,
         "CN=example.com",
         "CN=Example CA",
@@ -9517,26 +9535,27 @@ test "certificate validity check" {
     defer cert.deinit();
 
     // Should be valid (just created)
-    try testing.expect(cert.isValid());
-    try testing.expect(!cert.isExpired());
+    try testing.expect(cert.isValid(io));
+    try testing.expect(!cert.isExpired(io));
 
     // Set to expired
-    cert.not_after = std.time.timestamp() - 1;
-    try testing.expect(!cert.isValid());
-    try testing.expect(cert.isExpired());
+    cert.not_after = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))) - 1;
+    try testing.expect(!cert.isValid(io));
+    try testing.expect(cert.isExpired(io));
 }
 // ANCHOR_END: test_certificate_validity
 
 // ANCHOR: test_certificate_expiry_days
 test "certificate days until expiry" {
-    var cert = try Certificate.init(
+    const io = std.testing.io;
+    var cert = try Certificate.init(io, 
         testing.allocator,
         "CN=example.com",
         "CN=Example CA",
     );
     defer cert.deinit();
 
-    const days = cert.daysUntilExpiry();
+    const days = cert.daysUntilExpiry(io);
     // Should be approximately 365 days (1 year)
     try testing.expect(days > 360);
     try testing.expect(days < 370);
@@ -9545,7 +9564,8 @@ test "certificate days until expiry" {
 
 // ANCHOR: test_certificate_fingerprint
 test "set certificate fingerprint" {
-    var cert = try Certificate.init(
+    const io = std.testing.io;
+    var cert = try Certificate.init(io, 
         testing.allocator,
         "CN=example.com",
         "CN=Example CA",
@@ -9591,10 +9611,11 @@ test "add cipher suites to config" {
 
 // ANCHOR: test_tls_config_certificates
 test "add trusted certificates to config" {
+    const io = std.testing.io;
     var config = TlsConfig.init(testing.allocator);
     defer config.deinit();
 
-    const cert = try Certificate.init(
+    const cert = try Certificate.init(io, 
         testing.allocator,
         "CN=Root CA",
         "CN=Root CA",
@@ -9634,6 +9655,7 @@ test "create TLS connection" {
 
 // ANCHOR: test_tls_handshake
 test "TLS handshake process" {
+    const io = std.testing.io;
     var config = TlsConfig.init(testing.allocator);
     defer config.deinit();
 
@@ -9645,25 +9667,26 @@ test "TLS handshake process" {
     // Perform handshake steps
     try testing.expect(!conn.isEstablished());
 
-    try conn.handshake(); // client_hello -> server_hello
+    try conn.handshake(io); // client_hello -> server_hello
     try testing.expectEqual(TlsHandshakeState.server_hello, conn.state);
 
-    try conn.handshake(); // server_hello -> certificate_exchange
+    try conn.handshake(io); // server_hello -> certificate_exchange
     try testing.expectEqual(TlsHandshakeState.certificate_exchange, conn.state);
 
-    try conn.handshake(); // certificate_exchange -> key_exchange
+    try conn.handshake(io); // certificate_exchange -> key_exchange
     try testing.expectEqual(TlsHandshakeState.key_exchange, conn.state);
 
-    try conn.handshake(); // key_exchange -> finished
+    try conn.handshake(io); // key_exchange -> finished
     try testing.expectEqual(TlsHandshakeState.finished, conn.state);
 
-    try conn.handshake(); // finished -> established
+    try conn.handshake(io); // finished -> established
     try testing.expect(conn.isEstablished());
 }
 // ANCHOR_END: test_tls_handshake
 
 // ANCHOR: test_tls_version_negotiation
 test "TLS version negotiation" {
+    const io = std.testing.io;
     var config = TlsConfig.init(testing.allocator);
     defer config.deinit();
 
@@ -9672,7 +9695,7 @@ test "TLS version negotiation" {
     var conn = TlsConnection.init(testing.allocator, &config);
     defer conn.deinit();
 
-    try conn.handshake();
+    try conn.handshake(io);
 
     try testing.expect(conn.negotiated_version != null);
     try testing.expectEqual(TlsVersion.tls_1_3, conn.negotiated_version.?);
@@ -9681,6 +9704,7 @@ test "TLS version negotiation" {
 
 // ANCHOR: test_tls_cipher_negotiation
 test "TLS cipher suite negotiation" {
+    const io = std.testing.io;
     var config = TlsConfig.init(testing.allocator);
     defer config.deinit();
 
@@ -9689,8 +9713,8 @@ test "TLS cipher suite negotiation" {
     var conn = TlsConnection.init(testing.allocator, &config);
     defer conn.deinit();
 
-    try conn.handshake(); // client_hello -> server_hello
-    try conn.handshake(); // server_hello -> certificate_exchange
+    try conn.handshake(io); // client_hello -> server_hello
+    try conn.handshake(io); // server_hello -> certificate_exchange
 
     try testing.expect(conn.negotiated_cipher != null);
     try testing.expectEqual(
@@ -9702,10 +9726,11 @@ test "TLS cipher suite negotiation" {
 
 // ANCHOR: test_certificate_verification
 test "certificate verification" {
+    const io = std.testing.io;
     var config = TlsConfig.init(testing.allocator);
     defer config.deinit();
 
-    const trusted_cert = try Certificate.init(
+    const trusted_cert = try Certificate.init(io, 
         testing.allocator,
         "CN=Root CA",
         "CN=Root CA",
@@ -9716,17 +9741,18 @@ test "certificate verification" {
     defer conn.deinit();
 
     // Complete handshake
-    try conn.handshake(); // client_hello
-    try conn.handshake(); // server_hello
-    try conn.handshake(); // certificate_exchange
+    try conn.handshake(io); // client_hello
+    try conn.handshake(io); // server_hello
+    try conn.handshake(io); // certificate_exchange
 
     // Verify certificate
-    try conn.verifyCertificate();
+    try conn.verifyCertificate(io);
 }
 // ANCHOR_END: test_certificate_verification
 
 // ANCHOR: test_expired_certificate
 test "expired certificate detection" {
+    const io = std.testing.io;
     var config = TlsConfig.init(testing.allocator);
     defer config.deinit();
 
@@ -9734,17 +9760,17 @@ test "expired certificate detection" {
     defer conn.deinit();
 
     // Complete handshake to get certificate
-    try conn.handshake();
-    try conn.handshake();
-    try conn.handshake();
+    try conn.handshake(io);
+    try conn.handshake(io);
+    try conn.handshake(io);
 
     // Expire the certificate
     if (conn.server_certificate) |*cert| {
-        cert.not_after = std.time.timestamp() - 1;
+        cert.not_after = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))) - 1;
     }
 
     // Verification should fail
-    try testing.expectError(error.CertificateExpired, conn.verifyCertificate());
+    try testing.expectError(error.CertificateExpired, conn.verifyCertificate(io));
 }
 // ANCHOR_END: test_expired_certificate
 ```
@@ -9809,7 +9835,7 @@ pub const Downloader = struct {
     }
 
     pub fn downloadToMemory(self: *Downloader, url: []const u8) ![]const u8 {
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
         const test_data = "File contents from server";
@@ -9823,7 +9849,7 @@ pub const Downloader = struct {
     }
 
     pub fn downloadChunked(self: *Downloader, url: []const u8) ![]const u8 {
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
         // Simulate chunked download
@@ -9866,9 +9892,9 @@ pub const MultipartForm = struct {
         data: []const u8,
     };
 
-    pub fn init(allocator: std.mem.Allocator) !MultipartForm {
+    pub fn init(io: std.Io, allocator: std.mem.Allocator) !MultipartForm {
         var boundary_buf: [32]u8 = undefined;
-        const timestamp = std.time.timestamp();
+        const timestamp = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
         const boundary = try std.fmt.bufPrint(&boundary_buf, "----Boundary{d}", .{timestamp});
 
         const owned_boundary = try allocator.dupe(u8, boundary);
@@ -9877,7 +9903,7 @@ pub const MultipartForm = struct {
         return .{
             .boundary = owned_boundary,
             .fields = std.StringHashMap([]const u8).init(allocator),
-            .files = std.ArrayList(FileField){},
+            .files = std.ArrayList(FileField).empty,
             .allocator = allocator,
         };
     }
@@ -9931,11 +9957,11 @@ pub const Uploader = struct {
     allocator: std.mem.Allocator,
     options: UploadOptions,
 
-    pub fn uploadFile(self: *Uploader, url: []const u8, file_path: []const u8) !void {
-        const file = try std.fs.cwd().openFile(file_path, .{});
-        defer file.close();
+    pub fn uploadFile(self: *Uploader, io: std.Io, url: []const u8, file_path: []const u8) !void {
+        const file = try std.Io.Dir.cwd().openFile(io, file_path, .{});
+        defer file.close(io);
 
-        const stat = try file.stat();
+        const stat = try file.stat(io);
         const file_size = stat.size;
 
         // Simulate chunked upload
@@ -9979,31 +10005,31 @@ pub const ResumeInfo = struct {
         };
     }
 
-    pub fn save(self: *const ResumeInfo, resume_file: []const u8) !void {
-        const file = try std.fs.cwd().createFile(resume_file, .{});
-        defer file.close();
+    pub fn save(self: *const ResumeInfo, io: std.Io, resume_file: []const u8) !void {
+        const file = try std.Io.Dir.cwd().createFile(io, resume_file, .{});
+        defer file.close(io);
 
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
-        try buffer.writer(self.allocator).print("{d}\n", .{self.bytes_downloaded});
+        try buffer.writer(io, self.allocator).print("{d}\n", .{self.bytes_downloaded});
         if (self.total_bytes) |total| {
-            try buffer.writer(self.allocator).print("{d}\n", .{total});
+            try buffer.writer(io, self.allocator).print("{d}\n", .{total});
         }
 
-        try file.writeAll(buffer.items);
+        try file.writeStreamingAll(io, buffer.items);
     }
 
-    pub fn load(allocator: std.mem.Allocator, resume_file: []const u8,
+    pub fn load(io: std.Io, allocator: std.mem.Allocator, resume_file: []const u8,
                 url: []const u8, file_path: []const u8) !ResumeInfo {
-        const file = try std.fs.cwd().openFile(resume_file, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, resume_file, .{});
+        defer file.close(io);
 
         var info = try ResumeInfo.init(allocator, url, file_path);
         errdefer info.deinit();
 
         var buf: [1024]u8 = undefined;
-        const bytes_read = try file.readAll(&buf);
+        const bytes_read = try file.readPositionalAll(io, &buf, 0);
         const content = buf[0..bytes_read];
 
         var lines = std.mem.splitScalar(u8, content, '\n');
@@ -10128,12 +10154,12 @@ defer req.deinit();
 - Verify content types
 - Use HTTPS for sensitive transfers
 
-### Zig 0.15.2 ArrayList API
+### Zig 0.16.0 ArrayList API
 
-This code uses the unmanaged ArrayList pattern in Zig 0.15.2:
+This code uses the unmanaged ArrayList pattern in Zig 0.16.0:
 
 ```zig
-var buffer = std.ArrayList(u8){};
+var buffer = std.ArrayList(u8).empty;
 defer buffer.deinit(allocator);
 
 try buffer.appendSlice(allocator, data);
@@ -10172,7 +10198,7 @@ If the boundary is predictable, this content can inject fake form fields.
 
 ```zig
 // INSECURE: Timestamp is predictable
-const timestamp = std.time.timestamp();
+const timestamp = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
 const boundary = try std.fmt.bufPrint(&boundary_buf, "----Boundary{d}", .{timestamp});
 
 // Attacker can:
@@ -10192,10 +10218,10 @@ Timestamps are predictable because:
 The updated implementation uses cryptographically random boundaries:
 
 ```zig
-pub fn init(allocator: std.mem.Allocator) !MultipartForm {
+pub fn init(io: std.Io, allocator: std.mem.Allocator) !MultipartForm {
     // Generate cryptographically secure boundary
     var random_bytes: [16]u8 = undefined;
-    std.crypto.random.bytes(&random_bytes);
+    try io.randomSecure(&random_bytes);
 
     var boundary_buf: [50]u8 = undefined;
     const hex = std.fmt.bytesToHex(random_bytes, .lower);
@@ -10309,7 +10335,7 @@ pub const Downloader = struct {
     pub fn downloadToMemory(self: *Downloader, url: []const u8) ![]const u8 {
         _ = url;
         // Simulate download - in real implementation, use std.http.Client
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
         const test_data = "File contents from server";
@@ -10323,13 +10349,13 @@ pub const Downloader = struct {
         return buffer.toOwnedSlice(self.allocator);
     }
 
-    pub fn downloadToFile(self: *Downloader, url: []const u8, file_path: []const u8) !void {
+    pub fn downloadToFile(self: *Downloader, io: std.Io, url: []const u8, file_path: []const u8) !void {
         _ = url;
-        const file = try std.fs.cwd().createFile(file_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, file_path, .{});
+        defer file.close(io);
 
         const test_data = "Downloaded file content";
-        try file.writeAll(test_data);
+        try file.writeStreamingAll(io, test_data);
 
         if (self.options.progress_callback) |callback| {
             callback(test_data.len, test_data.len);
@@ -10338,7 +10364,7 @@ pub const Downloader = struct {
 
     pub fn downloadChunked(self: *Downloader, url: []const u8) ![]const u8 {
         _ = url;
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
         // Simulate chunked download
@@ -10385,12 +10411,12 @@ pub const MultipartForm = struct {
         data: []const u8,
     };
 
-    pub fn init(allocator: std.mem.Allocator) !MultipartForm {
+    pub fn init(io: std.Io, allocator: std.mem.Allocator) !MultipartForm {
         // Generate cryptographically secure boundary
         // Using random bytes prevents boundary collision attacks where
         // malicious file content contains the boundary string
         var random_bytes: [16]u8 = undefined;
-        std.crypto.random.bytes(&random_bytes);
+        try io.randomSecure(&random_bytes);
 
         var boundary_buf: [50]u8 = undefined;
         const hex = std.fmt.bytesToHex(random_bytes, .lower);
@@ -10402,7 +10428,7 @@ pub const MultipartForm = struct {
         return .{
             .boundary = owned_boundary,
             .fields = std.StringHashMap([]const u8).init(allocator),
-            .files = std.ArrayList(FileField){},
+            .files = std.ArrayList(FileField).empty,
             .allocator = allocator,
         };
     }
@@ -10477,7 +10503,7 @@ pub const MultipartForm = struct {
     }
 
     pub fn build(self: *const MultipartForm) ![]const u8 {
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
         // Add text fields
@@ -10519,7 +10545,7 @@ pub const MultipartForm = struct {
     }
 
     pub fn getContentType(self: *const MultipartForm) ![]const u8 {
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
         try buffer.appendSlice(self.allocator, "multipart/form-data; boundary=");
@@ -10542,12 +10568,12 @@ pub const Uploader = struct {
         };
     }
 
-    pub fn uploadFile(self: *Uploader, url: []const u8, file_path: []const u8) !void {
+    pub fn uploadFile(self: *Uploader, io: std.Io, url: []const u8, file_path: []const u8) !void {
         _ = url;
-        const file = try std.fs.cwd().openFile(file_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, file_path, .{});
+        defer file.close(io);
 
-        const stat = try file.stat();
+        const stat = try file.stat(io);
         const file_size = stat.size;
 
         // Simulate chunked upload
@@ -10599,30 +10625,30 @@ pub const ResumeInfo = struct {
         self.allocator.free(self.file_path);
     }
 
-    pub fn save(self: *const ResumeInfo, resume_file: []const u8) !void {
-        const file = try std.fs.cwd().createFile(resume_file, .{});
-        defer file.close();
+    pub fn save(self: *const ResumeInfo, io: std.Io, resume_file: []const u8) !void {
+        const file = try std.Io.Dir.cwd().createFile(io, resume_file, .{});
+        defer file.close(io);
 
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
-        try buffer.writer(self.allocator).print("{d}\n", .{self.bytes_downloaded});
+        try buffer.print(self.allocator, "{d}\n", .{self.bytes_downloaded});
         if (self.total_bytes) |total| {
-            try buffer.writer(self.allocator).print("{d}\n", .{total});
+            try buffer.print(self.allocator, "{d}\n", .{total});
         }
 
-        try file.writeAll(buffer.items);
+        try file.writeStreamingAll(io, buffer.items);
     }
 
-    pub fn load(allocator: std.mem.Allocator, resume_file: []const u8, url: []const u8, file_path: []const u8) !ResumeInfo {
-        const file = try std.fs.cwd().openFile(resume_file, .{});
-        defer file.close();
+    pub fn load(io: std.Io, allocator: std.mem.Allocator, resume_file: []const u8, url: []const u8, file_path: []const u8) !ResumeInfo {
+        const file = try std.Io.Dir.cwd().openFile(io, resume_file, .{});
+        defer file.close(io);
 
         var info = try ResumeInfo.init(allocator, url, file_path);
         errdefer info.deinit();
 
         var buf: [1024]u8 = undefined;
-        const bytes_read = try file.readAll(&buf);
+        const bytes_read = try file.readPositionalAll(io, &buf, 0);
         const content = buf[0..bytes_read];
 
         var lines = std.mem.splitScalar(u8, content, '\n');
@@ -10649,18 +10675,19 @@ test "download to memory" {
 
 // ANCHOR: test_download_to_file
 test "download to file" {
+    const io = std.testing.io;
     var downloader = Downloader.init(testing.allocator, .{});
 
     const test_file = "test_download.txt";
-    defer std.fs.cwd().deleteFile(test_file) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_file) catch {};
 
-    try downloader.downloadToFile("http://example.com/file.txt", test_file);
+    try downloader.downloadToFile(io, "http://example.com/file.txt", test_file);
 
-    const file = try std.fs.cwd().openFile(test_file, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_file, .{});
+    defer file.close(io);
 
     var buf: [1024]u8 = undefined;
-    const bytes_read = try file.readAll(&buf);
+    const bytes_read = try file.readPositionalAll(io, &buf, 0);
     try testing.expectEqualStrings("Downloaded file content", buf[0..bytes_read]);
 }
 // ANCHOR_END: test_download_to_file
@@ -10702,7 +10729,8 @@ test "download with progress callback" {
 
 // ANCHOR: test_multipart_form_creation
 test "create multipart form" {
-    var form = try MultipartForm.init(testing.allocator);
+    const io = std.testing.io;
+    var form = try MultipartForm.init(io, testing.allocator);
     defer form.deinit();
 
     try testing.expect(form.boundary.len > 0);
@@ -10712,7 +10740,8 @@ test "create multipart form" {
 
 // ANCHOR: test_multipart_add_field
 test "add field to multipart form" {
-    var form = try MultipartForm.init(testing.allocator);
+    const io = std.testing.io;
+    var form = try MultipartForm.init(io, testing.allocator);
     defer form.deinit();
 
     try form.addField("username", "alice");
@@ -10721,13 +10750,14 @@ test "add field to multipart form" {
     try testing.expectEqual(@as(u32, 2), form.fields.count());
 
     const username = form.fields.get("username");
-    try testing.expect(username != null);
+    try testing.expect((username) != null);
     try testing.expectEqualStrings("alice", username.?);
 }
 // ANCHOR_END: test_multipart_add_field
 
 test "add duplicate field to multipart form - no memory leak" {
-    var form = try MultipartForm.init(testing.allocator);
+    const io = std.testing.io;
+    var form = try MultipartForm.init(io, testing.allocator);
     defer form.deinit();
 
     // Add same field multiple times - last value should win
@@ -10741,17 +10771,18 @@ test "add duplicate field to multipart form - no memory leak" {
 
     // Last values should win
     const username = form.fields.get("username");
-    try testing.expect(username != null);
+    try testing.expect((username) != null);
     try testing.expectEqualStrings("bob", username.?);
 
     const email = form.fields.get("email");
-    try testing.expect(email != null);
+    try testing.expect((email) != null);
     try testing.expectEqualStrings("new@example.com", email.?);
 }
 
 // ANCHOR: test_multipart_add_file
 test "add file to multipart form" {
-    var form = try MultipartForm.init(testing.allocator);
+    const io = std.testing.io;
+    var form = try MultipartForm.init(io, testing.allocator);
     defer form.deinit();
 
     try form.addFile("avatar", "photo.jpg", "image/jpeg", "fake image data");
@@ -10767,7 +10798,8 @@ test "add file to multipart form" {
 
 // ANCHOR: test_multipart_build
 test "build multipart form body" {
-    var form = try MultipartForm.init(testing.allocator);
+    const io = std.testing.io;
+    var form = try MultipartForm.init(io, testing.allocator);
     defer form.deinit();
 
     try form.addField("name", "John");
@@ -10785,7 +10817,8 @@ test "build multipart form body" {
 
 // ANCHOR: test_multipart_content_type
 test "get multipart content type" {
-    var form = try MultipartForm.init(testing.allocator);
+    const io = std.testing.io;
+    var form = try MultipartForm.init(io, testing.allocator);
     defer form.deinit();
 
     const content_type = try form.getContentType();
@@ -10797,17 +10830,18 @@ test "get multipart content type" {
 
 // ANCHOR: test_upload_file
 test "upload file" {
+    const io = std.testing.io;
     // Create test file
     const test_file = "test_upload.txt";
     {
-        const file = try std.fs.cwd().createFile(test_file, .{});
-        defer file.close();
-        try file.writeAll("Test upload content");
+        const file = try std.Io.Dir.cwd().createFile(io, test_file, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "Test upload content");
     }
-    defer std.fs.cwd().deleteFile(test_file) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_file) catch {};
 
     var uploader = Uploader.init(testing.allocator, .{});
-    try uploader.uploadFile("http://example.com/upload", test_file);
+    try uploader.uploadFile(io, "http://example.com/upload", test_file);
 }
 // ANCHOR_END: test_upload_file
 
@@ -10860,8 +10894,9 @@ test "create resume info" {
 
 // ANCHOR: test_resume_info_save_load
 test "save and load resume info" {
+    const io = std.testing.io;
     const resume_file = "test_resume.txt";
-    defer std.fs.cwd().deleteFile(resume_file) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, resume_file) catch {};
 
     // Create and save
     {
@@ -10875,12 +10910,12 @@ test "save and load resume info" {
         info.bytes_downloaded = 12345;
         info.total_bytes = 67890;
 
-        try info.save(resume_file);
+        try info.save(io, resume_file);
     }
 
     // Load and verify
     {
-        var info = try ResumeInfo.load(
+        var info = try ResumeInfo.load(io, 
             testing.allocator,
             resume_file,
             "http://example.com/file.zip",
@@ -10926,23 +10961,23 @@ pub const TokenBucket = struct {
     tokens: usize,
     refill_rate: f64, // tokens per second
     last_refill: i64,
-    mutex: std.Thread.Mutex,
+    mutex: std.Io.Mutex,
 
-    pub fn init(capacity: usize, refill_rate: f64) TokenBucket {
+    pub fn init(io: std.Io, capacity: usize, refill_rate: f64) TokenBucket {
         return .{
             .capacity = capacity,
             .tokens = capacity,
             .refill_rate = refill_rate,
-            .last_refill = std.time.timestamp(),
-            .mutex = .{},
+            .last_refill = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))),
+            .mutex = .init,
         };
     }
 
-    pub fn tryConsume(self: *TokenBucket, tokens: usize) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    pub fn tryConsume(self: *TokenBucket, io: std.Io, tokens: usize) !bool {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
-        self.refill();
+        self.refill(io);
 
         if (self.tokens >= tokens) {
             self.tokens -= tokens;
@@ -10951,8 +10986,8 @@ pub const TokenBucket = struct {
         return false;
     }
 
-    fn refill(self: *TokenBucket) void {
-        const now = std.time.timestamp();
+    fn refill(self: *TokenBucket, io: std.Io) void {
+        const now = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
         const elapsed = @as(f64, @floatFromInt(now - self.last_refill));
 
         if (elapsed <= 0) return; // Guard against negative time or no elapsed time
@@ -10972,11 +11007,13 @@ pub const TokenBucket = struct {
         }
     }
 
-    pub fn availableTokens(self: *TokenBucket) usize {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    pub fn availableTokens(self: *TokenBucket, io: std.Io) usize {
+        // Reading a counter under the lock cannot block on anything, so this
+        // stays infallible rather than returning `Cancelable!usize`.
+        self.mutex.lockUncancelable(io);
+        defer self.mutex.unlock(io);
 
-        self.refill();
+        self.refill(io);
         return self.tokens;
     }
 };
@@ -10992,15 +11029,15 @@ pub const SlidingWindow = struct {
     max_requests: usize,
     requests: std.ArrayList(i64),
     allocator: std.mem.Allocator,
-    mutex: std.Thread.Mutex,
+    mutex: std.Io.Mutex,
 
     pub fn init(allocator: std.mem.Allocator, window_size_ms: i64, max_requests: usize) SlidingWindow {
         return .{
             .window_size_ms = window_size_ms,
             .max_requests = max_requests,
-            .requests = std.ArrayList(i64){},
+            .requests = std.ArrayList(i64).empty,
             .allocator = allocator,
-            .mutex = .{},
+            .mutex = .init,
         };
     }
 
@@ -11008,11 +11045,11 @@ pub const SlidingWindow = struct {
         self.requests.deinit(self.allocator);
     }
 
-    pub fn tryRequest(self: *SlidingWindow) !bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    pub fn tryRequest(self: *SlidingWindow, io: std.Io) !bool {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
-        const now = std.time.milliTimestamp();
+        const now = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms)));
         try self.cleanOldRequests(now);
 
         if (self.requests.items.len < self.max_requests) {
@@ -11054,25 +11091,25 @@ pub const RateLimiter = struct {
         return self.token_bucket.tryConsume(tokens);
     }
 
-    pub fn waitForTokens(self: *RateLimiter, tokens: usize, timeout_ms: u64) !bool {
-        const start = std.time.milliTimestamp();
+    pub fn waitForTokens(self: *RateLimiter, io: std.Io, tokens: usize, timeout_ms: u64) !bool {
+        const start = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms)));
         while (true) {
             if (self.token_bucket.tryConsume(tokens)) {
                 return true;
             }
 
-            const elapsed = @as(u64, @intCast(std.time.milliTimestamp() - start));
+            const elapsed = @as(u64, @intCast(@as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms))) - start));
             if (elapsed >= timeout_ms) {
                 return false;
             }
 
-            std.Thread.sleep(10 * std.time.ns_per_ms);
+            try io.sleep(.fromNanoseconds(10 * std.time.ns_per_ms), .awake);
         }
     }
 
-    pub fn getRateLimitHeaders(self: *RateLimiter) RateLimitHeaders {
-        const remaining = self.token_bucket.availableTokens();
-        const reset_time = std.time.timestamp() + 60; // Reset in 1 minute
+    pub fn getRateLimitHeaders(self: *RateLimiter, io: std.Io) RateLimitHeaders {
+        const remaining = self.token_bucket.availableTokens(io);
+        const reset_time = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))) + 60; // Reset in 1 minute
 
         return .{
             .limit = self.token_bucket.capacity,
@@ -11150,8 +11187,8 @@ pub const Throttler = struct {
         };
     }
 
-    pub fn shouldExecute(self: *Throttler) bool {
-        const now = std.time.milliTimestamp();
+    pub fn shouldExecute(self: *Throttler, io: std.Io) bool {
+        const now = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms)));
         const last = self.last_execution.load(.monotonic);
         const elapsed = now - last;
 
@@ -11199,7 +11236,7 @@ The token bucket allows controlled bursts while maintaining an average rate:
 - Resource consumption limits
 
 **Thread Safety:**
-Token bucket uses `std.Thread.Mutex` to protect shared state. The `refill()` method calculates tokens based on elapsed time, making it safe even if called from multiple threads.
+Token bucket uses `std.Io.Mutex` to protect shared state. The `refill()` method calculates tokens based on elapsed time, making it safe even if called from multiple threads.
 
 **Overflow Protection:**
 The implementation includes bounds checking to prevent integer truncation:
@@ -11340,9 +11377,13 @@ These headers inform clients about:
 ### Production Considerations
 
 **Time Source:**
-This implementation uses `std.time.timestamp()` and `std.time.milliTimestamp()` which can be affected by system clock changes. For production:
-- Use monotonic clocks when available
-- Handle backward time jumps gracefully
+This implementation reads the wall clock with `std.Io.Timestamp.now(io, .real)`, which the
+system clock can move backwards. For production:
+- Ask for a monotonic clock instead: `std.Io.Timestamp.now(io, .awake)` intends to exclude
+  time the machine spent suspended and `.boot` intends to include it, though an OS that
+  cannot honour the distinction may treat them alike. Neither jumps when the wall clock is
+  set, which is the property a rate limiter needs.
+- Handle backward time jumps gracefully if you must keep `.real`
 - Consider timer-based refill instead of on-demand
 
 **Distributed Rate Limiting:**
@@ -11408,23 +11449,23 @@ pub const TokenBucket = struct {
     tokens: usize,
     refill_rate: f64, // tokens per second
     last_refill: i64,
-    mutex: std.Thread.Mutex,
+    mutex: std.Io.Mutex,
 
-    pub fn init(capacity: usize, refill_rate: f64) TokenBucket {
+    pub fn init(io: std.Io, capacity: usize, refill_rate: f64) TokenBucket {
         return .{
             .capacity = capacity,
             .tokens = capacity,
             .refill_rate = refill_rate,
-            .last_refill = std.time.timestamp(),
-            .mutex = .{},
+            .last_refill = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))),
+            .mutex = .init,
         };
     }
 
-    pub fn tryConsume(self: *TokenBucket, tokens: usize) bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    pub fn tryConsume(self: *TokenBucket, io: std.Io, tokens: usize) !bool {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
-        self.refill();
+        self.refill(io);
 
         if (self.tokens >= tokens) {
             self.tokens -= tokens;
@@ -11433,8 +11474,8 @@ pub const TokenBucket = struct {
         return false;
     }
 
-    fn refill(self: *TokenBucket) void {
-        const now = std.time.timestamp();
+    fn refill(self: *TokenBucket, io: std.Io) void {
+        const now = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
         const elapsed = @as(f64, @floatFromInt(now - self.last_refill));
 
         if (elapsed <= 0) return; // Guard against negative time or no elapsed time
@@ -11454,11 +11495,13 @@ pub const TokenBucket = struct {
         }
     }
 
-    pub fn availableTokens(self: *TokenBucket) usize {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    pub fn availableTokens(self: *TokenBucket, io: std.Io) usize {
+        // Reading a counter under the lock cannot block on anything, so this
+        // stays infallible rather than returning `Cancelable!usize`.
+        self.mutex.lockUncancelable(io);
+        defer self.mutex.unlock(io);
 
-        self.refill();
+        self.refill(io);
         return self.tokens;
     }
 };
@@ -11470,15 +11513,15 @@ pub const SlidingWindow = struct {
     max_requests: usize,
     requests: std.ArrayList(i64),
     allocator: std.mem.Allocator,
-    mutex: std.Thread.Mutex,
+    mutex: std.Io.Mutex,
 
     pub fn init(allocator: std.mem.Allocator, window_size_ms: i64, max_requests: usize) SlidingWindow {
         return .{
             .window_size_ms = window_size_ms,
             .max_requests = max_requests,
-            .requests = std.ArrayList(i64){},
+            .requests = std.ArrayList(i64).empty,
             .allocator = allocator,
-            .mutex = .{},
+            .mutex = .init,
         };
     }
 
@@ -11486,11 +11529,11 @@ pub const SlidingWindow = struct {
         self.requests.deinit(self.allocator);
     }
 
-    pub fn tryRequest(self: *SlidingWindow) !bool {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    pub fn tryRequest(self: *SlidingWindow, io: std.Io) !bool {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
-        const now = std.time.milliTimestamp();
+        const now = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms)));
         try self.cleanOldRequests(now);
 
         if (self.requests.items.len < self.max_requests) {
@@ -11512,11 +11555,11 @@ pub const SlidingWindow = struct {
         }
     }
 
-    pub fn requestCount(self: *SlidingWindow) usize {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+    pub fn requestCount(self: *SlidingWindow, io: std.Io) !usize {
+        try self.mutex.lock(io);
+        defer self.mutex.unlock(io);
 
-        const now = std.time.milliTimestamp();
+        const now = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms)));
         self.cleanOldRequests(now) catch return self.requests.items.len;
         return self.requests.items.len;
     }
@@ -11527,35 +11570,35 @@ pub const SlidingWindow = struct {
 pub const RateLimiter = struct {
     token_bucket: TokenBucket,
 
-    pub fn init(capacity: usize, refill_rate: f64) RateLimiter {
+    pub fn init(io: std.Io, capacity: usize, refill_rate: f64) RateLimiter {
         return .{
-            .token_bucket = TokenBucket.init(capacity, refill_rate),
+            .token_bucket = TokenBucket.init(io, capacity, refill_rate),
         };
     }
 
-    pub fn checkLimit(self: *RateLimiter, tokens: usize) !bool {
-        return self.token_bucket.tryConsume(tokens);
+    pub fn checkLimit(self: *RateLimiter, io: std.Io, tokens: usize) !bool {
+        return self.token_bucket.tryConsume(io, tokens);
     }
 
-    pub fn waitForTokens(self: *RateLimiter, tokens: usize, timeout_ms: u64) !bool {
-        const start = std.time.milliTimestamp();
+    pub fn waitForTokens(self: *RateLimiter, io: std.Io, tokens: usize, timeout_ms: u64) !bool {
+        const start = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms)));
         while (true) {
-            if (self.token_bucket.tryConsume(tokens)) {
+            if (try self.token_bucket.tryConsume(io, tokens)) {
                 return true;
             }
 
-            const elapsed = @as(u64, @intCast(std.time.milliTimestamp() - start));
+            const elapsed = @as(u64, @intCast(@as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms))) - start));
             if (elapsed >= timeout_ms) {
                 return false;
             }
 
-            std.Thread.sleep(10 * std.time.ns_per_ms);
+            try io.sleep(.fromNanoseconds(10 * std.time.ns_per_ms), .awake);
         }
     }
 
-    pub fn getRateLimitHeaders(self: *RateLimiter) RateLimitHeaders {
-        const remaining = self.token_bucket.availableTokens();
-        const reset_time = std.time.timestamp() + 60; // Reset in 1 minute
+    pub fn getRateLimitHeaders(self: *RateLimiter, io: std.Io) !RateLimitHeaders {
+        const remaining = self.token_bucket.availableTokens(io);
+        const reset_time = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))) + 60; // Reset in 1 minute
 
         return .{
             .limit = self.token_bucket.capacity,
@@ -11625,8 +11668,8 @@ pub const Throttler = struct {
         };
     }
 
-    pub fn shouldExecute(self: *Throttler) bool {
-        const now = std.time.milliTimestamp();
+    pub fn shouldExecute(self: *Throttler, io: std.Io) bool {
+        const now = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms)));
         const last = self.last_execution.load(.monotonic);
         const elapsed = now - last;
 
@@ -11647,8 +11690,8 @@ pub const Throttler = struct {
         self.last_execution.store(0, .monotonic);
     }
 
-    pub fn timeSinceLastExecution(self: *Throttler) i64 {
-        const now = std.time.milliTimestamp();
+    pub fn timeSinceLastExecution(self: *Throttler, io: std.Io) i64 {
+        const now = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms)));
         const last = self.last_execution.load(.monotonic);
         if (last == 0) return self.min_interval_ms;
         return now - last;
@@ -11658,101 +11701,108 @@ pub const Throttler = struct {
 
 // ANCHOR: test_token_bucket
 test "token bucket basic consumption" {
-    var bucket = TokenBucket.init(10, 1.0);
+    const io = std.testing.io;
+    var bucket = TokenBucket.init(io, 10, 1.0);
 
-    try testing.expect(bucket.tryConsume(5));
-    try testing.expectEqual(@as(usize, 5), bucket.availableTokens());
+    try testing.expect(try bucket.tryConsume(io, 5));
+    try testing.expectEqual(@as(usize, 5), bucket.availableTokens(io));
 
-    try testing.expect(bucket.tryConsume(5));
-    try testing.expectEqual(@as(usize, 0), bucket.availableTokens());
+    try testing.expect(try bucket.tryConsume(io, 5));
+    try testing.expectEqual(@as(usize, 0), bucket.availableTokens(io));
 
-    try testing.expect(!bucket.tryConsume(1));
+    try testing.expect(!try bucket.tryConsume(io, 1));
 }
 // ANCHOR_END: test_token_bucket
 
 // ANCHOR: test_token_bucket_refill
 test "token bucket refill" {
-    var bucket = TokenBucket.init(10, 10.0); // 10 tokens per second
+    const io = std.testing.io;
+    var bucket = TokenBucket.init(io, 10, 10.0); // 10 tokens per second
 
-    try testing.expect(bucket.tryConsume(10));
-    try testing.expectEqual(@as(usize, 0), bucket.availableTokens());
+    try testing.expect(try bucket.tryConsume(io, 10));
+    try testing.expectEqual(@as(usize, 0), bucket.availableTokens(io));
 
-    // Wait for refill (simulate by adjusting last_refill)
+    // Wait for refill (io, simulate by adjusting last_refill)
     bucket.last_refill -= 1; // Simulate 1 second passed
 
-    const available = bucket.availableTokens();
+    const available = bucket.availableTokens(io);
     try testing.expect(available > 0);
 }
 // ANCHOR_END: test_token_bucket_refill
 
 // ANCHOR: test_sliding_window
 test "sliding window basic" {
+    const io = std.testing.io;
     var window = SlidingWindow.init(testing.allocator, 1000, 5);
     defer window.deinit();
 
     // Should allow 5 requests
-    try testing.expect(try window.tryRequest());
-    try testing.expect(try window.tryRequest());
-    try testing.expect(try window.tryRequest());
-    try testing.expect(try window.tryRequest());
-    try testing.expect(try window.tryRequest());
+    try testing.expect(try window.tryRequest(io));
+    try testing.expect(try window.tryRequest(io));
+    try testing.expect(try window.tryRequest(io));
+    try testing.expect(try window.tryRequest(io));
+    try testing.expect(try window.tryRequest(io));
 
     // Should reject 6th request
-    try testing.expect(!try window.tryRequest());
+    try testing.expect(!try window.tryRequest(io));
 
-    try testing.expectEqual(@as(usize, 5), window.requestCount());
+    try testing.expectEqual(@as(usize, 5), window.requestCount(io));
 }
 // ANCHOR_END: test_sliding_window
 
 // ANCHOR: test_sliding_window_cleanup
 test "sliding window cleanup old requests" {
+    const io = std.testing.io;
     var window = SlidingWindow.init(testing.allocator, 100, 3);
     defer window.deinit();
 
-    try testing.expect(try window.tryRequest());
-    try testing.expect(try window.tryRequest());
-    try testing.expect(try window.tryRequest());
-    try testing.expect(!try window.tryRequest());
+    try testing.expect(try window.tryRequest(io));
+    try testing.expect(try window.tryRequest(io));
+    try testing.expect(try window.tryRequest(io));
+    try testing.expect(!try window.tryRequest(io));
 
     // Simulate time passing
-    std.Thread.sleep(150 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(150 * std.time.ns_per_ms), .awake);
 
     // Old requests should be cleaned up
-    try testing.expect(try window.tryRequest());
+    try testing.expect(try window.tryRequest(io));
 }
 // ANCHOR_END: test_sliding_window_cleanup
 
 // ANCHOR: test_rate_limiter
 test "rate limiter check limit" {
-    var limiter = RateLimiter.init(10, 1.0);
+    const io = std.testing.io;
+    var limiter = RateLimiter.init(io, 10, 1.0);
 
-    try testing.expect(try limiter.checkLimit(5));
-    try testing.expect(try limiter.checkLimit(5));
-    try testing.expect(!try limiter.checkLimit(1));
+    try testing.expect(try limiter.checkLimit(io, 5));
+    try testing.expect(try limiter.checkLimit(io, 5));
+    try testing.expect(!try limiter.checkLimit(io, 1));
 }
 // ANCHOR_END: test_rate_limiter
 
 // ANCHOR: test_rate_limiter_headers
 test "rate limiter headers" {
-    var limiter = RateLimiter.init(100, 10.0);
+    const io = std.testing.io;
+    var limiter = RateLimiter.init(io, 100, 10.0);
 
-    _ = try limiter.checkLimit(30);
+    _ = try limiter.checkLimit(io, 30);
 
-    const headers = limiter.getRateLimitHeaders();
+    const headers = try limiter.getRateLimitHeaders(io);
     try testing.expectEqual(@as(usize, 100), headers.limit);
     try testing.expect(headers.remaining <= 70);
-    try testing.expect(headers.reset > std.time.timestamp());
+    try testing.expect(headers.reset > @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))));
 }
 // ANCHOR_END: test_rate_limiter_headers
 
 // ANCHOR: test_rate_limiter_wait
 test "rate limiter wait for tokens" {
-    var limiter = RateLimiter.init(5, 0.1); // Very slow refill
+    const io = std.testing.io;
+    var limiter = RateLimiter.init(io, 5, 0.1); // Very slow refill
 
-    try testing.expect(try limiter.checkLimit(5));
+    try testing.expect(try limiter.checkLimit(io, 5));
 
     // Should timeout since refill rate is very slow
-    try testing.expect(!try limiter.waitForTokens(1, 50));
+    try testing.expect(!try limiter.waitForTokens(io, 1, 50));
 }
 // ANCHOR_END: test_rate_limiter_wait
 
@@ -11792,42 +11842,45 @@ test "concurrent limiter release" {
 
 // ANCHOR: test_throttler
 test "throttler basic" {
+    const io = std.testing.io;
     var throttler = Throttler.init(100);
 
-    try testing.expect(throttler.shouldExecute());
-    try testing.expect(!throttler.shouldExecute());
+    try testing.expect(throttler.shouldExecute(io));
+    try testing.expect(!throttler.shouldExecute(io));
 
-    std.Thread.sleep(150 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(150 * std.time.ns_per_ms), .awake);
 
-    try testing.expect(throttler.shouldExecute());
+    try testing.expect(throttler.shouldExecute(io));
 }
 // ANCHOR_END: test_throttler
 
 // ANCHOR: test_throttler_reset
 test "throttler reset" {
+    const io = std.testing.io;
     var throttler = Throttler.init(1000);
 
-    try testing.expect(throttler.shouldExecute());
-    try testing.expect(!throttler.shouldExecute());
+    try testing.expect(throttler.shouldExecute(io));
+    try testing.expect(!throttler.shouldExecute(io));
 
     throttler.reset();
 
-    try testing.expect(throttler.shouldExecute());
+    try testing.expect(throttler.shouldExecute(io));
 }
 // ANCHOR_END: test_throttler_reset
 
 // ANCHOR: test_throttler_time_since
 test "throttler time since last execution" {
+    const io = std.testing.io;
     var throttler = Throttler.init(100);
 
-    const initial_time = throttler.timeSinceLastExecution();
+    const initial_time = throttler.timeSinceLastExecution(io);
     try testing.expectEqual(@as(i64, 100), initial_time);
 
-    try testing.expect(throttler.shouldExecute());
+    try testing.expect(throttler.shouldExecute(io));
 
-    std.Thread.sleep(50 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(50 * std.time.ns_per_ms), .awake);
 
-    const elapsed = throttler.timeSinceLastExecution();
+    const elapsed = throttler.timeSinceLastExecution(io);
     try testing.expect(elapsed >= 50);
     try testing.expect(elapsed < 100);
 }
@@ -11930,7 +11983,7 @@ GraphQL queries are sent as JSON with the query and optional variables:
 
 ```zig
 pub fn buildRequest(self: *const GraphQLQuery) ![]const u8 {
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(self.allocator);
 
     try buffer.appendSlice(self.allocator, "{\"query\":\"");
@@ -12007,7 +12060,7 @@ pub const GraphQLResponse = struct {
 
     pub fn addError(self: *GraphQLResponse, error_msg: []const u8) !void {
         if (self.errors == null) {
-            self.errors = std.ArrayList(GraphQLError){};
+            self.errors = std.ArrayList(GraphQLError).empty;
         }
 
         var err = try GraphQLError.init(self.allocator, error_msg);
@@ -12099,7 +12152,7 @@ pub const Fragment = struct {
     }
 
     pub fn toGraphQL(self: *const Fragment) ![]const u8 {
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
         try buffer.appendSlice(self.allocator, "fragment ");
@@ -12468,7 +12521,7 @@ pub const GraphQLQuery = struct {
     }
 
     pub fn buildRequest(self: *const GraphQLQuery) ![]const u8 {
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
         try buffer.appendSlice(self.allocator, "{\"query\":\"");
@@ -12585,7 +12638,7 @@ pub const GraphQLResponse = struct {
 
     pub fn addError(self: *GraphQLResponse, error_msg: []const u8) !void {
         if (self.errors == null) {
-            self.errors = std.ArrayList(GraphQLError){};
+            self.errors = std.ArrayList(GraphQLError).empty;
         }
 
         var err = try GraphQLError.init(self.allocator, error_msg);
@@ -12694,7 +12747,7 @@ pub const Fragment = struct {
     }
 
     pub fn toGraphQL(self: *const Fragment) ![]const u8 {
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
         try buffer.appendSlice(self.allocator, "fragment ");
@@ -12761,7 +12814,7 @@ test "query with variables" {
     try testing.expectEqual(@as(u32, 1), query.variables.count());
 
     const id_value = query.variables.get("id");
-    try testing.expect(id_value != null);
+    try testing.expect((id_value) != null);
     try testing.expectEqualStrings("\"123\"", id_value.?);
 }
 // ANCHOR_END: test_query_with_variables
@@ -12868,7 +12921,7 @@ test "client with custom headers" {
     try testing.expectEqual(@as(u32, 2), client.headers.count());
 
     const auth = client.headers.get("Authorization");
-    try testing.expect(auth != null);
+    try testing.expect((auth) != null);
     try testing.expectEqualStrings("Bearer token123", auth.?);
 }
 // ANCHOR_END: test_client_headers
@@ -13019,7 +13072,7 @@ pub const OAuth2Token = struct {
     issued_at: i64,
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, access_token: []const u8, token_type: []const u8) !OAuth2Token {
+    pub fn init(io: std.Io, allocator: std.mem.Allocator, access_token: []const u8, token_type: []const u8) !OAuth2Token {
         const owned_access_token = try allocator.dupe(u8, access_token);
         errdefer allocator.free(owned_access_token);
 
@@ -13032,14 +13085,14 @@ pub const OAuth2Token = struct {
             .expires_in = null,
             .refresh_token = null,
             .scope = null,
-            .issued_at = std.time.timestamp(),
+            .issued_at = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))),
             .allocator = allocator,
         };
     }
 
-    pub fn isExpired(self: *const OAuth2Token) bool {
+    pub fn isExpired(self: *const OAuth2Token, io: std.Io) bool {
         if (self.expires_in) |expires| {
-            const now = std.time.timestamp();
+            const now = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
             const elapsed = now - self.issued_at;
             return elapsed >= expires;
         }
@@ -13047,7 +13100,7 @@ pub const OAuth2Token = struct {
     }
 
     pub fn getAuthorizationHeader(self: *const OAuth2Token) ![]const u8 {
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
         try buffer.appendSlice(self.allocator, self.token_type);
@@ -13108,11 +13161,11 @@ pub const PKCE = struct {
     code_challenge: []const u8,
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator) !PKCE {
+    pub fn init(io: std.Io, allocator: std.mem.Allocator) !PKCE {
         // Generate 128-character code verifier (64 random bytes, hex-encoded)
         // RFC 7636 requires 43-128 characters
         var verifier_buf: [64]u8 = undefined;
-        std.crypto.random.bytes(&verifier_buf);
+        try io.randomSecure(&verifier_buf);
 
         var encoded_buf: [128]u8 = undefined;
         const verifier = std.fmt.bytesToHex(verifier_buf, .lower);
@@ -13154,7 +13207,7 @@ pub const OAuth2Client = struct {
         state: ?[]const u8,
         pkce: ?*const PKCE,
     ) ![]const u8 {
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
         try buffer.appendSlice(self.allocator, self.config.authorization_endpoint);
@@ -13250,7 +13303,7 @@ defer allocator.free(auth_url);
 // Redirect user to auth_url...
 
 // Step 2: After callback, exchange code for token
-var token = try client.exchangeAuthorizationCode("received_code", &pkce);
+var token = try client.exchangeAuthorizationCode(io, "received_code", &pkce);
 defer token.deinit();
 
 // Step 3: Use token for API requests
@@ -13387,9 +13440,9 @@ if (self.client_secret) |cs| {
 Tokens track their expiration and can be validated:
 
 ```zig
-pub fn isExpired(self: *const OAuth2Token) bool {
+pub fn isExpired(self: *const OAuth2Token, io: std.Io) bool {
     if (self.expires_in) |expires| {
-        const now = std.time.timestamp();
+        const now = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
         const elapsed = now - self.issued_at;
         return elapsed >= expires;
     }
@@ -13441,7 +13494,7 @@ pub fn exchangeAuthorizationCode(
     defer client.deinit();
 
     // Build request body
-    var body = std.ArrayList(u8){};
+    var body = std.ArrayList(u8).empty;
     defer body.deinit(self.allocator);
 
     try body.appendSlice(self.allocator, "grant_type=authorization_code");
@@ -13504,7 +13557,7 @@ const url = try client.buildAuthorizationUrl(state, &pkce);
 **2. Generate cryptographically random state:**
 ```zig
 var state_buf: [32]u8 = undefined;
-std.crypto.random.bytes(&state_buf);
+try io.randomSecure(&state_buf);
 const state = std.fmt.bytesToHex(state_buf, .lower);
 ```
 
@@ -13579,7 +13632,7 @@ pub const OAuth2Token = struct {
     issued_at: i64,
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator, access_token: []const u8, token_type: []const u8) !OAuth2Token {
+    pub fn init(io: std.Io, allocator: std.mem.Allocator, access_token: []const u8, token_type: []const u8) !OAuth2Token {
         const owned_access_token = try allocator.dupe(u8, access_token);
         errdefer allocator.free(owned_access_token);
 
@@ -13592,7 +13645,7 @@ pub const OAuth2Token = struct {
             .expires_in = null,
             .refresh_token = null,
             .scope = null,
-            .issued_at = std.time.timestamp(),
+            .issued_at = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))),
             .allocator = allocator,
         };
     }
@@ -13624,9 +13677,9 @@ pub const OAuth2Token = struct {
         self.scope = try self.allocator.dupe(u8, scope);
     }
 
-    pub fn isExpired(self: *const OAuth2Token) bool {
+    pub fn isExpired(self: *const OAuth2Token, io: std.Io) bool {
         if (self.expires_in) |expires| {
-            const now = std.time.timestamp();
+            const now = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
             const elapsed = now - self.issued_at;
             return elapsed >= expires;
         }
@@ -13634,7 +13687,7 @@ pub const OAuth2Token = struct {
     }
 
     pub fn getAuthorizationHeader(self: *const OAuth2Token) ![]const u8 {
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
         try buffer.appendSlice(self.allocator, self.token_type);
@@ -13751,7 +13804,7 @@ pub const PKCE = struct {
     code_challenge: []const u8,
     allocator: std.mem.Allocator,
 
-    pub fn init(allocator: std.mem.Allocator) !PKCE {
+    pub fn init(io: std.Io, allocator: std.mem.Allocator) !PKCE {
         // Generate cryptographically random code_verifier per RFC 7636 Section 4.1
         //
         // RFC 7636 Requirements:
@@ -13760,12 +13813,13 @@ pub const PKCE = struct {
         // - Entropy: Minimum 256 bits recommended (we use 512 bits = 64 random bytes)
         //
         // Implementation:
-        // - std.crypto.random provides cryptographically secure random bytes
+        // - io.randomSecure always makes a syscall for fresh entropy; io.random
+        //   may fall back to a weaker source, which is not acceptable here
         // - Hex encoding (lowercase) produces characters [a-f][0-9], which are valid
         //   unreserved characters per RFC 3986 and satisfy RFC 7636 requirements
         // - 64 random bytes -> 128 hex characters = 512 bits of entropy (exceeds minimum)
         var verifier_buf: [64]u8 = undefined;
-        std.crypto.random.bytes(&verifier_buf);
+        try io.randomSecure(&verifier_buf);
 
         var encoded_buf: [128]u8 = undefined;
         const verifier = std.fmt.bytesToHex(verifier_buf, .lower);
@@ -13836,7 +13890,7 @@ pub const OAuth2Client = struct {
     }
 
     pub fn buildAuthorizationUrl(self: *const OAuth2Client, state: ?[]const u8, pkce: ?*const PKCE) ![]const u8 {
-        var buffer = std.ArrayList(u8){};
+        var buffer = std.ArrayList(u8).empty;
         defer buffer.deinit(self.allocator);
 
         try buffer.appendSlice(self.allocator, self.config.authorization_endpoint);
@@ -13871,31 +13925,28 @@ pub const OAuth2Client = struct {
         return buffer.toOwnedSlice(self.allocator);
     }
 
-    pub fn exchangeAuthorizationCode(
-        self: *const OAuth2Client,
-        code: []const u8,
-        pkce: ?*const PKCE,
-    ) !OAuth2Token {
+    pub fn exchangeAuthorizationCode(self: *const OAuth2Client, io: std.Io, code: []const u8,
+        pkce: ?*const PKCE,) !OAuth2Token {
         _ = code;
         _ = pkce;
         // Simulate token exchange
-        var token = try OAuth2Token.init(self.allocator, "access_token_12345", "Bearer");
+        var token = try OAuth2Token.init(io, self.allocator, "access_token_12345", "Bearer");
         token.expires_in = 3600;
         try token.setRefreshToken("refresh_token_67890");
         return token;
     }
 
-    pub fn refreshToken(self: *const OAuth2Client, refresh_token: []const u8) !OAuth2Token {
+    pub fn refreshToken(self: *const OAuth2Client, io: std.Io, refresh_token: []const u8) !OAuth2Token {
         _ = refresh_token;
         // Simulate token refresh
-        var token = try OAuth2Token.init(self.allocator, "new_access_token_99999", "Bearer");
+        var token = try OAuth2Token.init(io, self.allocator, "new_access_token_99999", "Bearer");
         token.expires_in = 3600;
         return token;
     }
 
-    pub fn getClientCredentialsToken(self: *const OAuth2Client) !OAuth2Token {
+    pub fn getClientCredentialsToken(self: *const OAuth2Client, io: std.Io) !OAuth2Token {
         // Simulate client credentials flow
-        var token = try OAuth2Token.init(self.allocator, "client_cred_token_11111", "Bearer");
+        var token = try OAuth2Token.init(io, self.allocator, "client_cred_token_11111", "Bearer");
         token.expires_in = 7200;
         return token;
     }
@@ -13932,7 +13983,8 @@ test "grant type to string" {
 
 // ANCHOR: test_token_basic
 test "create OAuth2 token" {
-    var token = try OAuth2Token.init(testing.allocator, "test_access_token", "Bearer");
+    const io = std.testing.io;
+    var token = try OAuth2Token.init(io, testing.allocator, "test_access_token", "Bearer");
     defer token.deinit();
 
     try testing.expectEqualStrings("test_access_token", token.access_token);
@@ -13944,7 +13996,8 @@ test "create OAuth2 token" {
 
 // ANCHOR: test_token_refresh_token
 test "token with refresh token" {
-    var token = try OAuth2Token.init(testing.allocator, "access", "Bearer");
+    const io = std.testing.io;
+    var token = try OAuth2Token.init(io, testing.allocator, "access", "Bearer");
     defer token.deinit();
 
     try token.setRefreshToken("refresh_12345");
@@ -13956,7 +14009,8 @@ test "token with refresh token" {
 
 // ANCHOR: test_token_scope
 test "token with scope" {
-    var token = try OAuth2Token.init(testing.allocator, "access", "Bearer");
+    const io = std.testing.io;
+    var token = try OAuth2Token.init(io, testing.allocator, "access", "Bearer");
     defer token.deinit();
 
     try token.setScope("read write");
@@ -13968,22 +14022,24 @@ test "token with scope" {
 
 // ANCHOR: test_token_expiration
 test "token expiration check" {
-    var token = try OAuth2Token.init(testing.allocator, "access", "Bearer");
+    const io = std.testing.io;
+    var token = try OAuth2Token.init(io, testing.allocator, "access", "Bearer");
     defer token.deinit();
 
     token.expires_in = 3600; // 1 hour
 
-    try testing.expect(!token.isExpired());
+    try testing.expect(!token.isExpired(io));
 
     // Simulate expired token
     token.issued_at -= 3601;
-    try testing.expect(token.isExpired());
+    try testing.expect(token.isExpired(io));
 }
 // ANCHOR_END: test_token_expiration
 
 // ANCHOR: test_token_authorization_header
 test "get authorization header" {
-    var token = try OAuth2Token.init(testing.allocator, "test_token_123", "Bearer");
+    const io = std.testing.io;
+    var token = try OAuth2Token.init(io, testing.allocator, "test_token_123", "Bearer");
     defer token.deinit();
 
     const header = try token.getAuthorizationHeader();
@@ -14045,7 +14101,8 @@ test "config with redirect URI" {
 
 // ANCHOR: test_pkce
 test "generate PKCE challenge" {
-    var pkce = try PKCE.init(testing.allocator);
+    const io = std.testing.io;
+    var pkce = try PKCE.init(io, testing.allocator);
     defer pkce.deinit();
 
     try testing.expect(pkce.code_verifier.len > 0);
@@ -14095,6 +14152,7 @@ test "build authorization URL with state" {
 
 // ANCHOR: test_build_auth_url_with_pkce
 test "build authorization URL with PKCE" {
+    const io = std.testing.io;
     var config = try OAuth2Config.init(
         testing.allocator,
         "my_client_id",
@@ -14103,7 +14161,7 @@ test "build authorization URL with PKCE" {
     );
     defer config.deinit();
 
-    var pkce = try PKCE.init(testing.allocator);
+    var pkce = try PKCE.init(io, testing.allocator);
     defer pkce.deinit();
 
     var client = OAuth2Client.init(testing.allocator, config);
@@ -14118,6 +14176,7 @@ test "build authorization URL with PKCE" {
 
 // ANCHOR: test_exchange_code
 test "exchange authorization code for token" {
+    const io = std.testing.io;
     var config = try OAuth2Config.init(
         testing.allocator,
         "my_client_id",
@@ -14128,7 +14187,7 @@ test "exchange authorization code for token" {
 
     var client = OAuth2Client.init(testing.allocator, config);
 
-    var token = try client.exchangeAuthorizationCode("auth_code_123", null);
+    var token = try client.exchangeAuthorizationCode(io, "auth_code_123", null);
     defer token.deinit();
 
     try testing.expect(token.access_token.len > 0);
@@ -14139,6 +14198,7 @@ test "exchange authorization code for token" {
 
 // ANCHOR: test_refresh_token
 test "refresh access token" {
+    const io = std.testing.io;
     var config = try OAuth2Config.init(
         testing.allocator,
         "my_client_id",
@@ -14149,7 +14209,7 @@ test "refresh access token" {
 
     var client = OAuth2Client.init(testing.allocator, config);
 
-    var token = try client.refreshToken("old_refresh_token");
+    var token = try client.refreshToken(io, "old_refresh_token");
     defer token.deinit();
 
     try testing.expect(token.access_token.len > 0);
@@ -14159,6 +14219,7 @@ test "refresh access token" {
 
 // ANCHOR: test_client_credentials
 test "get client credentials token" {
+    const io = std.testing.io;
     var config = try OAuth2Config.init(
         testing.allocator,
         "my_client_id",
@@ -14171,7 +14232,7 @@ test "get client credentials token" {
 
     var client = OAuth2Client.init(testing.allocator, config);
 
-    var token = try client.getClientCredentialsToken();
+    var token = try client.getClientCredentialsToken(io);
     defer token.deinit();
 
     try testing.expect(token.access_token.len > 0);
@@ -14309,11 +14370,11 @@ First, create a non-blocking server socket:
 ```zig
 const NonBlockingServer = struct {
     socket: posix.socket_t,
-    address: net.Address,
+    address: net.IpAddress,
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator, port: u16) !NonBlockingServer {
-        const addr = try net.Address.parseIp("127.0.0.1", port);
+        const addr = try std.Io.net.IpAddress.parse("127.0.0.1", port);
 
         const socket = try posix.socket(
             addr.any.family,
@@ -14360,7 +14421,7 @@ const PollServer = struct {
 
     pub fn init(allocator: std.mem.Allocator, port: u16) !PollServer {
         const server = try NonBlockingServer.init(allocator, port);
-        var poll_fds = std.ArrayList(posix.pollfd){};
+        var poll_fds = std.ArrayList(posix.pollfd).empty;
 
         try poll_fds.append(allocator, .{
             .fd = server.socket,
@@ -14370,7 +14431,7 @@ const PollServer = struct {
 
         return .{
             .server = server,
-            .clients = std.ArrayList(posix.socket_t){},
+            .clients = std.ArrayList(posix.socket_t).empty,
             .poll_fds = poll_fds,
             .allocator = allocator,
         };
@@ -14386,8 +14447,8 @@ const PollServer = struct {
     }
 
     pub fn acceptClient(self: *PollServer) !void {
-        var client_addr: net.Address = undefined;
-        var addr_len: posix.socklen_t = @sizeOf(net.Address);
+        var client_addr: net.IpAddress = undefined;
+        var addr_len: posix.socklen_t = @sizeOf(net.IpAddress);
 
         const client = posix.accept(
             self.server.socket,
@@ -14396,7 +14457,6 @@ const PollServer = struct {
             posix.SOCK.NONBLOCK,
         ) catch |err| switch (err) {
             error.WouldBlock => return,
-            else => return err,
         };
 
         try self.clients.append(self.allocator, client);
@@ -14540,7 +14600,7 @@ const StatefulServer = struct {
 
     pub fn init(allocator: std.mem.Allocator, port: u16) !StatefulServer {
         const server = try NonBlockingServer.init(allocator, port);
-        var poll_fds = std.ArrayList(posix.pollfd){};
+        var poll_fds = std.ArrayList(posix.pollfd).empty;
 
         try poll_fds.append(allocator, .{
             .fd = server.socket,
@@ -14550,7 +14610,7 @@ const StatefulServer = struct {
 
         return .{
             .server = server,
-            .connections = std.ArrayList(Connection){},
+            .connections = std.ArrayList(Connection).empty,
             .poll_fds = poll_fds,
             .allocator = allocator,
         };
@@ -14566,8 +14626,8 @@ const StatefulServer = struct {
     }
 
     pub fn acceptConnection(self: *StatefulServer) !void {
-        var client_addr: net.Address = undefined;
-        var addr_len: posix.socklen_t = @sizeOf(net.Address);
+        var client_addr: net.IpAddress = undefined;
+        var addr_len: posix.socklen_t = @sizeOf(net.IpAddress);
 
         const client = posix.accept(
             self.server.socket,
@@ -14576,7 +14636,6 @@ const StatefulServer = struct {
             posix.SOCK.NONBLOCK,
         ) catch |err| switch (err) {
             error.WouldBlock => return,
-            else => return err,
         };
 
         try self.connections.append(self.allocator, Connection.init(client));
@@ -14682,20 +14741,20 @@ Use an allocator for dynamic arrays of connections. The testing allocator helps 
 
 ```zig
 // Recipe 20.1: Implementing non-blocking TCP servers with epoll/kqueue
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 const std = @import("std");
 const testing = std.testing;
 const posix = std.posix;
-const net = std.net;
+const net = std.Io.net;
 
 // ANCHOR: basic_nonblocking
 const NonBlockingServer = struct {
     socket: posix.socket_t,
-    address: net.Address,
+    address: net.IpAddress,
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator, port: u16) !NonBlockingServer {
-        const addr = try net.Address.parseIp("127.0.0.1", port);
+        const addr = try std.Io.net.IpAddress.parse("127.0.0.1", port);
 
         const socket = try posix.socket(
             addr.any.family,
@@ -14736,7 +14795,7 @@ const PollServer = struct {
 
     pub fn init(allocator: std.mem.Allocator, port: u16) !PollServer {
         const server = try NonBlockingServer.init(allocator, port);
-        var poll_fds = std.ArrayList(posix.pollfd){};
+        var poll_fds = std.ArrayList(posix.pollfd).empty;
 
         try poll_fds.append(allocator, .{
             .fd = server.socket,
@@ -14746,7 +14805,7 @@ const PollServer = struct {
 
         return .{
             .server = server,
-            .clients = std.ArrayList(posix.socket_t){},
+            .clients = std.ArrayList(posix.socket_t).empty,
             .poll_fds = poll_fds,
             .allocator = allocator,
         };
@@ -14762,8 +14821,8 @@ const PollServer = struct {
     }
 
     pub fn acceptClient(self: *PollServer) !void {
-        var client_addr: net.Address = undefined;
-        var addr_len: posix.socklen_t = @sizeOf(net.Address);
+        var client_addr: net.IpAddress = undefined;
+        var addr_len: posix.socklen_t = @sizeOf(net.IpAddress);
 
         const client = posix.accept(
             self.server.socket,
@@ -14772,7 +14831,6 @@ const PollServer = struct {
             posix.SOCK.NONBLOCK,
         ) catch |err| switch (err) {
             error.WouldBlock => return,
-            else => return err,
         };
 
         try self.clients.append(self.allocator, client);
@@ -14910,7 +14968,7 @@ const StatefulServer = struct {
 
     pub fn init(allocator: std.mem.Allocator, port: u16) !StatefulServer {
         const server = try NonBlockingServer.init(allocator, port);
-        var poll_fds = std.ArrayList(posix.pollfd){};
+        var poll_fds = std.ArrayList(posix.pollfd).empty;
 
         try poll_fds.append(allocator, .{
             .fd = server.socket,
@@ -14920,7 +14978,7 @@ const StatefulServer = struct {
 
         return .{
             .server = server,
-            .connections = std.ArrayList(Connection){},
+            .connections = std.ArrayList(Connection).empty,
             .poll_fds = poll_fds,
             .allocator = allocator,
         };
@@ -14936,8 +14994,8 @@ const StatefulServer = struct {
     }
 
     pub fn acceptConnection(self: *StatefulServer) !void {
-        var client_addr: net.Address = undefined;
-        var addr_len: posix.socklen_t = @sizeOf(net.Address);
+        var client_addr: net.IpAddress = undefined;
+        var addr_len: posix.socklen_t = @sizeOf(net.IpAddress);
 
         const client = posix.accept(
             self.server.socket,
@@ -14946,7 +15004,6 @@ const StatefulServer = struct {
             posix.SOCK.NONBLOCK,
         ) catch |err| switch (err) {
             error.WouldBlock => return,
-            else => return err,
         };
 
         try self.connections.append(self.allocator, Connection.init(client));
@@ -15071,7 +15128,7 @@ Create a cross-platform sendfile wrapper:
 
 ```zig
 /// Transfer a file to a socket without copying through user space
-pub fn sendFile(socket: posix.socket_t, file: fs.File, offset: usize, count: usize) !usize {
+pub fn sendFile(io: std.Io, socket: posix.socket_t, file: std.Io.File, offset: usize, count: usize) !usize {
     if (@import("builtin").os.tag == .linux) {
         var off: i64 = @intCast(offset);
         return try posix.sendfile(socket, file.handle, &off, count);
@@ -15081,19 +15138,18 @@ pub fn sendFile(socket: posix.socket_t, file: fs.File, offset: usize, count: usi
         return @intCast(sent);
     } else {
         // Fallback for platforms without sendfile
-        return sendFileFallback(socket, file, offset, count);
+        return sendFileFallback(io, socket, file, offset, count);
     }
 }
 
-fn sendFileFallback(socket: posix.socket_t, file: fs.File, offset: usize, count: usize) !usize {
-    try file.seekTo(offset);
+fn sendFileFallback(io: std.Io, socket: posix.socket_t, file: std.Io.File, offset: usize, count: usize) !usize {
     var buffer: [8192]u8 = undefined;
     var total_sent: usize = 0;
     var remaining = count;
 
     while (remaining > 0) {
         const to_read = @min(remaining, buffer.len);
-        const bytes_read = try file.read(buffer[0..to_read]);
+        const bytes_read = try file.readPositionalAll(io, buffer[0..to_read], offset);
         if (bytes_read == 0) break;
 
         var sent: usize = 0;
@@ -15117,11 +15173,11 @@ Build a simple static file server using sendfile:
 ```zig
 const StaticFileServer = struct {
     socket: posix.socket_t,
-    address: net.Address,
-    root_dir: fs.Dir,
+    address: net.IpAddress,
+    root_dir: std.Io.Dir,
 
-    pub fn init(port: u16, root_path: []const u8) !StaticFileServer {
-        const addr = try net.Address.parseIp("127.0.0.1", port);
+    pub fn init(io: std.Io, port: u16, root_path: []const u8) !StaticFileServer {
+        const addr = try std.Io.net.IpAddress.parse("127.0.0.1", port);
 
         const socket = try posix.socket(
             addr.any.family,
@@ -15140,7 +15196,7 @@ const StaticFileServer = struct {
         try posix.bind(socket, &addr.any, addr.getOsSockLen());
         try posix.listen(socket, 128);
 
-        const root_dir = try fs.cwd().openDir(root_path, .{});
+        const root_dir = try std.Io.Dir.cwd().openDir(io, root_path, .{});
 
         return .{
             .socket = socket,
@@ -15149,16 +15205,16 @@ const StaticFileServer = struct {
         };
     }
 
-    pub fn deinit(self: *StaticFileServer) void {
-        self.root_dir.close();
+    pub fn deinit(self: *StaticFileServer, io: std.Io) void {
+        self.root_dir.close(io);
         posix.close(self.socket);
     }
 
-    pub fn serveFile(self: *StaticFileServer, client: posix.socket_t, path: []const u8) !void {
-        const file = try self.root_dir.openFile(path, .{});
-        defer file.close();
+    pub fn serveFile(self: *StaticFileServer, io: std.Io, client: posix.socket_t, path: []const u8) !void {
+        const file = try self.root_dir.openFile(io, path, .{});
+        defer file.close(io);
 
-        const stat = try file.stat();
+        const stat = try file.stat(io);
         const size = stat.size;
 
         const header = try std.fmt.allocPrint(
@@ -15232,13 +15288,13 @@ Transfer large files in chunks with progress tracking:
 
 ```zig
 const ChunkedFileTransfer = struct {
-    file: fs.File,
+    file: std.Io.File,
     chunk_size: usize,
     total_size: usize,
     bytes_sent: usize,
 
-    pub fn init(file: fs.File, chunk_size: usize) !ChunkedFileTransfer {
-        const stat = try file.stat();
+    pub fn init(io: std.Io, file: std.Io.File, chunk_size: usize) !ChunkedFileTransfer {
+        const stat = try file.stat(io);
         return .{
             .file = file,
             .chunk_size = chunk_size,
@@ -15274,8 +15330,8 @@ Use mmap as an alternative to sendfile:
 
 ```zig
 /// Memory-map a file and send it (alternative to sendfile)
-pub fn mmapSend(socket: posix.socket_t, file: fs.File) !void {
-    const stat = try file.stat();
+pub fn mmapSend(io: std.Io, socket: posix.socket_t, file: std.Io.File) !void {
+    const stat = try file.stat(io);
     const size = stat.size;
 
     if (size == 0) return;
@@ -15381,16 +15437,16 @@ For very large files, transfer in chunks to:
 
 ```zig
 // Recipe 20.2: Zero-copy networking using sendfile
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 const std = @import("std");
 const testing = std.testing;
 const posix = std.posix;
 const fs = std.fs;
-const net = std.net;
+const net = std.Io.net;
 
 // ANCHOR: sendfile_basic
 /// Transfer a file to a socket without copying through user space
-pub fn sendFile(socket: posix.socket_t, file: fs.File, offset: usize, count: usize) !usize {
+pub fn sendFile(io: std.Io, socket: posix.socket_t, file: std.Io.File, offset: usize, count: usize) !usize {
     if (@import("builtin").os.tag == .linux) {
         var off: i64 = @intCast(offset);
         return try posix.sendfile(socket, file.handle, &off, count);
@@ -15400,19 +15456,18 @@ pub fn sendFile(socket: posix.socket_t, file: fs.File, offset: usize, count: usi
         return @intCast(sent);
     } else {
         // Fallback for platforms without sendfile
-        return sendFileFallback(socket, file, offset, count);
+        return sendFileFallback(io, socket, file, offset, count);
     }
 }
 
-fn sendFileFallback(socket: posix.socket_t, file: fs.File, offset: usize, count: usize) !usize {
-    try file.seekTo(offset);
+fn sendFileFallback(io: std.Io, socket: posix.socket_t, file: std.Io.File, offset: usize, count: usize) !usize {
     var buffer: [8192]u8 = undefined;
     var total_sent: usize = 0;
     var remaining = count;
 
     while (remaining > 0) {
         const to_read = @min(remaining, buffer.len);
-        const bytes_read = try file.read(buffer[0..to_read]);
+        const bytes_read = try file.readPositionalAll(io, buffer[0..to_read], offset);
         if (bytes_read == 0) break;
 
         var sent: usize = 0;
@@ -15432,11 +15487,11 @@ fn sendFileFallback(socket: posix.socket_t, file: fs.File, offset: usize, count:
 // ANCHOR: static_file_server
 const StaticFileServer = struct {
     socket: posix.socket_t,
-    address: net.Address,
-    root_dir: fs.Dir,
+    address: net.IpAddress,
+    root_dir: std.Io.Dir,
 
-    pub fn init(port: u16, root_path: []const u8) !StaticFileServer {
-        const addr = try net.Address.parseIp("127.0.0.1", port);
+    pub fn init(io: std.Io, port: u16, root_path: []const u8) !StaticFileServer {
+        const addr = try std.Io.net.IpAddress.parse("127.0.0.1", port);
 
         const socket = try posix.socket(
             addr.any.family,
@@ -15455,7 +15510,7 @@ const StaticFileServer = struct {
         try posix.bind(socket, &addr.any, addr.getOsSockLen());
         try posix.listen(socket, 128);
 
-        const root_dir = try fs.cwd().openDir(root_path, .{});
+        const root_dir = try std.Io.Dir.cwd().openDir(io, root_path, .{});
 
         return .{
             .socket = socket,
@@ -15464,16 +15519,16 @@ const StaticFileServer = struct {
         };
     }
 
-    pub fn deinit(self: *StaticFileServer) void {
-        self.root_dir.close();
+    pub fn deinit(self: *StaticFileServer, io: std.Io) void {
+        self.root_dir.close(io);
         posix.close(self.socket);
     }
 
-    pub fn serveFile(self: *StaticFileServer, client: posix.socket_t, path: []const u8) !void {
-        const file = try self.root_dir.openFile(path, .{});
-        defer file.close();
+    pub fn serveFile(self: *StaticFileServer, io: std.Io, client: posix.socket_t, path: []const u8) !void {
+        const file = try self.root_dir.openFile(io, path, .{});
+        defer file.close(io);
 
-        const stat = try file.stat();
+        const stat = try file.stat(io);
         const size = stat.size;
 
         const header = try std.fmt.allocPrint(
@@ -15484,7 +15539,7 @@ const StaticFileServer = struct {
         defer std.heap.page_allocator.free(header);
 
         _ = try posix.send(client, header, 0);
-        _ = try sendFile(client, file, 0, size);
+        _ = try sendFile(io, client, file, 0, size);
     }
 };
 // ANCHOR_END: static_file_server
@@ -15539,13 +15594,13 @@ pub fn spliceSockets(in_fd: posix.socket_t, out_fd: posix.socket_t, len: usize) 
 
 // ANCHOR: chunked_transfer
 const ChunkedFileTransfer = struct {
-    file: fs.File,
+    file: std.Io.File,
     chunk_size: usize,
     total_size: usize,
     bytes_sent: usize,
 
-    pub fn init(file: fs.File, chunk_size: usize) !ChunkedFileTransfer {
-        const stat = try file.stat();
+    pub fn init(io: std.Io, file: std.Io.File, chunk_size: usize) !ChunkedFileTransfer {
+        const stat = try file.stat(io);
         return .{
             .file = file,
             .chunk_size = chunk_size,
@@ -15554,7 +15609,7 @@ const ChunkedFileTransfer = struct {
         };
     }
 
-    pub fn sendChunk(self: *ChunkedFileTransfer, socket: posix.socket_t) !bool {
+    pub fn sendChunk(self: *ChunkedFileTransfer, io: std.Io, socket: posix.socket_t) !bool {
         if (self.bytes_sent >= self.total_size) {
             return false;
         }
@@ -15562,7 +15617,7 @@ const ChunkedFileTransfer = struct {
         const remaining = self.total_size - self.bytes_sent;
         const chunk = @min(remaining, self.chunk_size);
 
-        const sent = try sendFile(socket, self.file, self.bytes_sent, chunk);
+        const sent = try sendFile(io, socket, self.file, self.bytes_sent, chunk);
         self.bytes_sent += sent;
 
         return self.bytes_sent < self.total_size;
@@ -15577,8 +15632,8 @@ const ChunkedFileTransfer = struct {
 
 // ANCHOR: mmap_send
 /// Memory-map a file and send it (alternative to sendfile)
-pub fn mmapSend(socket: posix.socket_t, file: fs.File) !void {
-    const stat = try file.stat();
+pub fn mmapSend(io: std.Io, socket: posix.socket_t, file: std.Io.File) !void {
+    const stat = try file.stat(io);
     const size = stat.size;
 
     if (size == 0) return;
@@ -15603,53 +15658,53 @@ pub fn mmapSend(socket: posix.socket_t, file: fs.File) !void {
 
 // Tests
 test "sendfile with temp file" {
+    const io = std.testing.io;
     if (@import("builtin").os.tag == .wasi) return error.SkipZigTest;
 
     var test_dir = testing.tmpDir(.{});
     defer test_dir.cleanup();
 
-    const file = try test_dir.dir.createFile("test.txt", .{ .read = true });
-    defer file.close();
+    const file = try test_dir.dir.createFile(io, "test.txt", .{ .read = true });
+    defer file.close(io);
 
     const test_data = "Hello, sendfile!";
-    try file.writeAll(test_data);
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, test_data);
 
-    const stat = try file.stat();
+    const stat = try file.stat(io);
     try testing.expectEqual(test_data.len, stat.size);
 }
 
 test "chunked file transfer initialization" {
+    const io = std.testing.io;
     if (@import("builtin").os.tag == .wasi) return error.SkipZigTest;
 
     var test_dir = testing.tmpDir(.{});
     defer test_dir.cleanup();
 
-    const file = try test_dir.dir.createFile("chunk.txt", .{ .read = true });
-    defer file.close();
+    const file = try test_dir.dir.createFile(io, "chunk.txt", .{ .read = true });
+    defer file.close(io);
 
-    try file.writeAll("Test data for chunking");
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, "Test data for chunking");
 
-    var transfer = try ChunkedFileTransfer.init(file, 1024);
+    var transfer = try ChunkedFileTransfer.init(io, file, 1024);
     try testing.expectEqual(@as(usize, 0), transfer.bytes_sent);
     try testing.expect(transfer.total_size > 0);
     try testing.expectEqual(@as(f32, 0.0), transfer.progress());
 }
 
 test "chunked transfer progress calculation" {
+    const io = std.testing.io;
     if (@import("builtin").os.tag == .wasi) return error.SkipZigTest;
 
     var test_dir = testing.tmpDir(.{});
     defer test_dir.cleanup();
 
-    const file = try test_dir.dir.createFile("progress.txt", .{ .read = true });
-    defer file.close();
+    const file = try test_dir.dir.createFile(io, "progress.txt", .{ .read = true });
+    defer file.close(io);
 
-    try file.writeAll("1234567890");
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, "1234567890");
 
-    var transfer = try ChunkedFileTransfer.init(file, 1024);
+    var transfer = try ChunkedFileTransfer.init(io, file, 1024);
     try testing.expectEqual(@as(f32, 0.0), transfer.progress());
 
     transfer.bytes_sent = 5;
@@ -15660,44 +15715,46 @@ test "chunked transfer progress calculation" {
 }
 
 test "sendfile fallback" {
+    const io = std.testing.io;
     if (@import("builtin").os.tag == .wasi) return error.SkipZigTest;
 
     var test_dir = testing.tmpDir(.{});
     defer test_dir.cleanup();
 
-    const file = try test_dir.dir.createFile("fallback.txt", .{ .read = true });
-    defer file.close();
+    const file = try test_dir.dir.createFile(io, "fallback.txt", .{ .read = true });
+    defer file.close(io);
 
     const test_data = "Fallback test data";
-    try file.writeAll(test_data);
-    try file.seekTo(0);
+    try file.writeStreamingAll(io, test_data);
 
-    try testing.expectEqual(test_data.len, (try file.stat()).size);
+    try testing.expectEqual(test_data.len, (try file.stat(io)).size);
 }
 
 test "empty file handling" {
+    const io = std.testing.io;
     if (@import("builtin").os.tag == .wasi) return error.SkipZigTest;
 
     var test_dir = testing.tmpDir(.{});
     defer test_dir.cleanup();
 
-    const file = try test_dir.dir.createFile("empty.txt", .{});
-    defer file.close();
+    const file = try test_dir.dir.createFile(io, "empty.txt", .{});
+    defer file.close(io);
 
-    const stat = try file.stat();
+    const stat = try file.stat(io);
     try testing.expectEqual(@as(u64, 0), stat.size);
 }
 
 test "chunked transfer empty file" {
+    const io = std.testing.io;
     if (@import("builtin").os.tag == .wasi) return error.SkipZigTest;
 
     var test_dir = testing.tmpDir(.{});
     defer test_dir.cleanup();
 
-    const file = try test_dir.dir.createFile("empty.txt", .{ .read = true });
-    defer file.close();
+    const file = try test_dir.dir.createFile(io, "empty.txt", .{ .read = true });
+    defer file.close(io);
 
-    var transfer = try ChunkedFileTransfer.init(file, 1024);
+    var transfer = try ChunkedFileTransfer.init(io, file, 1024);
     try testing.expectEqual(@as(usize, 0), transfer.total_size);
     try testing.expectEqual(@as(f32, 1.0), transfer.progress());
 }
@@ -16127,7 +16184,7 @@ This keeps the struct layout simple while providing convenient access.
 
 ```zig
 // Recipe 20.3: Parsing raw packets with packed structs
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 const std = @import("std");
 const testing = std.testing;
 const mem = std.mem;
@@ -16730,7 +16787,7 @@ const ResponseBuilder = struct {
         // Blank line + body
         total_size += 2 + self.body.len;
 
-        var result = std.ArrayList(u8){};
+        var result = std.ArrayList(u8).empty;
         errdefer result.deinit(self.allocator);
 
         // Reserve capacity
@@ -16926,7 +16983,7 @@ For most applications, HTTP/1.1 is sufficient and simpler to implement.
 
 ```zig
 // Recipe 20.4: Implementing a basic HTTP/1.1 parser from scratch
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 const std = @import("std");
 const testing = std.testing;
 const mem = std.mem;
@@ -17103,7 +17160,7 @@ const ResponseBuilder = struct {
         // Blank line + body
         total_size += 2 + self.body.len;
 
-        var result = std.ArrayList(u8){};
+        var result = std.ArrayList(u8).empty;
         errdefer result.deinit(self.allocator);
 
         // Reserve capacity
@@ -17315,10 +17372,10 @@ Use UDP multicast to send a single packet that's delivered to all members of a m
 ```zig
 const MulticastSender = struct {
     socket: posix.socket_t,
-    multicast_addr: net.Address,
+    multicast_addr: net.IpAddress,
 
     pub fn init(group: []const u8, port: u16) !MulticastSender {
-        const addr = try net.Address.parseIp(group, port);
+        const addr = try std.Io.net.IpAddress.parse(group, port);
 
         const socket = try posix.socket(
             posix.AF.INET,
@@ -17354,10 +17411,10 @@ const MulticastSender = struct {
 ```zig
 const MulticastReceiver = struct {
     socket: posix.socket_t,
-    local_addr: net.Address,
+    local_addr: net.IpAddress,
 
     pub fn init(port: u16) !MulticastReceiver {
-        const any_addr = try net.Address.parseIp("0.0.0.0", port);
+        const any_addr = try std.Io.net.IpAddress.parse("0.0.0.0", port);
 
         const socket = try posix.socket(
             posix.AF.INET,
@@ -17487,7 +17544,7 @@ try sender.send("SERVICE:MyApp:192.168.1.100:8080");
 while (true) {
     const quote = getLatestQuote();
     try sender.send(quote);
-    std.time.sleep(1 * std.time.ns_per_s);
+    try io.sleep(.fromNanoseconds(1 * std.time.ns_per_s), .awake);
 }
 ```
 
@@ -17529,20 +17586,20 @@ For reliability, add:
 
 ```zig
 // Recipe 20.5: Using UDP multicast
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 const std = @import("std");
 const testing = std.testing;
 const posix = std.posix;
-const net = std.net;
+const net = std.Io.net;
 const mem = std.mem;
 
 // ANCHOR: multicast_sender
 const MulticastSender = struct {
     socket: posix.socket_t,
-    multicast_addr: net.Address,
+    multicast_addr: net.IpAddress,
 
     pub fn init(group: []const u8, port: u16) !MulticastSender {
-        const addr = try net.Address.parseIp(group, port);
+        const addr = try std.Io.net.IpAddress.parse(group, port);
 
         const socket = try posix.socket(
             posix.AF.INET,
@@ -17576,10 +17633,10 @@ const MulticastSender = struct {
 // ANCHOR: multicast_receiver
 const MulticastReceiver = struct {
     socket: posix.socket_t,
-    local_addr: net.Address,
+    local_addr: net.IpAddress,
 
     pub fn init(port: u16) !MulticastReceiver {
-        const any_addr = try net.Address.parseIp("0.0.0.0", port);
+        const any_addr = try std.Io.net.IpAddress.parse("0.0.0.0", port);
 
         const socket = try posix.socket(
             posix.AF.INET,
@@ -17942,7 +17999,7 @@ Raw sockets are powerful and dangerous:
 
 ```zig
 // Recipe 20.6: Creating raw sockets (reading raw ethernet frames)
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 const std = @import("std");
 const testing = std.testing;
 const posix = std.posix;

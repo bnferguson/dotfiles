@@ -125,3 +125,15 @@ test "compile-time assertions pass" {
         assert(blocks_per_page == 64);
     }
 }
+
+// Zig only analyses a function something references, so an untested method can
+// keep calling a deleted stdlib API for releases without anyone noticing.
+// `refAllDecls` is shallow and `@typeInfo().decls` lists only public
+// declarations, so name the file-scope types too.
+test "every declaration compiles" {
+    std.testing.refAllDecls(@This());
+    _ = Status;
+    _ = Account;
+    _ = Transaction;
+    _ = Queue;
+}

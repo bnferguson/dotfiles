@@ -1,4 +1,4 @@
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 // For other versions, see references/version-differences.md
 
 const std = @import("std");
@@ -14,10 +14,9 @@ const c = @cImport({
     @cInclude("stdlib.h");
     @cInclude("string.h");
 
-    // For custom C libraries, specify include paths in build.zig:
-    // exe.addIncludePath(.{ .path = "path/to/headers" });
-    // exe.linkLibC();
-    // exe.linkSystemLibrary("your_library");
+    // For custom C libraries, configure the module in build.zig:
+    // exe.root_module.addIncludePath(b.path("path/to/headers"));
+    // exe.root_module.linkSystemLibrary("your_library", .{});
 });
 
 // =============================================================================
@@ -161,7 +160,7 @@ pub fn cArrayToSlice(array: [*]const c_int, length: usize) []const c_int {
 // =============================================================================
 
 /// C-compatible function pointer type
-pub const CCallback = *const fn (value: c_int) callconv(.C) void;
+pub const CCallback = *const fn (value: c_int) callconv(.c) void;
 
 /// Example callback function
 export fn example_callback(value: c_int) void {
@@ -200,22 +199,22 @@ pub fn statusToError(status: c_int) CError!void {
 
 test "C types compatibility" {
     const point = CPoint.init(3, 4);
-    try testing.expectEqual(@as(c_int, 3), point.x);
-    try testing.expectEqual(@as(c_int, 4), point.y);
+    try testing.expectEqual(3, point.x);
+    try testing.expectEqual(4, point.y);
 
     const distance = point.distanceFrom(CPoint.init(0, 0));
-    try testing.expectEqual(@as(f64, 5.0), distance);
+    try testing.expectEqual(5.0, distance);
 }
 
 test "exported functions" {
-    try testing.expectEqual(@as(c_int, 7), zig_add(3, 4));
-    try testing.expectEqual(@as(c_int, 12), zig_multiply(3, 4));
+    try testing.expectEqual(7, zig_add(3, 4));
+    try testing.expectEqual(12, zig_multiply(3, 4));
 }
 
 test "C string handling" {
     const c_str: [*:0]const u8 = "Hello";
     const len = zig_string_length(c_str);
-    try testing.expectEqual(@as(c_int, 5), len);
+    try testing.expectEqual(5, len);
 
     const slice = cStringToSlice(c_str);
     try testing.expectEqualStrings("Hello", slice);
@@ -224,15 +223,15 @@ test "C string handling" {
 test "C array operations" {
     const array = [_]c_int{ 1, 2, 3, 4, 5 };
     const sum = zig_sum_array(&array, 5);
-    try testing.expectEqual(@as(c_int, 15), sum);
+    try testing.expectEqual(15, sum);
 }
 
 test "status codes" {
     const status1 = zig_process_value(50);
-    try testing.expectEqual(@as(c_int, 0), status1);
+    try testing.expectEqual(0, status1);
 
     const status2 = zig_process_value(-10);
-    try testing.expectEqual(@as(c_int, -1), status2);
+    try testing.expectEqual(-1, status2);
 
     try statusToError(0);
     try testing.expectError(CError.CInvalidInput, statusToError(-1));
@@ -261,37 +260,39 @@ test "C malloc/free" {
     // Use the memory
     const bytes: [*]u8 = @ptrCast(ptr);
     bytes[0] = 42;
-    try testing.expectEqual(@as(u8, 42), bytes[0]);
+    try testing.expectEqual(42, bytes[0]);
 }
 
 // =============================================================================
 // Build Configuration Example
 // =============================================================================
 
-// In your build.zig, add:
+// In your build.zig, add. Since 0.16 the linking options live on the module,
+// not on the artifact:
 //
 // const exe = b.addExecutable(.{
 //     .name = "my_c_interop",
-//     .root_source_file = .{ .path = "src/main.zig" },
-//     .target = target,
-//     .optimize = optimize,
+//     .root_module = b.createModule(.{
+//         .root_source_file = b.path("src/main.zig"),
+//         .target = target,
+//         .optimize = optimize,
+//         // Link with the C standard library
+//         .link_libc = true,
+//     }),
 // });
 //
-// // Link with C standard library
-// exe.linkLibC();
-//
 // // Add C include directories
-// exe.addIncludePath(.{ .path = "path/to/c/headers" });
+// exe.root_module.addIncludePath(b.path("path/to/c/headers"));
 //
 // // Link with C libraries
-// exe.linkSystemLibrary("your_c_library");
+// exe.root_module.linkSystemLibrary("your_c_library", .{});
 //
 // // For static libraries
-// exe.addObjectFile(.{ .path = "path/to/library.a" });
+// exe.root_module.addObjectFile(b.path("path/to/library.a"));
 //
 // // For dynamic libraries
-// exe.addLibraryPath(.{ .path = "path/to/libs" });
-// exe.linkSystemLibrary("your_shared_lib");
+// exe.root_module.addLibraryPath(b.path("path/to/libs"));
+// exe.root_module.linkSystemLibrary("your_shared_lib", .{});
 
 // =============================================================================
 // Usage Examples
@@ -305,3 +306,15 @@ test "C malloc/free" {
 //
 // To create a shared library callable from C:
 // zig build-lib -dynamic library.zig
+
+test "every declaration compiles" {
+    // `export fn` bodies are analysed because they are exported, but the plain
+    // `pub fn` wrappers are only analysed if something references them. These
+    // are the ones that bind to C, so they are exactly what breaks when a libc
+    // signature or a Zig C-interop rule changes.
+    testing.refAllDecls(@This());
+    _ = &copyString;
+    _ = &printMessage;
+    _ = &sliceToCArray;
+    _ = &cArrayToSlice;
+}

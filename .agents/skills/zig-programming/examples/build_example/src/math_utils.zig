@@ -59,10 +59,10 @@ pub fn gcd(a: u32, b: u32) u32 {
 
 // Tests
 test "basic arithmetic" {
-    try testing.expectEqual(@as(i32, 5), add(2, 3));
-    try testing.expectEqual(@as(i32, -1), subtract(2, 3));
-    try testing.expectEqual(@as(i32, 6), multiply(2, 3));
-    try testing.expectEqual(@as(i32, 2), try divide(6, 3));
+    try testing.expectEqual(5, add(2, 3));
+    try testing.expectEqual(-1, subtract(2, 3));
+    try testing.expectEqual(6, multiply(2, 3));
+    try testing.expectEqual(2, try divide(6, 3));
 }
 
 test "divide by zero" {
@@ -70,12 +70,12 @@ test "divide by zero" {
 }
 
 test "factorial" {
-    try testing.expectEqual(@as(u64, 1), factorial(0));
-    try testing.expectEqual(@as(u64, 1), factorial(1));
-    try testing.expectEqual(@as(u64, 2), factorial(2));
-    try testing.expectEqual(@as(u64, 6), factorial(3));
-    try testing.expectEqual(@as(u64, 24), factorial(4));
-    try testing.expectEqual(@as(u64, 120), factorial(5));
+    try testing.expectEqual(1, factorial(0));
+    try testing.expectEqual(1, factorial(1));
+    try testing.expectEqual(2, factorial(2));
+    try testing.expectEqual(6, factorial(3));
+    try testing.expectEqual(24, factorial(4));
+    try testing.expectEqual(120, factorial(5));
 }
 
 test "prime numbers" {
@@ -93,8 +93,8 @@ test "prime numbers" {
 }
 
 test "greatest common divisor" {
-    try testing.expectEqual(@as(u32, 6), gcd(12, 18));
-    try testing.expectEqual(@as(u32, 1), gcd(17, 19));
-    try testing.expectEqual(@as(u32, 5), gcd(15, 25));
-    try testing.expectEqual(@as(u32, 12), gcd(12, 0));
+    try testing.expectEqual(6, gcd(12, 18));
+    try testing.expectEqual(1, gcd(17, 19));
+    try testing.expectEqual(5, gcd(15, 25));
+    try testing.expectEqual(12, gcd(12, 0));
 }

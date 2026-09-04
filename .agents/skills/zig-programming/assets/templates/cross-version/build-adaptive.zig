@@ -3,7 +3,7 @@
 // This build.zig works across multiple Zig versions (0.11+) by detecting
 // features at compile time rather than checking version numbers.
 //
-// Supported Versions: Zig 0.11.0 through 0.15.2+
+// Supported Versions: Zig 0.11.0 through 0.16.0+
 // Not Supported: Zig 0.10.x and earlier (completely different build API)
 //
 // Key Features:
@@ -60,8 +60,20 @@ pub fn build(b: *std.Build) void {
     const project_name = "myapp";
     const root_source = "src/main.zig";
 
+    // 0.15 moved the source, target and optimize options off the artifact
+    // and onto a module (0.14 added `root_module`, 0.15 removed the old
+    // fields). Detect which shape this compiler wants.
+    const takes_module = @hasField(std.Build.ExecutableOptions, "root_module");
+
     // Build executable
-    const exe = b.addExecutable(.{
+    const exe = if (takes_module) b.addExecutable(.{
+        .name = project_name,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path(root_source),
+            .target = target,
+            .optimize = optimize,
+        }),
+    }) else b.addExecutable(.{
         .name = project_name,
         .root_source_file = b.path(root_source),
         .target = target,
@@ -70,24 +82,28 @@ pub fn build(b: *std.Build) void {
 
     // === OPTIONAL: Add dependencies ===
     //
-    // Example: Add a local dependency
-    // const my_lib = b.addStaticLibrary(.{
+    // Example: Add a local dependency. Since 0.15 addStaticLibrary is gone and
+    // the linking options live on the module:
+    // const my_lib = b.addLibrary(.{
     //     .name = "mylib",
-    //     .root_source_file = b.path("lib/mylib.zig"),
-    //     .target = target,
-    //     .optimize = optimize,
+    //     .linkage = .static,
+    //     .root_module = b.createModule(.{
+    //         .root_source_file = b.path("lib/mylib.zig"),
+    //         .target = target,
+    //         .optimize = optimize,
+    //     }),
     // });
-    // exe.linkLibrary(my_lib);
+    // exe.root_module.linkLibrary(my_lib);
     //
     // Example: Link system libraries
-    // exe.linkSystemLibrary("c");
-    // exe.linkSystemLibrary("sqlite3");
+    // exe.root_module.link_libc = true;
+    // exe.root_module.linkSystemLibrary("sqlite3", .{});
     //
-    // Example: Add module (0.11+ package system)
+    // Example: Add module (0.16 spelling)
     // const my_module = b.addModule("mymod", .{
-    //     .source_file = b.path("modules/mymod.zig"),
+    //     .root_source_file = b.path("modules/mymod.zig"),
     // });
-    // exe.addModule("mymod", my_module);
+    // exe.root_module.addImport("mymod", my_module);
 
     // Install the executable
     b.installArtifact(exe);
@@ -109,7 +125,13 @@ pub fn build(b: *std.Build) void {
 
     // === TEST COMMAND ===
     // Create "zig build test" command
-    const tests = b.addTest(.{
+    const tests = if (takes_module) b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path(root_source),
+            .target = target,
+            .optimize = optimize,
+        }),
+    }) else b.addTest(.{
         .root_source_file = b.path(root_source),
         .target = target,
         .optimize = optimize,
@@ -136,7 +158,7 @@ pub fn build(b: *std.Build) void {
     // const options = b.addOptions();
     // options.addOption(bool, "has_modern_for_loops", has_modern_for_loops);
     // options.addOption(bool, "has_http_client", has_http_client);
-    // exe.addOptions("build_options", options);
+    // exe.root_module.addOptions("build_options", options);
     //
     // Then in your code:
     // const build_options = @import("build_options");
@@ -151,11 +173,14 @@ pub fn build(b: *std.Build) void {
     // const custom_cmd = b.addSystemCommand(&[_][]const u8{"echo", "Custom build!"});
     // custom_step.dependOn(&custom_cmd.step);
     //
-    // Example: Generate documentation
-    // const docs = exe.getDocumentationStep();
-    // docs.step.dependOn(b.getInstallStep());
+    // Example: Generate documentation. `getEmittedDocs` returns a LazyPath,
+    // not a step, so install it rather than depending on it.
     // const docs_step = b.step("docs", "Generate documentation");
-    // docs_step.dependOn(&docs.step);
+    // docs_step.dependOn(&b.addInstallDirectory(.{
+    //     .source_dir = exe.getEmittedDocs(),
+    //     .install_dir = .prefix,
+    //     .install_subdir = "docs",
+    // }).step);
 }
 
 // === CROSS-VERSION COMPATIBILITY NOTES ===
@@ -169,13 +194,19 @@ pub fn build(b: *std.Build) void {
 //
 // 2. API Stability:
 //    - The core build API (0.11+) is relatively stable
-//    - addExecutable, addTest, addRunArtifact work across 0.11-0.15
+//    - addExecutable, addTest, addRunArtifact exist across 0.11-0.16, but
+//      their options struct changed shape in 0.15 (see below)
 //    - b.path() is required for file paths in 0.11+
 //
 // 3. Version-Specific Considerations:
 //    - 0.11-0.12: Initial modern build API
 //    - 0.13+: For-loop syntax changed (doesn't affect build.zig)
-//    - 0.14-0.15: Enhanced module system and package manager
+//    - 0.14: `root_module` added to ExecutableOptions and friends; the loose
+//      root_source_file/target/optimize fields deprecated
+//    - 0.15: those deprecated fields removed, so `root_module` is mandatory.
+//      addStaticLibrary/addSharedLibrary replaced by addLibrary(.{ .linkage })
+//    - 0.16: link options moved from Step.Compile onto Module, so it is
+//      exe.root_module.linkSystemLibrary / .addImport / .addOptions
 //
 // 4. Breaking Changes to Watch:
 //    - Package/module system APIs (evolving)
@@ -206,7 +237,7 @@ pub fn build(b: *std.Build) void {
 //    Solution: This build.zig requires 0.11+, you're using 0.10.x
 //
 // 3. Module/package system errors → Check Zig version and docs
-//    Solution: Package system APIs evolved between 0.11-0.15
+//    Solution: Package system APIs evolved between 0.11-0.16
 //
 // For troubleshooting build errors:
 //   1. Run: zig build --verbose

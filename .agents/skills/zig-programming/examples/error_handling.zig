@@ -70,26 +70,47 @@ fn catchExample() void {
 }
 
 /// Demonstrates errdefer - cleanup on error paths
-fn errdefferExample() !void {
-    std.debug.print("\n=== Errdefer Keyword ===\n", .{});
-    std.debug.print("Cleanup that only runs on error path\n\n", .{});
+/// The rule: `errdefer` is for cleanup while ownership is still in flight.
+/// Once the current scope keeps the value, `defer` is the whole story --
+/// registering both on the same allocation frees it twice on an error path,
+/// because both run.
+const Pair = struct {
+    first: []u8,
+    second: []u8,
 
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    /// Ownership leaves this scope on success, so the caller cannot clean up a
+    /// partial `Pair` that was never returned. That gap is what `errdefer` is
+    /// for, and there is no `defer` here to double up with.
+    fn init(allocator: std.mem.Allocator) !Pair {
+        const first = try allocator.alloc(u8, 100);
+        errdefer allocator.free(first);
+
+        // If this fails, the `errdefer` above releases `first`. On success it
+        // never runs, and the caller owns both through `deinit`.
+        const second = try allocator.alloc(u8, 100);
+
+        return .{ .first = first, .second = second };
+    }
+
+    fn deinit(self: *Pair, allocator: std.mem.Allocator) void {
+        allocator.free(self.first);
+        allocator.free(self.second);
+        self.* = undefined;
+    }
+};
+
+fn errdeferExample() !void {
+    std.debug.print("\n=== Errdefer Keyword ===\n", .{});
+    std.debug.print("Cleanup that only runs on the error path\n\n", .{});
+
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Simulate multi-step operation that might fail
-    const step1 = try allocator.alloc(u8, 100);
-    errdefer allocator.free(step1); // Only freed if subsequent steps fail
-
-    const step2 = try allocator.alloc(u8, 100);
-    errdefer allocator.free(step2); // Only freed if subsequent steps fail
-
-    // If we reach here successfully, caller is responsible for cleanup
-    defer {
-        allocator.free(step1);
-        allocator.free(step2);
-    }
+    // Here the scope keeps the value, so `defer` is correct and `errdefer`
+    // would be a double free.
+    var pair = try Pair.init(allocator);
+    defer pair.deinit(allocator);
 
     std.debug.print("Multi-step allocation succeeded\n", .{});
 }
@@ -208,7 +229,7 @@ pub fn main() !void {
 
     try tryExample();
     catchExample();
-    try errdefferExample();
+    try errdeferExample();
     ifElseExample();
     switchExample();
     try errorTraceExample();
@@ -226,7 +247,7 @@ pub fn main() !void {
 // Tests
 test "divide success" {
     const result = try divide(10, 2);
-    try testing.expectEqual(@as(i32, 5), result);
+    try testing.expectEqual(5, result);
 }
 
 test "divide by zero" {
@@ -236,14 +257,14 @@ test "divide by zero" {
 
 test "catch with default" {
     const result = divide(10, 0) catch 0;
-    try testing.expectEqual(@as(i32, 0), result);
+    try testing.expectEqual(0, result);
 }
 
 test "if-else error unwrap" {
     const result = divide(10, 2);
 
     if (result) |value| {
-        try testing.expectEqual(@as(i32, 5), value);
+        try testing.expectEqual(5, value);
     } else |_| {
         try testing.expect(false); // Should not reach here
     }
@@ -265,7 +286,7 @@ test "merged error sets" {
     try testing.expectError(FileError.InvalidFormat, result2);
 
     const result3 = try processValue(10);
-    try testing.expectEqual(@as(i32, 20), result3);
+    try testing.expectEqual(20, result3);
 }
 
 test "errdefer cleanup" {
@@ -289,7 +310,7 @@ test "errdefer cleanup" {
 
 test "inferred error set" {
     const result = try inferredErrorSet(false);
-    try testing.expectEqual(@as(i32, 42), result);
+    try testing.expectEqual(42, result);
 
     const result2 = inferredErrorSet(true);
     try testing.expectError(error.SomeError, result2);

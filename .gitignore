@@ -23,3 +23,7 @@ __pycache__/
 # per-machine by pi/install.sh
 pi/config/extensions/node_modules/
 pi/config/extensions/package-lock.json
+
+# Zig build artifacts, produced by scripts/check_files.sh
+.zig-cache/
+zig-out/

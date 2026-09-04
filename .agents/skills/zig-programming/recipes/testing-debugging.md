@@ -1,6 +1,6 @@
 # Testing & Debugging Recipes
 
-*14 tested recipes for Zig 0.15.2*
+*14 recipes, all compiled against Zig 0.16.0*
 
 ## Quick Reference
 
@@ -45,10 +45,11 @@ fn greet(writer: anytype, name: []const u8) !void {
 
 ```zig
 test "capture and verify stdout output" {
-    var buffer = std.ArrayList(u8){};
+    const io = std.testing.io;
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(testing.allocator);
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = buffer.writer(io, testing.allocator);
     try greet(writer, "World");
 
     try testing.expectEqualStrings("Hello, World!\n", buffer.items);
@@ -57,7 +58,7 @@ test "capture and verify stdout output" {
 
 ### Discussion
 
-Testing output is crucial for CLI tools and scripts. Instead of writing directly to `std.io.getStdOut()`, design your functions to accept any writer through the `anytype` parameter. This makes them testable and more flexible.
+Testing output matters for CLI tools and scripts. Instead of writing directly to `std.Io.File.stdout()`, design your functions to accept any writer through the `anytype` parameter. This makes them testable and more flexible.
 
 The pattern works because:
 
@@ -77,10 +78,11 @@ fn printReport(writer: anytype, items: usize, total: f64) !void {
 }
 
 test "capture multiple output lines" {
-    var buffer = std.ArrayList(u8){};
+    const io = std.testing.io;
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(testing.allocator);
 
-    try printReport(buffer.writer(testing.allocator), 42, 123.45);
+    try printReport(buffer.writer(io, testing.allocator), 42, 123.45);
 
     const expected =
         \\Items processed: 42
@@ -105,10 +107,11 @@ fn formatData(writer: anytype, data: []const u8) !void {
 }
 
 test "verify formatted output" {
-    var buffer = std.ArrayList(u8){};
+    const io = std.testing.io;
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(testing.allocator);
 
-    try formatData(buffer.writer(testing.allocator), "test data");
+    try formatData(buffer.writer(io, testing.allocator), "test data");
 
     try testing.expect(std.mem.indexOf(u8, buffer.items, "[INFO]") != null);
     try testing.expect(std.mem.indexOf(u8, buffer.items, "test data") != null);
@@ -132,20 +135,22 @@ fn processWithLogging(writer: anytype, value: i32) !void {
 }
 
 test "capture error messages" {
-    var buffer = std.ArrayList(u8){};
+    const io = std.testing.io;
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(testing.allocator);
 
-    const result = processWithLogging(buffer.writer(testing.allocator), -5);
+    const result = processWithLogging(buffer.writer(io, testing.allocator), -5);
     try testing.expectError(error.InvalidValue, result);
     try testing.expect(std.mem.indexOf(u8, buffer.items, "ERROR") != null);
     try testing.expect(std.mem.indexOf(u8, buffer.items, "-5") != null);
 }
 
 test "capture success messages" {
-    var buffer = std.ArrayList(u8){};
+    const io = std.testing.io;
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(testing.allocator);
 
-    try processWithLogging(buffer.writer(testing.allocator), 42);
+    try processWithLogging(buffer.writer(io, testing.allocator), 42);
     try testing.expect(std.mem.indexOf(u8, buffer.items, "SUCCESS") != null);
     try testing.expect(std.mem.indexOf(u8, buffer.items, "42") != null);
 }
@@ -166,10 +171,11 @@ fn printTable(writer: anytype) !void {
 }
 
 test "capture table output" {
-    var buffer = std.ArrayList(u8){};
+    const io = std.testing.io;
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(testing.allocator);
 
-    try printTable(buffer.writer(testing.allocator));
+    try printTable(buffer.writer(io, testing.allocator));
 
     // Verify table structure
     try testing.expect(std.mem.indexOf(u8, buffer.items, "Name") != null);
@@ -198,10 +204,11 @@ fn printJSON(writer: anytype, name: []const u8, age: u8) !void {
 }
 
 test "verify JSON output structure" {
-    var buffer = std.ArrayList(u8){};
+    const io = std.testing.io;
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(testing.allocator);
 
-    try printJSON(buffer.writer(testing.allocator), "Alice", 30);
+    try printJSON(buffer.writer(io, testing.allocator), "Alice", 30);
 
     // Verify JSON structure
     try testing.expect(std.mem.indexOf(u8, buffer.items, "{") != null);
@@ -222,10 +229,11 @@ fn printProgress(writer: anytype, current: usize, total: usize) !void {
 }
 
 test "verify progress output" {
-    var buffer = std.ArrayList(u8){};
+    const io = std.testing.io;
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(testing.allocator);
 
-    try printProgress(buffer.writer(testing.allocator), 25, 100);
+    try printProgress(buffer.writer(io, testing.allocator), 25, 100);
 
     try testing.expect(std.mem.indexOf(u8, buffer.items, "25/100") != null);
     try testing.expect(std.mem.indexOf(u8, buffer.items, "25.0%") != null);
@@ -245,10 +253,11 @@ fn printColoredOutput(writer: anytype) !void {
 }
 
 test "verify ANSI color codes in output" {
-    var buffer = std.ArrayList(u8){};
+    const io = std.testing.io;
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(testing.allocator);
 
-    try printColoredOutput(buffer.writer(testing.allocator));
+    try printColoredOutput(buffer.writer(io, testing.allocator));
 
     // Verify ANSI codes are present
     try testing.expect(std.mem.indexOf(u8, buffer.items, "\x1b[31m") != null);
@@ -267,12 +276,12 @@ test "verify ANSI color codes in output" {
 
 ### Common Gotchas
 
-**Forgetting the allocator**: In Zig 0.15.2, `ArrayList` is unmanaged and requires passing the allocator to `deinit` and `writer`:
+**Forgetting the allocator**: In Zig 0.16.0, `ArrayList` is unmanaged and requires passing the allocator to `deinit` and `writer`:
 
 ```zig
-var buffer = std.ArrayList(u8){};
+var buffer = std.ArrayList(u8).empty;
 defer buffer.deinit(testing.allocator);  // Pass allocator here
-const writer = buffer.writer(testing.allocator);  // And here
+const writer = buffer.writer(io, testing.allocator);  // And here
 ```
 
 **Comparing with wrong string endings**: Remember to include newlines in expected output if your functions print them.
@@ -291,13 +300,13 @@ fn greet(writer: anytype, name: []const u8) !void {
 
 // ANCHOR: testing_output
 test "capture and verify stdout output" {
-    var buffer = std.ArrayList(u8){};
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const writer = buffer.writer(testing.allocator);
+    const writer = &buffer.writer;
     try greet(writer, "World");
 
-    try testing.expectEqualStrings("Hello, World!\n", buffer.items);
+    try testing.expectEqualStrings("Hello, World!\n", buffer.written());
 }
 // ANCHOR_END: testing_output
 
@@ -309,10 +318,10 @@ fn printReport(writer: anytype, items: usize, total: f64) !void {
 }
 
 test "capture multiple output lines" {
-    var buffer = std.ArrayList(u8){};
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    try printReport(buffer.writer(testing.allocator), 42, 123.45);
+    try printReport(&buffer.writer, 42, 123.45);
 
     const expected =
         \\Items processed: 42
@@ -320,7 +329,7 @@ test "capture multiple output lines" {
         \\Status: Complete
         \\
     ;
-    try testing.expectEqualStrings(expected, buffer.items);
+    try testing.expectEqualStrings(expected, buffer.written());
 }
 // ANCHOR_END: multiple_outputs
 
@@ -331,14 +340,14 @@ fn formatData(writer: anytype, data: []const u8) !void {
 }
 
 test "verify formatted output" {
-    var buffer = std.ArrayList(u8){};
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    try formatData(buffer.writer(testing.allocator), "test data");
+    try formatData(&buffer.writer, "test data");
 
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "[INFO]") != null);
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "test data") != null);
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "9 bytes") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "[INFO]") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "test data") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "9 bytes") != null);
 }
 // ANCHOR_END: formatted_output
 
@@ -351,19 +360,19 @@ fn printTable(writer: anytype) !void {
 }
 
 test "capture table output" {
-    var buffer = std.ArrayList(u8){};
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    try printTable(buffer.writer(testing.allocator));
+    try printTable(&buffer.writer);
 
     // Verify table structure
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "Name") != null);
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "Alice") != null);
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "Bob") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "Name") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "Alice") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "Bob") != null);
 
     // Count lines
     var line_count: usize = 0;
-    for (buffer.items) |char| {
+    for (buffer.written()) |char| {
         if (char == '\n') line_count += 1;
     }
     try testing.expectEqual(4, line_count);
@@ -380,22 +389,22 @@ fn processWithLogging(writer: anytype, value: i32) !void {
 }
 
 test "capture error messages" {
-    var buffer = std.ArrayList(u8){};
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    const result = processWithLogging(buffer.writer(testing.allocator), -5);
+    const result = processWithLogging(&buffer.writer, -5);
     try testing.expectError(error.InvalidValue, result);
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "ERROR") != null);
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "-5") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "ERROR") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "-5") != null);
 }
 
 test "capture success messages" {
-    var buffer = std.ArrayList(u8){};
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    try processWithLogging(buffer.writer(testing.allocator), 42);
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "SUCCESS") != null);
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "42") != null);
+    try processWithLogging(&buffer.writer, 42);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "SUCCESS") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "42") != null);
 }
 // ANCHOR_END: error_messages
 
@@ -408,18 +417,18 @@ fn printJSON(writer: anytype, name: []const u8, age: u8) !void {
 }
 
 test "verify JSON output structure" {
-    var buffer = std.ArrayList(u8){};
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    try printJSON(buffer.writer(testing.allocator), "Alice", 30);
+    try printJSON(&buffer.writer, "Alice", 30);
 
     // Verify JSON structure
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "{") != null);
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "}") != null);
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "\"name\"") != null);
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "\"Alice\"") != null);
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "\"age\"") != null);
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "30") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "{") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "}") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "\"name\"") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "\"Alice\"") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "\"age\"") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "30") != null);
 }
 // ANCHOR_END: json_output
 
@@ -430,13 +439,13 @@ fn printProgress(writer: anytype, current: usize, total: usize) !void {
 }
 
 test "verify progress output" {
-    var buffer = std.ArrayList(u8){};
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    try printProgress(buffer.writer(testing.allocator), 25, 100);
+    try printProgress(&buffer.writer, 25, 100);
 
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "25/100") != null);
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "25.0%") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "25/100") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "25.0%") != null);
 }
 // ANCHOR_END: progress_output
 
@@ -451,15 +460,15 @@ fn printColoredOutput(writer: anytype) !void {
 }
 
 test "verify ANSI color codes in output" {
-    var buffer = std.ArrayList(u8){};
-    defer buffer.deinit(testing.allocator);
+    var buffer: std.Io.Writer.Allocating = .init(testing.allocator);
+    defer buffer.deinit();
 
-    try printColoredOutput(buffer.writer(testing.allocator));
+    try printColoredOutput(&buffer.writer);
 
     // Verify ANSI codes are present
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "\x1b[31m") != null);
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "\x1b[32m") != null);
-    try testing.expect(std.mem.indexOf(u8, buffer.items, "\x1b[0m") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "\x1b[31m") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "\x1b[32m") != null);
+    try testing.expect(std.mem.indexOf(u8, buffer.written(), "\x1b[0m") != null);
 }
 // ANCHOR_END: color_codes
 ```
@@ -542,10 +551,10 @@ const FileSystem = struct {
 };
 
 const RealFileSystem = struct {
-    fn readFile(ctx: *anyopaque, path: []const u8, allocator: std.mem.Allocator) ![]const u8 {
+    fn readFile(io: std.Io, ctx: *anyopaque, path: []const u8, allocator: std.mem.Allocator) ![]const u8 {
         _ = ctx;
         _ = path;
-        // In real code: return std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
+        // In real code: return std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(1024 * 1024));
         return allocator.dupe(u8, "file contents");
     }
 
@@ -557,11 +566,12 @@ const RealFileSystem = struct {
     }
 };
 
-fn loadConfig(fs: *const FileSystem, allocator: std.mem.Allocator) ![]const u8 {
-    return fs.readFile("config.txt", allocator);
+fn loadConfig(io: std.Io, fs: *const FileSystem, allocator: std.mem.Allocator) ![]const u8 {
+    return fs.readFile(io, "config.txt", allocator);
 }
 
 test "patch filesystem with mock implementation" {
+    const io = std.testing.io;
     const MockFileSystem = struct {
         fn readFile(ctx: *anyopaque, path: []const u8, allocator: std.mem.Allocator) ![]const u8 {
             _ = ctx;
@@ -577,7 +587,7 @@ test "patch filesystem with mock implementation" {
         .ctx = undefined,
     };
 
-    const config = try loadConfig(&mock_fs, testing.allocator);
+    const config = try loadConfig(io, &mock_fs, testing.allocator);
     defer testing.allocator.free(config);
 
     try testing.expectEqualStrings("mock config data", config);
@@ -609,7 +619,7 @@ const TestLogger = struct {
 
     fn init(allocator: std.mem.Allocator) TestLogger {
         return .{
-            .messages = std.ArrayList([]const u8){},
+            .messages = std.ArrayList([]const u8).empty,
             .allocator = allocator,
         };
     }
@@ -835,7 +845,7 @@ const Sensor = struct {
     }
 };
 
-fn collectReadings(sensor: *Sensor, count: usize, allocator: std.mem.Allocator) ![]i32 {
+fn collectReadings(io: std.Io, sensor: *Sensor, count: usize, allocator: std.mem.Allocator) ![]i32 {
     var readings = try std.ArrayList(i32).initCapacity(allocator, count);
     errdefer readings.deinit(allocator);
 
@@ -849,6 +859,7 @@ fn collectReadings(sensor: *Sensor, count: usize, allocator: std.mem.Allocator) 
 }
 
 test "return sequence of values" {
+    const io = std.testing.io;
     const test_values = [_]i32{ 10, 20, 30, 40 };
     var provider = ValueProvider{ .values = &test_values };
 
@@ -864,7 +875,7 @@ test "return sequence of values" {
         .ctx = @ptrCast(&provider),
     };
 
-    const readings = try collectReadings(&sensor, 4, testing.allocator);
+    const readings = try collectReadings(io, &sensor, 4, testing.allocator);
     defer testing.allocator.free(readings);
 
     try testing.expectEqual(@as(usize, 4), readings.len);
@@ -990,7 +1001,7 @@ const RealFileSystem = struct {
     fn readFile(ctx: *anyopaque, path: []const u8, allocator: std.mem.Allocator) ![]const u8 {
         _ = ctx;
         _ = path;
-        // In real code: return std.fs.cwd().readFileAlloc(allocator, path, 1024 * 1024);
+        // In real code: return std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(1024 * 1024));
         return allocator.dupe(u8, "file contents");
     }
 
@@ -1045,7 +1056,7 @@ const TestLogger = struct {
 
     fn init(allocator: std.mem.Allocator) TestLogger {
         return .{
-            .messages = std.ArrayList([]const u8){},
+            .messages = std.ArrayList([]const u8).empty,
             .allocator = allocator,
         };
     }
@@ -2052,39 +2063,40 @@ Create a logger that writes test output to files. Use file I/O to capture logs a
 
 ```zig
 const TestLogger = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     allocator: std.mem.Allocator,
 
-    fn init(path: []const u8, allocator: std.mem.Allocator) !TestLogger {
-        const file = try std.fs.cwd().createFile(path, .{});
+    fn init(io: std.Io, path: []const u8, allocator: std.mem.Allocator) !TestLogger {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
         return .{
             .file = file,
             .allocator = allocator,
         };
     }
 
-    fn deinit(self: *TestLogger) void {
-        self.file.close();
+    fn deinit(self: *TestLogger, io: std.Io) void {
+        self.file.close(io);
     }
 
-    fn log(self: *TestLogger, comptime fmt: []const u8, args: anytype) !void {
+    fn log(self: *TestLogger, io: std.Io, comptime fmt: []const u8, args: anytype) !void {
         const msg = try std.fmt.allocPrint(self.allocator, fmt ++ "\n", args);
         defer self.allocator.free(msg);
-        try self.file.writeAll(msg);
+        try self.file.writeStreamingAll(io, msg);
     }
 };
 
 test "write test logs to file" {
+    const io = std.testing.io;
     var logger = try TestLogger.init("test_output.log", testing.allocator);
     defer logger.deinit();
-    defer std.fs.cwd().deleteFile("test_output.log") catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, "test_output.log") catch {};
 
     try logger.log("Test started", .{});
     try logger.log("Processing item {d}", .{42});
     try logger.log("Test completed", .{});
 
     // Verify file was written
-    const content = try std.fs.cwd().readFileAlloc(testing.allocator, "test_output.log", 1024);
+    const content = try std.Io.Dir.cwd().readFileAlloc(io, "test_output.log", testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "Test started") != null);
@@ -2102,42 +2114,43 @@ Add timestamps to track test execution timing:
 
 ```zig
 const TimestampedLogger = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     allocator: std.mem.Allocator,
     start_time: i64,
 
-    fn init(path: []const u8, allocator: std.mem.Allocator) !TimestampedLogger {
-        const file = try std.fs.cwd().createFile(path, .{});
+    fn init(io: std.Io, path: []const u8, allocator: std.mem.Allocator) !TimestampedLogger {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
         return .{
             .file = file,
             .allocator = allocator,
-            .start_time = std.time.milliTimestamp(),
+            .start_time = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms))),
         };
     }
 
-    fn deinit(self: *TimestampedLogger) void {
-        self.file.close();
+    fn deinit(self: *TimestampedLogger, io: std.Io) void {
+        self.file.close(io);
     }
 
-    fn log(self: *TimestampedLogger, level: []const u8, comptime fmt: []const u8, args: anytype) !void {
-        const elapsed = std.time.milliTimestamp() - self.start_time;
+    fn log(self: *TimestampedLogger, io: std.Io, level: []const u8, comptime fmt: []const u8, args: anytype) !void {
+        const elapsed = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms))) - self.start_time;
         const msg = try std.fmt.allocPrint(self.allocator, "[{d}ms] [{s}] " ++ fmt ++ "\n", .{ elapsed, level } ++ args);
         defer self.allocator.free(msg);
-        try self.file.writeAll(msg);
+        try self.file.writeStreamingAll(io, msg);
     }
 };
 
 test "timestamped test logging" {
+    const io = std.testing.io;
     var logger = try TimestampedLogger.init("timestamped.log", testing.allocator);
     defer logger.deinit();
-    defer std.fs.cwd().deleteFile("timestamped.log") catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, "timestamped.log") catch {};
 
     try logger.log("INFO", "Test initialization", .{});
-    std.Thread.sleep(10 * std.time.ns_per_ms); // Sleep 10ms
+    try io.sleep(.fromNanoseconds(10 * std.time.ns_per_ms), .awake); // Sleep 10ms
     try logger.log("DEBUG", "Processing data", .{});
     try logger.log("INFO", "Test complete", .{});
 
-    const content = try std.fs.cwd().readFileAlloc(testing.allocator, "timestamped.log", 1024);
+    const content = try std.Io.Dir.cwd().readFileAlloc(io, "timestamped.log", testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "[INFO]") != null);
@@ -2152,26 +2165,28 @@ Timestamps help identify slow tests and understand execution flow.
 Use temporary directories for test logs to avoid cluttering your workspace:
 
 ```zig
-fn runTestWithTempLog(allocator: std.mem.Allocator) ![]const u8 {
+fn runTestWithTempLog(io: std.Io, allocator: std.mem.Allocator) ![]const u8 {
     // Create temporary file for test logs
     var tmp_dir = std.testing.tmpDir(.{});
     var dir = tmp_dir.dir;
     defer tmp_dir.cleanup();
 
-    const log_file = try dir.createFile("test.log", .{ .read = true });
-    defer log_file.close();
+    const log_file = try dir.createFile(io, "test.log", .{ .read = true });
+    defer log_file.close(io);
 
-    try log_file.writeAll("Test execution started\n");
-    try log_file.writeAll("Running validation checks\n");
-    try log_file.writeAll("All checks passed\n");
+    try log_file.writeStreamingAll(io, "Test execution started\n");
+    try log_file.writeStreamingAll(io, "Running validation checks\n");
+    try log_file.writeStreamingAll(io, "All checks passed\n");
 
     // Read back the log
-    try log_file.seekTo(0);
-    return log_file.readToEndAlloc(allocator, 1024 * 1024);
+    var read_buffer: [4096]u8 = undefined;
+    var file_reader = log_file.reader(io, &read_buffer);
+    return file_reader.interface.allocRemaining(allocator, .limited(1024 * 1024));
 }
 
 test "use temporary directory for test logs" {
-    const log_content = try runTestWithTempLog(testing.allocator);
+    const io = std.testing.io;
+    const log_content = try runTestWithTempLog(io, testing.allocator);
     defer testing.allocator.free(log_content);
 
     try testing.expect(std.mem.indexOf(u8, log_content, "Test execution started") != null);
@@ -2187,12 +2202,12 @@ Log structured data for programmatic analysis:
 
 ```zig
 const StructuredLogger = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     allocator: std.mem.Allocator,
     test_name: []const u8,
 
-    fn init(path: []const u8, test_name: []const u8, allocator: std.mem.Allocator) !StructuredLogger {
-        const file = try std.fs.cwd().createFile(path, .{});
+    fn init(io: std.Io, path: []const u8, test_name: []const u8, allocator: std.mem.Allocator) !StructuredLogger {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
         var self = StructuredLogger{
             .file = file,
             .allocator = allocator,
@@ -2202,33 +2217,34 @@ const StructuredLogger = struct {
         return self;
     }
 
-    fn deinit(self: *StructuredLogger) void {
+    fn deinit(self: *StructuredLogger, io: std.Io) void {
         self.logTestEnd() catch {};
-        self.file.close();
+        self.file.close(io);
     }
 
-    fn logTestStart(self: *StructuredLogger) !void {
+    fn logTestStart(self: *StructuredLogger, io: std.Io) !void {
         const msg = try std.fmt.allocPrint(self.allocator, "{{\"event\":\"test_start\",\"name\":\"{s}\"}}\n", .{self.test_name});
         defer self.allocator.free(msg);
-        try self.file.writeAll(msg);
+        try self.file.writeStreamingAll(io, msg);
     }
 
-    fn logTestEnd(self: *StructuredLogger) !void {
+    fn logTestEnd(self: *StructuredLogger, io: std.Io) !void {
         const msg = try std.fmt.allocPrint(self.allocator, "{{\"event\":\"test_end\",\"name\":\"{s}\"}}\n", .{self.test_name});
         defer self.allocator.free(msg);
-        try self.file.writeAll(msg);
+        try self.file.writeStreamingAll(io, msg);
     }
 
-    fn logAssertion(self: *StructuredLogger, assertion: []const u8, passed: bool) !void {
+    fn logAssertion(self: *StructuredLogger, io: std.Io, assertion: []const u8, passed: bool) !void {
         const msg = try std.fmt.allocPrint(self.allocator, "{{\"event\":\"assertion\",\"name\":\"{s}\",\"passed\":{}}}\n", .{ assertion, passed });
         defer self.allocator.free(msg);
-        try self.file.writeAll(msg);
+        try self.file.writeStreamingAll(io, msg);
     }
 };
 
 test "structured JSON logging" {
+    const io = std.testing.io;
     var logger = try StructuredLogger.init("structured.log", "validation_test", testing.allocator);
-    defer std.fs.cwd().deleteFile("structured.log") catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, "structured.log") catch {};
 
     try logger.logAssertion("value_is_positive", true);
     try logger.logAssertion("value_within_range", true);
@@ -2236,7 +2252,7 @@ test "structured JSON logging" {
 
     logger.deinit(); // Close file before reading
 
-    const content = try std.fs.cwd().readFileAlloc(testing.allocator, "structured.log", 1024);
+    const content = try std.Io.Dir.cwd().readFileAlloc(io, "structured.log", testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "test_start") != null);
@@ -2253,44 +2269,45 @@ Track results from multiple tests in a single log file:
 
 ```zig
 const TestSuite = struct {
-    log_file: std.fs.File,
+    log_file: std.Io.File,
     allocator: std.mem.Allocator,
     tests_run: usize = 0,
     tests_passed: usize = 0,
 
-    fn init(path: []const u8, allocator: std.mem.Allocator) !TestSuite {
-        const file = try std.fs.cwd().createFile(path, .{});
+    fn init(io: std.Io, path: []const u8, allocator: std.mem.Allocator) !TestSuite {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
         return .{
             .log_file = file,
             .allocator = allocator,
         };
     }
 
-    fn deinit(self: *TestSuite) void {
+    fn deinit(self: *TestSuite, io: std.Io) void {
         self.writeSummary() catch {};
-        self.log_file.close();
+        self.log_file.close(io);
     }
 
-    fn runTest(self: *TestSuite, name: []const u8, passed: bool) !void {
+    fn runTest(self: *TestSuite, io: std.Io, name: []const u8, passed: bool) !void {
         self.tests_run += 1;
         if (passed) self.tests_passed += 1;
 
         const status = if (passed) "PASS" else "FAIL";
         const msg = try std.fmt.allocPrint(self.allocator, "[{s}] {s}\n", .{ status, name });
         defer self.allocator.free(msg);
-        try self.log_file.writeAll(msg);
+        try self.log_file.writeStreamingAll(io, msg);
     }
 
-    fn writeSummary(self: *TestSuite) !void {
+    fn writeSummary(self: *TestSuite, io: std.Io) !void {
         const msg = try std.fmt.allocPrint(self.allocator, "\nSummary: {d}/{d} tests passed\n", .{ self.tests_passed, self.tests_run });
         defer self.allocator.free(msg);
-        try self.log_file.writeAll(msg);
+        try self.log_file.writeStreamingAll(io, msg);
     }
 };
 
 test "log multiple test results" {
+    const io = std.testing.io;
     var suite = try TestSuite.init("suite.log", testing.allocator);
-    defer std.fs.cwd().deleteFile("suite.log") catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, "suite.log") catch {};
 
     try suite.runTest("test_addition", true);
     try suite.runTest("test_subtraction", true);
@@ -2299,7 +2316,7 @@ test "log multiple test results" {
 
     suite.deinit(); // Close file before reading
 
-    const content = try std.fs.cwd().readFileAlloc(testing.allocator, "suite.log", 1024);
+    const content = try std.Io.Dir.cwd().readFileAlloc(io, "suite.log", testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "[PASS] test_addition") != null);
@@ -2316,31 +2333,31 @@ Capture and log errors during testing:
 
 ```zig
 const ErrorLogger = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     allocator: std.mem.Allocator,
 
-    fn init(path: []const u8, allocator: std.mem.Allocator) !ErrorLogger {
-        const file = try std.fs.cwd().createFile(path, .{});
+    fn init(io: std.Io, path: []const u8, allocator: std.mem.Allocator) !ErrorLogger {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
         return .{
             .file = file,
             .allocator = allocator,
         };
     }
 
-    fn deinit(self: *ErrorLogger) void {
-        self.file.close();
+    fn deinit(self: *ErrorLogger, io: std.Io) void {
+        self.file.close(io);
     }
 
-    fn logError(self: *ErrorLogger, err: anyerror, context: []const u8) !void {
+    fn logError(self: *ErrorLogger, io: std.Io, err: anyerror, context: []const u8) !void {
         const msg = try std.fmt.allocPrint(self.allocator, "ERROR: {s} - {s}\n", .{ @errorName(err), context });
         defer self.allocator.free(msg);
-        try self.file.writeAll(msg);
+        try self.file.writeStreamingAll(io, msg);
     }
 
-    fn logSuccess(self: *ErrorLogger, operation: []const u8) !void {
+    fn logSuccess(self: *ErrorLogger, io: std.Io, operation: []const u8) !void {
         const msg = try std.fmt.allocPrint(self.allocator, "SUCCESS: {s}\n", .{operation});
         defer self.allocator.free(msg);
-        try self.file.writeAll(msg);
+        try self.file.writeStreamingAll(io, msg);
     }
 };
 
@@ -2351,9 +2368,10 @@ fn riskyOperation(value: i32) !i32 {
 }
 
 test "log errors during testing" {
+    const io = std.testing.io;
     var logger = try ErrorLogger.init("errors.log", testing.allocator);
     defer logger.deinit();
-    defer std.fs.cwd().deleteFile("errors.log") catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, "errors.log") catch {};
 
     // Test error cases
     if (riskyOperation(-5)) |_| {
@@ -2375,7 +2393,7 @@ test "log errors during testing" {
         try logger.logError(err, "processing valid value");
     }
 
-    const content = try std.fs.cwd().readFileAlloc(testing.allocator, "errors.log", 1024);
+    const content = try std.Io.Dir.cwd().readFileAlloc(io, "errors.log", testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "ERROR: InvalidValue") != null);
@@ -2397,7 +2415,7 @@ const BufferedTestLogger = struct {
 
     fn init(allocator: std.mem.Allocator) BufferedTestLogger {
         return .{
-            .buffer = std.ArrayList(u8){},
+            .buffer = std.ArrayList(u8).empty,
             .allocator = allocator,
         };
     }
@@ -2406,20 +2424,21 @@ const BufferedTestLogger = struct {
         self.buffer.deinit(self.allocator);
     }
 
-    fn log(self: *BufferedTestLogger, comptime fmt: []const u8, args: anytype) !void {
-        const writer = self.buffer.writer(self.allocator);
+    fn log(self: *BufferedTestLogger, io: std.Io, comptime fmt: []const u8, args: anytype) !void {
+        const writer = self.buffer.writer(io, self.allocator);
         try writer.print(fmt, args);
         try writer.writeAll("\n");
     }
 
-    fn writeToFile(self: *BufferedTestLogger, path: []const u8) !void {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
-        try file.writeAll(self.buffer.items);
+    fn writeToFile(self: *BufferedTestLogger, io: std.Io, path: []const u8) !void {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, self.buffer.items);
     }
 };
 
 test "buffered logging with file write" {
+    const io = std.testing.io;
     var logger = BufferedTestLogger.init(testing.allocator);
     defer logger.deinit();
 
@@ -2430,9 +2449,9 @@ test "buffered logging with file write" {
 
     // Write buffer to file
     try logger.writeToFile("buffered.log");
-    defer std.fs.cwd().deleteFile("buffered.log") catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, "buffered.log") catch {};
 
-    const content = try std.fs.cwd().readFileAlloc(testing.allocator, "buffered.log", 1024);
+    const content = try std.Io.Dir.cwd().readFileAlloc(io, "buffered.log", testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "Starting test suite") != null);
@@ -2448,26 +2467,26 @@ Log timing information to identify slow tests:
 
 ```zig
 const PerfLogger = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     allocator: std.mem.Allocator,
 
-    fn init(path: []const u8, allocator: std.mem.Allocator) !PerfLogger {
-        const file = try std.fs.cwd().createFile(path, .{});
+    fn init(io: std.Io, path: []const u8, allocator: std.mem.Allocator) !PerfLogger {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
         return .{
             .file = file,
             .allocator = allocator,
         };
     }
 
-    fn deinit(self: *PerfLogger) void {
-        self.file.close();
+    fn deinit(self: *PerfLogger, io: std.Io) void {
+        self.file.close(io);
     }
 
-    fn logTiming(self: *PerfLogger, operation: []const u8, duration_ns: u64) !void {
+    fn logTiming(self: *PerfLogger, io: std.Io, operation: []const u8, duration_ns: u64) !void {
         const duration_ms = @as(f64, @floatFromInt(duration_ns)) / @as(f64, @floatFromInt(std.time.ns_per_ms));
         const msg = try std.fmt.allocPrint(self.allocator, "{s}: {d:.3}ms\n", .{ operation, duration_ms });
         defer self.allocator.free(msg);
-        try self.file.writeAll(msg);
+        try self.file.writeStreamingAll(io, msg);
     }
 };
 
@@ -2481,17 +2500,18 @@ fn benchmarkOperation() void {
 }
 
 test "log performance metrics" {
+    const io = std.testing.io;
     var logger = try PerfLogger.init("perf.log", testing.allocator);
     defer logger.deinit();
-    defer std.fs.cwd().deleteFile("perf.log") catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, "perf.log") catch {};
 
-    const start = std.time.nanoTimestamp();
+    const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
     benchmarkOperation();
-    const end = std.time.nanoTimestamp();
+    const end = std.Io.Timestamp.now(io, .real).toNanoseconds();
 
     try logger.logTiming("benchmark_operation", @intCast(end - start));
 
-    const content = try std.fs.cwd().readFileAlloc(testing.allocator, "perf.log", 1024);
+    const content = try std.Io.Dir.cwd().readFileAlloc(io, "perf.log", testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "benchmark_operation") != null);
@@ -2516,11 +2536,11 @@ Performance logs help optimize slow tests and identify regressions.
 **Pattern 1: Logger with Auto-flush**
 ```zig
 const Logger = struct {
-    file: std.fs.File,
+    file: std.Io.File,
 
-    fn deinit(self: *Logger) void {
-        self.file.sync() catch {}; // Ensure data is written
-        self.file.close();
+    fn deinit(self: *Logger, io: std.Io) void {
+        self.file.sync(io) catch {}; // Ensure data is written
+        self.file.close(io);
     }
 };
 ```
@@ -2555,21 +2575,22 @@ fn runTestSuite(log_path: []const u8) !void {
 ```zig
 // Wrong - file not yet flushed
 logger.log("test");
-const content = try std.fs.cwd().readFileAlloc(...);
+const content = try std.Io.Dir.cwd().readFileAlloc(io, ...);
 
 // Right - close first
 logger.log("test");
 logger.deinit(); // Flushes and closes
-const content = try std.fs.cwd().readFileAlloc(...);
+const content = try std.Io.Dir.cwd().readFileAlloc(io, ...);
 ```
 
 **Forgetting cleanup**: Always delete test log files:
 
 ```zig
 test "example" {
+    const io = std.testing.io;
     var logger = try Logger.init("test.log");
     defer logger.deinit();
-    defer std.fs.cwd().deleteFile("test.log") catch {}; // Don't forget!
+    defer std.Io.Dir.cwd().deleteFile(io, "test.log") catch {}; // Don't forget!
 }
 ```
 
@@ -2577,7 +2598,7 @@ test "example" {
 
 ```zig
 // For read-write access
-const file = try dir.createFile("log.txt", .{ .read = true });
+const file = try dir.createFile(io, "log.txt", .{ .read = true });
 ```
 
 ### Integration with CI/CD
@@ -2586,7 +2607,7 @@ File logs integrate well with continuous integration:
 
 ```zig
 // CI-friendly logging
-const ci_mode = std.process.getEnvVarOwned(allocator, "CI") catch null;
+const ci_mode = environ.get("CI");
 const logger = if (ci_mode != null)
     try StructuredLogger.init("ci-results.json")
 else
@@ -2603,39 +2624,40 @@ const testing = std.testing;
 
 // ANCHOR: basic_file_logging
 const TestLogger = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     allocator: std.mem.Allocator,
 
-    fn init(path: []const u8, allocator: std.mem.Allocator) !TestLogger {
-        const file = try std.fs.cwd().createFile(path, .{});
+    fn init(io: std.Io, path: []const u8, allocator: std.mem.Allocator) !TestLogger {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
         return .{
             .file = file,
             .allocator = allocator,
         };
     }
 
-    fn deinit(self: *TestLogger) void {
-        self.file.close();
+    fn deinit(self: *TestLogger, io: std.Io) void {
+        self.file.close(io);
     }
 
-    fn log(self: *TestLogger, comptime fmt: []const u8, args: anytype) !void {
+    fn log(self: *TestLogger, io: std.Io, comptime fmt: []const u8, args: anytype) !void {
         const msg = try std.fmt.allocPrint(self.allocator, fmt ++ "\n", args);
         defer self.allocator.free(msg);
-        try self.file.writeAll(msg);
+        try self.file.writeStreamingAll(io, msg);
     }
 };
 
 test "write test logs to file" {
-    var logger = try TestLogger.init("test_output.log", testing.allocator);
-    defer logger.deinit();
-    defer std.fs.cwd().deleteFile("test_output.log") catch {};
+    const io = std.testing.io;
+    var logger = try TestLogger.init(io, "test_output.log", testing.allocator);
+    defer logger.deinit(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "test_output.log") catch {};
 
-    try logger.log("Test started", .{});
-    try logger.log("Processing item {d}", .{42});
-    try logger.log("Test completed", .{});
+    try logger.log(io, "Test started", .{});
+    try logger.log(io, "Processing item {d}", .{42});
+    try logger.log(io, "Test completed", .{});
 
     // Verify file was written
-    const content = try std.fs.cwd().readFileAlloc(testing.allocator, "test_output.log", 1024);
+    const content = try std.Io.Dir.cwd().readFileAlloc(io, "test_output.log", testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "Test started") != null);
@@ -2645,42 +2667,43 @@ test "write test logs to file" {
 
 // ANCHOR: timestamped_logging
 const TimestampedLogger = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     allocator: std.mem.Allocator,
     start_time: i64,
 
-    fn init(path: []const u8, allocator: std.mem.Allocator) !TimestampedLogger {
-        const file = try std.fs.cwd().createFile(path, .{});
+    fn init(io: std.Io, path: []const u8, allocator: std.mem.Allocator) !TimestampedLogger {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
         return .{
             .file = file,
             .allocator = allocator,
-            .start_time = std.time.milliTimestamp(),
+            .start_time = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms))),
         };
     }
 
-    fn deinit(self: *TimestampedLogger) void {
-        self.file.close();
+    fn deinit(self: *TimestampedLogger, io: std.Io) void {
+        self.file.close(io);
     }
 
-    fn log(self: *TimestampedLogger, level: []const u8, comptime fmt: []const u8, args: anytype) !void {
-        const elapsed = std.time.milliTimestamp() - self.start_time;
+    fn log(self: *TimestampedLogger, io: std.Io, level: []const u8, comptime fmt: []const u8, args: anytype) !void {
+        const elapsed = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms))) - self.start_time;
         const msg = try std.fmt.allocPrint(self.allocator, "[{d}ms] [{s}] " ++ fmt ++ "\n", .{ elapsed, level } ++ args);
         defer self.allocator.free(msg);
-        try self.file.writeAll(msg);
+        try self.file.writeStreamingAll(io, msg);
     }
 };
 
 test "timestamped test logging" {
-    var logger = try TimestampedLogger.init("timestamped.log", testing.allocator);
-    defer logger.deinit();
-    defer std.fs.cwd().deleteFile("timestamped.log") catch {};
+    const io = std.testing.io;
+    var logger = try TimestampedLogger.init(io, "timestamped.log", testing.allocator);
+    defer logger.deinit(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "timestamped.log") catch {};
 
-    try logger.log("INFO", "Test initialization", .{});
-    std.Thread.sleep(10 * std.time.ns_per_ms); // Sleep 10ms
-    try logger.log("DEBUG", "Processing data", .{});
-    try logger.log("INFO", "Test complete", .{});
+    try logger.log(io, "INFO", "Test initialization", .{});
+    try io.sleep(.fromNanoseconds(10 * std.time.ns_per_ms), .awake); // Sleep 10ms
+    try logger.log(io, "DEBUG", "Processing data", .{});
+    try logger.log(io, "INFO", "Test complete", .{});
 
-    const content = try std.fs.cwd().readFileAlloc(testing.allocator, "timestamped.log", 1024);
+    const content = try std.Io.Dir.cwd().readFileAlloc(io, "timestamped.log", testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "[INFO]") != null);
@@ -2689,26 +2712,28 @@ test "timestamped test logging" {
 // ANCHOR_END: timestamped_logging
 
 // ANCHOR: temp_file_logging
-fn runTestWithTempLog(allocator: std.mem.Allocator) ![]const u8 {
+fn runTestWithTempLog(io: std.Io, allocator: std.mem.Allocator) ![]const u8 {
     // Create temporary file for test logs
     var tmp_dir = std.testing.tmpDir(.{});
     var dir = tmp_dir.dir;
     defer tmp_dir.cleanup();
 
-    const log_file = try dir.createFile("test.log", .{ .read = true });
-    defer log_file.close();
+    const log_file = try dir.createFile(io, "test.log", .{ .read = true });
+    defer log_file.close(io);
 
-    try log_file.writeAll("Test execution started\n");
-    try log_file.writeAll("Running validation checks\n");
-    try log_file.writeAll("All checks passed\n");
+    try log_file.writeStreamingAll(io, "Test execution started\n");
+    try log_file.writeStreamingAll(io, "Running validation checks\n");
+    try log_file.writeStreamingAll(io, "All checks passed\n");
 
     // Read back the log
-    try log_file.seekTo(0);
-    return log_file.readToEndAlloc(allocator, 1024 * 1024);
+    var read_buffer: [4096]u8 = undefined;
+    var file_reader = log_file.reader(io, &read_buffer);
+    return file_reader.interface.allocRemaining(allocator, .limited(1024 * 1024));
 }
 
 test "use temporary directory for test logs" {
-    const log_content = try runTestWithTempLog(testing.allocator);
+    const io = std.testing.io;
+    const log_content = try runTestWithTempLog(io, testing.allocator);
     defer testing.allocator.free(log_content);
 
     try testing.expect(std.mem.indexOf(u8, log_content, "Test execution started") != null);
@@ -2718,56 +2743,57 @@ test "use temporary directory for test logs" {
 
 // ANCHOR: structured_logging
 const StructuredLogger = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     allocator: std.mem.Allocator,
     test_name: []const u8,
 
-    fn init(path: []const u8, test_name: []const u8, allocator: std.mem.Allocator) !StructuredLogger {
-        const file = try std.fs.cwd().createFile(path, .{});
+    fn init(io: std.Io, path: []const u8, test_name: []const u8, allocator: std.mem.Allocator) !StructuredLogger {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
         var self = StructuredLogger{
             .file = file,
             .allocator = allocator,
             .test_name = test_name,
         };
-        try self.logTestStart();
+        try self.logTestStart(io);
         return self;
     }
 
-    fn deinit(self: *StructuredLogger) void {
-        self.logTestEnd() catch {};
-        self.file.close();
+    fn deinit(self: *StructuredLogger, io: std.Io) void {
+        self.logTestEnd(io) catch {};
+        self.file.close(io);
     }
 
-    fn logTestStart(self: *StructuredLogger) !void {
+    fn logTestStart(self: *StructuredLogger, io: std.Io) !void {
         const msg = try std.fmt.allocPrint(self.allocator, "{{\"event\":\"test_start\",\"name\":\"{s}\"}}\n", .{self.test_name});
         defer self.allocator.free(msg);
-        try self.file.writeAll(msg);
+        try self.file.writeStreamingAll(io, msg);
     }
 
-    fn logTestEnd(self: *StructuredLogger) !void {
+    fn logTestEnd(self: *StructuredLogger, io: std.Io) !void {
         const msg = try std.fmt.allocPrint(self.allocator, "{{\"event\":\"test_end\",\"name\":\"{s}\"}}\n", .{self.test_name});
         defer self.allocator.free(msg);
-        try self.file.writeAll(msg);
+        try self.file.writeStreamingAll(io, msg);
     }
 
-    fn logAssertion(self: *StructuredLogger, assertion: []const u8, passed: bool) !void {
+    fn logAssertion(self: *StructuredLogger, io: std.Io, assertion: []const u8, passed: bool) !void {
         const msg = try std.fmt.allocPrint(self.allocator, "{{\"event\":\"assertion\",\"name\":\"{s}\",\"passed\":{}}}\n", .{ assertion, passed });
         defer self.allocator.free(msg);
-        try self.file.writeAll(msg);
+        try self.file.writeStreamingAll(io, msg);
     }
 };
 
 test "structured JSON logging" {
-    var logger = try StructuredLogger.init("structured.log", "validation_test", testing.allocator);
-    defer std.fs.cwd().deleteFile("structured.log") catch {};
+    const io = std.testing.io;
+    var logger = try StructuredLogger.init(io, "structured.log", "validation_test", testing.allocator);
+    defer std.Io.Dir.cwd().deleteFile(io, "structured.log") catch {};
 
-    try logger.logAssertion("value_is_positive", true);
-    try logger.logAssertion("value_within_range", true);
-    try logger.logAssertion("value_not_zero", false);
+    try logger.logAssertion(io, "value_is_positive", true);
+    try logger.logAssertion(io, "value_within_range", true);
+    try logger.logAssertion(io, "value_not_zero", false);
 
-    logger.deinit(); // Close file before reading
+    logger.deinit(io); // Close file before reading
 
-    const content = try std.fs.cwd().readFileAlloc(testing.allocator, "structured.log", 1024);
+    const content = try std.Io.Dir.cwd().readFileAlloc(io, "structured.log", testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "test_start") != null);
@@ -2778,53 +2804,54 @@ test "structured JSON logging" {
 
 // ANCHOR: multi_test_logging
 const TestSuite = struct {
-    log_file: std.fs.File,
+    log_file: std.Io.File,
     allocator: std.mem.Allocator,
     tests_run: usize = 0,
     tests_passed: usize = 0,
 
-    fn init(path: []const u8, allocator: std.mem.Allocator) !TestSuite {
-        const file = try std.fs.cwd().createFile(path, .{});
+    fn init(io: std.Io, path: []const u8, allocator: std.mem.Allocator) !TestSuite {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
         return .{
             .log_file = file,
             .allocator = allocator,
         };
     }
 
-    fn deinit(self: *TestSuite) void {
-        self.writeSummary() catch {};
-        self.log_file.close();
+    fn deinit(self: *TestSuite, io: std.Io) void {
+        self.writeSummary(io) catch {};
+        self.log_file.close(io);
     }
 
-    fn runTest(self: *TestSuite, name: []const u8, passed: bool) !void {
+    fn runTest(self: *TestSuite, io: std.Io, name: []const u8, passed: bool) !void {
         self.tests_run += 1;
         if (passed) self.tests_passed += 1;
 
         const status = if (passed) "PASS" else "FAIL";
         const msg = try std.fmt.allocPrint(self.allocator, "[{s}] {s}\n", .{ status, name });
         defer self.allocator.free(msg);
-        try self.log_file.writeAll(msg);
+        try self.log_file.writeStreamingAll(io, msg);
     }
 
-    fn writeSummary(self: *TestSuite) !void {
+    fn writeSummary(self: *TestSuite, io: std.Io) !void {
         const msg = try std.fmt.allocPrint(self.allocator, "\nSummary: {d}/{d} tests passed\n", .{ self.tests_passed, self.tests_run });
         defer self.allocator.free(msg);
-        try self.log_file.writeAll(msg);
+        try self.log_file.writeStreamingAll(io, msg);
     }
 };
 
 test "log multiple test results" {
-    var suite = try TestSuite.init("suite.log", testing.allocator);
-    defer std.fs.cwd().deleteFile("suite.log") catch {};
+    const io = std.testing.io;
+    var suite = try TestSuite.init(io, "suite.log", testing.allocator);
+    defer std.Io.Dir.cwd().deleteFile(io, "suite.log") catch {};
 
-    try suite.runTest("test_addition", true);
-    try suite.runTest("test_subtraction", true);
-    try suite.runTest("test_division", false);
-    try suite.runTest("test_multiplication", true);
+    try suite.runTest(io, "test_addition", true);
+    try suite.runTest(io, "test_subtraction", true);
+    try suite.runTest(io, "test_division", false);
+    try suite.runTest(io, "test_multiplication", true);
 
-    suite.deinit(); // Close file before reading
+    suite.deinit(io); // Close file before reading
 
-    const content = try std.fs.cwd().readFileAlloc(testing.allocator, "suite.log", 1024);
+    const content = try std.Io.Dir.cwd().readFileAlloc(io, "suite.log", testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "[PASS] test_addition") != null);
@@ -2835,31 +2862,31 @@ test "log multiple test results" {
 
 // ANCHOR: error_logging
 const ErrorLogger = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     allocator: std.mem.Allocator,
 
-    fn init(path: []const u8, allocator: std.mem.Allocator) !ErrorLogger {
-        const file = try std.fs.cwd().createFile(path, .{});
+    fn init(io: std.Io, path: []const u8, allocator: std.mem.Allocator) !ErrorLogger {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
         return .{
             .file = file,
             .allocator = allocator,
         };
     }
 
-    fn deinit(self: *ErrorLogger) void {
-        self.file.close();
+    fn deinit(self: *ErrorLogger, io: std.Io) void {
+        self.file.close(io);
     }
 
-    fn logError(self: *ErrorLogger, err: anyerror, context: []const u8) !void {
+    fn logError(self: *ErrorLogger, io: std.Io, err: anyerror, context: []const u8) !void {
         const msg = try std.fmt.allocPrint(self.allocator, "ERROR: {s} - {s}\n", .{ @errorName(err), context });
         defer self.allocator.free(msg);
-        try self.file.writeAll(msg);
+        try self.file.writeStreamingAll(io, msg);
     }
 
-    fn logSuccess(self: *ErrorLogger, operation: []const u8) !void {
+    fn logSuccess(self: *ErrorLogger, io: std.Io, operation: []const u8) !void {
         const msg = try std.fmt.allocPrint(self.allocator, "SUCCESS: {s}\n", .{operation});
         defer self.allocator.free(msg);
-        try self.file.writeAll(msg);
+        try self.file.writeStreamingAll(io, msg);
     }
 };
 
@@ -2870,31 +2897,32 @@ fn riskyOperation(value: i32) !i32 {
 }
 
 test "log errors during testing" {
-    var logger = try ErrorLogger.init("errors.log", testing.allocator);
-    defer logger.deinit();
-    defer std.fs.cwd().deleteFile("errors.log") catch {};
+    const io = std.testing.io;
+    var logger = try ErrorLogger.init(io, "errors.log", testing.allocator);
+    defer logger.deinit(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "errors.log") catch {};
 
     // Test error cases
     if (riskyOperation(-5)) |_| {
-        try logger.logSuccess("negative value handling");
+        try logger.logSuccess(io, "negative value handling");
     } else |err| {
-        try logger.logError(err, "processing negative value");
+        try logger.logError(io, err, "processing negative value");
     }
 
     if (riskyOperation(200)) |_| {
-        try logger.logSuccess("large value handling");
+        try logger.logSuccess(io, "large value handling");
     } else |err| {
-        try logger.logError(err, "processing large value");
+        try logger.logError(io, err, "processing large value");
     }
 
     // Test success case
     if (riskyOperation(50)) |_| {
-        try logger.logSuccess("valid value processing");
+        try logger.logSuccess(io, "valid value processing");
     } else |err| {
-        try logger.logError(err, "processing valid value");
+        try logger.logError(io, err, "processing valid value");
     }
 
-    const content = try std.fs.cwd().readFileAlloc(testing.allocator, "errors.log", 1024);
+    const content = try std.Io.Dir.cwd().readFileAlloc(io, "errors.log", testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "ERROR: InvalidValue") != null);
@@ -2910,7 +2938,7 @@ const BufferedTestLogger = struct {
 
     fn init(allocator: std.mem.Allocator) BufferedTestLogger {
         return .{
-            .buffer = std.ArrayList(u8){},
+            .buffer = std.ArrayList(u8).empty,
             .allocator = allocator,
         };
     }
@@ -2920,19 +2948,22 @@ const BufferedTestLogger = struct {
     }
 
     fn log(self: *BufferedTestLogger, comptime fmt: []const u8, args: anytype) !void {
-        const writer = self.buffer.writer(self.allocator);
+        var aw: std.Io.Writer.Allocating = .fromArrayList(self.allocator, &self.buffer);
+        defer self.buffer = aw.toArrayList();
+        const writer = &aw.writer;
         try writer.print(fmt, args);
         try writer.writeAll("\n");
     }
 
-    fn writeToFile(self: *BufferedTestLogger, path: []const u8) !void {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
-        try file.writeAll(self.buffer.items);
+    fn writeToFile(self: *BufferedTestLogger, io: std.Io, path: []const u8) !void {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, self.buffer.items);
     }
 };
 
 test "buffered logging with file write" {
+    const io = std.testing.io;
     var logger = BufferedTestLogger.init(testing.allocator);
     defer logger.deinit();
 
@@ -2942,10 +2973,10 @@ test "buffered logging with file write" {
     try logger.log("Test 3: {s}", .{"FAILED"});
 
     // Write buffer to file
-    try logger.writeToFile("buffered.log");
-    defer std.fs.cwd().deleteFile("buffered.log") catch {};
+    try logger.writeToFile(io, "buffered.log");
+    defer std.Io.Dir.cwd().deleteFile(io, "buffered.log") catch {};
 
-    const content = try std.fs.cwd().readFileAlloc(testing.allocator, "buffered.log", 1024);
+    const content = try std.Io.Dir.cwd().readFileAlloc(io, "buffered.log", testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "Starting test suite") != null);
@@ -2955,26 +2986,26 @@ test "buffered logging with file write" {
 
 // ANCHOR: performance_logging
 const PerfLogger = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     allocator: std.mem.Allocator,
 
-    fn init(path: []const u8, allocator: std.mem.Allocator) !PerfLogger {
-        const file = try std.fs.cwd().createFile(path, .{});
+    fn init(io: std.Io, path: []const u8, allocator: std.mem.Allocator) !PerfLogger {
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
         return .{
             .file = file,
             .allocator = allocator,
         };
     }
 
-    fn deinit(self: *PerfLogger) void {
-        self.file.close();
+    fn deinit(self: *PerfLogger, io: std.Io) void {
+        self.file.close(io);
     }
 
-    fn logTiming(self: *PerfLogger, operation: []const u8, duration_ns: u64) !void {
+    fn logTiming(self: *PerfLogger, io: std.Io, operation: []const u8, duration_ns: u64) !void {
         const duration_ms = @as(f64, @floatFromInt(duration_ns)) / @as(f64, @floatFromInt(std.time.ns_per_ms));
         const msg = try std.fmt.allocPrint(self.allocator, "{s}: {d:.3}ms\n", .{ operation, duration_ms });
         defer self.allocator.free(msg);
-        try self.file.writeAll(msg);
+        try self.file.writeStreamingAll(io, msg);
     }
 };
 
@@ -2988,17 +3019,18 @@ fn benchmarkOperation() void {
 }
 
 test "log performance metrics" {
-    var logger = try PerfLogger.init("perf.log", testing.allocator);
-    defer logger.deinit();
-    defer std.fs.cwd().deleteFile("perf.log") catch {};
+    const io = std.testing.io;
+    var logger = try PerfLogger.init(io, "perf.log", testing.allocator);
+    defer logger.deinit(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "perf.log") catch {};
 
-    const start = std.time.nanoTimestamp();
+    const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
     benchmarkOperation();
-    const end = std.time.nanoTimestamp();
+    const end = std.Io.Timestamp.now(io, .real).toNanoseconds();
 
-    try logger.logTiming("benchmark_operation", @intCast(end - start));
+    try logger.logTiming(io, "benchmark_operation", @intCast(end - start));
 
-    const content = try std.fs.cwd().readFileAlloc(testing.allocator, "perf.log", 1024);
+    const content = try std.Io.Dir.cwd().readFileAlloc(io, "perf.log", testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "benchmark_operation") != null);
@@ -3131,15 +3163,18 @@ Feature flags let you control which tests run without commenting them out.
 Skip tests based on environment variables:
 
 ```zig
-fn isCI() bool {
-    const allocator = testing.allocator;
-    const ci = std.process.getEnvVarOwned(allocator, "CI") catch return false;
-    defer allocator.free(ci);
+// 0.16 has no global environment, so the map is passed in. `main` gets one
+// from `std.process.Init`; a test can build an empty one.
+fn isCI(environ: *const std.process.Environ.Map) bool {
+    const ci = environ.get("CI") orelse return false;
     return std.mem.eql(u8, ci, "true");
 }
 
 test "skip in CI environment" {
-    if (isCI()) {
+    var environ_map: std.process.Environ.Map = .init(testing.allocator);
+    defer environ_map.deinit();
+    const environ = &environ_map;
+    if (isCI(environ)) {
         return error.SkipZigTest;
     }
 
@@ -3179,14 +3214,15 @@ Run slow tests with a flag: `const run_slow_tests = true;` before running tests.
 Skip tests when required resources aren't available:
 
 ```zig
-fn hasRequiredResource() bool {
+fn hasRequiredResource(io: std.Io) bool {
     // Check if required file exists
-    std.fs.cwd().access("test-resource.txt", .{}) catch return false;
+    std.Io.Dir.cwd().access(io, "test-resource.txt", .{}) catch return false;
     return true;
 }
 
 test "skip if resource missing" {
-    if (!hasRequiredResource()) {
+    const io = std.testing.io;
+    if (!hasRequiredResource(io)) {
         return error.SkipZigTest;
     }
 
@@ -3318,10 +3354,10 @@ Skip tests that depend on external services:
 
 ```zig
 const NetworkTest = struct {
-    fn requiresNetwork() !void {
+    fn requiresNetwork(environ: *const std.process.Environ.Map) !void {
         // Try to detect network availability
         const allocator = testing.allocator;
-        const no_network = std.process.getEnvVarOwned(allocator, "NO_NETWORK") catch null;
+        const no_network = environ.get("NO_NETWORK");
         if (no_network) |val| {
             defer allocator.free(val);
             if (std.mem.eql(u8, val, "1")) {
@@ -3332,7 +3368,10 @@ const NetworkTest = struct {
 };
 
 test "network-dependent test" {
-    try NetworkTest.requiresNetwork();
+    var environ_map: std.process.Environ.Map = .init(testing.allocator);
+    defer environ_map.deinit();
+    const environ = &environ_map;
+    try NetworkTest.requiresNetwork(environ);
 
     // Network test code here
     try testing.expectEqual(@as(i32, 1), 1);
@@ -3398,10 +3437,8 @@ const TestCategory = enum {
     flaky,
 };
 
-fn shouldRunCategory(category: TestCategory) bool {
-    const allocator = testing.allocator;
-    const test_category = std.process.getEnvVarOwned(allocator, "TEST_CATEGORY") catch return true;
-    defer allocator.free(test_category);
+fn shouldRunCategory(environ: *const std.process.Environ.Map, category: TestCategory) bool {
+    const test_category = environ.get("TEST_CATEGORY") orelse return true;
 
     return switch (category) {
         .unit => std.mem.eql(u8, test_category, "unit") or std.mem.eql(u8, test_category, "all"),
@@ -3412,7 +3449,10 @@ fn shouldRunCategory(category: TestCategory) bool {
 }
 
 test "unit test category" {
-    if (!shouldRunCategory(.unit)) {
+    var environ_map: std.process.Environ.Map = .init(testing.allocator);
+    defer environ_map.deinit();
+    const environ = &environ_map;
+    if (!shouldRunCategory(environ, .unit)) {
         return error.SkipZigTest;
     }
 
@@ -3420,7 +3460,10 @@ test "unit test category" {
 }
 
 test "integration test category" {
-    if (!shouldRunCategory(.integration)) {
+    var environ_map: std.process.Environ.Map = .init(testing.allocator);
+    defer environ_map.deinit();
+    const environ = &environ_map;
+    if (!shouldRunCategory(environ, .integration)) {
         return error.SkipZigTest;
     }
 
@@ -3460,7 +3503,7 @@ test "example" {
 **Pattern 2: Environment Detection**
 ```zig
 fn shouldSkip() bool {
-    return std.process.getEnvVarOwned(allocator, "SKIP_TEST") catch null != null;
+    return try init.environ_map.get("SKIP_TEST") orelse error.EnvironmentVariableNotFound catch null != null;
 }
 ```
 
@@ -3500,7 +3543,7 @@ grep -r "SkipZigTest" src/
 Organize tests for continuous integration:
 
 ```zig
-const in_ci = std.process.getEnvVarOwned(allocator, "CI") catch null != null;
+const in_ci = try init.environ_map.get("CI") orelse error.EnvironmentVariableNotFound catch null != null;
 
 test "interactive test" {
     if (in_ci) {
@@ -3594,15 +3637,18 @@ test "experimental feature test" {
 // ANCHOR_END: feature_flag
 
 // ANCHOR: environment_based
-fn isCI() bool {
-    const allocator = testing.allocator;
-    const ci = std.process.getEnvVarOwned(allocator, "CI") catch return false;
-    defer allocator.free(ci);
+// 0.16 has no global environment, so the map is passed in. `main` gets one
+// from `std.process.Init`; a test can build an empty one.
+fn isCI(environ: *const std.process.Environ.Map) bool {
+    const ci = environ.get("CI") orelse return false;
     return std.mem.eql(u8, ci, "true");
 }
 
 test "skip in CI environment" {
-    if (isCI()) {
+    var environ_map: std.process.Environ.Map = .init(testing.allocator);
+    defer environ_map.deinit();
+    const environ = &environ_map;
+    if (isCI(environ)) {
         return error.SkipZigTest;
     }
 
@@ -3630,14 +3676,15 @@ test "slow performance test" {
 // ANCHOR_END: slow_test
 
 // ANCHOR: resource_check
-fn hasRequiredResource() bool {
+fn hasRequiredResource(io: std.Io) bool {
     // Check if required file exists
-    std.fs.cwd().access("test-resource.txt", .{}) catch return false;
+    std.Io.Dir.cwd().access(io, "test-resource.txt", .{}) catch return false;
     return true;
 }
 
 test "skip if resource missing" {
-    if (!hasRequiredResource()) {
+    const io = std.testing.io;
+    if (!hasRequiredResource(io)) {
         return error.SkipZigTest;
     }
 
@@ -3739,10 +3786,10 @@ test "conditionally run based on name" {
 
 // ANCHOR: graceful_degradation
 const NetworkTest = struct {
-    fn requiresNetwork() !void {
+    fn requiresNetwork(environ: *const std.process.Environ.Map) !void {
         // Try to detect network availability
         const allocator = testing.allocator;
-        const no_network = std.process.getEnvVarOwned(allocator, "NO_NETWORK") catch null;
+        const no_network = environ.get("NO_NETWORK");
         if (no_network) |val| {
             defer allocator.free(val);
             if (std.mem.eql(u8, val, "1")) {
@@ -3753,7 +3800,10 @@ const NetworkTest = struct {
 };
 
 test "network-dependent test" {
-    try NetworkTest.requiresNetwork();
+    var environ_map: std.process.Environ.Map = .init(testing.allocator);
+    defer environ_map.deinit();
+    const environ = &environ_map;
+    try NetworkTest.requiresNetwork(environ);
 
     // Network test code here
     try testing.expectEqual(@as(i32, 1), 1);
@@ -3801,10 +3851,8 @@ const TestCategory = enum {
     flaky,
 };
 
-fn shouldRunCategory(category: TestCategory) bool {
-    const allocator = testing.allocator;
-    const test_category = std.process.getEnvVarOwned(allocator, "TEST_CATEGORY") catch return true;
-    defer allocator.free(test_category);
+fn shouldRunCategory(environ: *const std.process.Environ.Map, category: TestCategory) bool {
+    const test_category = environ.get("TEST_CATEGORY") orelse return true;
 
     return switch (category) {
         .unit => std.mem.eql(u8, test_category, "unit") or std.mem.eql(u8, test_category, "all"),
@@ -3815,7 +3863,10 @@ fn shouldRunCategory(category: TestCategory) bool {
 }
 
 test "unit test category" {
-    if (!shouldRunCategory(.unit)) {
+    var environ_map: std.process.Environ.Map = .init(testing.allocator);
+    defer environ_map.deinit();
+    const environ = &environ_map;
+    if (!shouldRunCategory(environ, .unit)) {
         return error.SkipZigTest;
     }
 
@@ -3823,7 +3874,10 @@ test "unit test category" {
 }
 
 test "integration test category" {
-    if (!shouldRunCategory(.integration)) {
+    var environ_map: std.process.Environ.Map = .init(testing.allocator);
+    defer environ_map.deinit();
+    const environ = &environ_map;
+    if (!shouldRunCategory(environ, .integration)) {
         return error.SkipZigTest;
     }
 
@@ -3988,7 +4042,6 @@ fn loadConfiguration(path: []const u8) !i32 {
                 // Create default config
                 return 0;
             },
-            else => return err,
         }
     };
 
@@ -4112,7 +4165,7 @@ const ErrorAggregator = struct {
 
     fn init(allocator: std.mem.Allocator) ErrorAggregator {
         return .{
-            .errors = std.ArrayList(anyerror){},
+            .errors = std.ArrayList(anyerror).empty,
             .allocator = allocator,
         };
     }
@@ -4233,7 +4286,7 @@ const ParallelResult = struct {
 
     fn init() ParallelResult {
         return .{
-            .errors = std.ArrayList(anyerror){},
+            .errors = std.ArrayList(anyerror).empty,
         };
     }
 
@@ -4306,7 +4359,6 @@ if (operation()) |value| {
 const data = readFile(path) catch |err| switch (err) {
     error.FileNotFound => return error.ConfigMissing,
     error.AccessDenied => return error.PermissionError,
-    else => return err,
 };
 ```
 
@@ -4510,7 +4562,6 @@ fn loadConfiguration(path: []const u8) !i32 {
                 // Create default config
                 return 0;
             },
-            else => return err,
         }
     };
 
@@ -4613,7 +4664,7 @@ const ErrorAggregator = struct {
 
     fn init(allocator: std.mem.Allocator) ErrorAggregator {
         return .{
-            .errors = std.ArrayList(anyerror){},
+            .errors = std.ArrayList(anyerror).empty,
             .allocator = allocator,
         };
     }
@@ -4716,7 +4767,7 @@ const ParallelResult = struct {
 
     fn init() ParallelResult {
         return .{
-            .errors = std.ArrayList(anyerror){},
+            .errors = std.ArrayList(anyerror).empty,
         };
     }
 
@@ -4993,7 +5044,7 @@ const ErrorTracker = struct {
 
     fn init(allocator: std.mem.Allocator) ErrorTracker {
         return .{
-            .errors = std.ArrayList(anyerror){},
+            .errors = std.ArrayList(anyerror).empty,
             .allocator = allocator,
         };
     }
@@ -5199,7 +5250,7 @@ var attempt: usize = 0;
 while (attempt < MAX_RETRIES) : (attempt += 1) {
     operation() catch |err| {
         if (isFatal(err)) return err;
-        std.time.sleep(backoff_ms * (attempt + 1));
+        try io.sleep(.fromNanoseconds(backoff_ms * (attempt + 1)), .awake);
         continue;
     };
     break;
@@ -5226,7 +5277,6 @@ operation() catch |err| { ... }
 operation() catch |err| switch (err) {
     error.NotFound => handleNotFound(),
     error.PermissionDenied => handlePermission(),
-    else => return err,
 };
 ```
 
@@ -5464,7 +5514,7 @@ const ErrorTracker = struct {
 
     fn init(allocator: std.mem.Allocator) ErrorTracker {
         return .{
-            .errors = std.ArrayList(anyerror){},
+            .errors = std.ArrayList(anyerror).empty,
             .allocator = allocator,
         };
     }
@@ -6156,7 +6206,7 @@ pub const OpenError = error{
 };
 
 // Compose with your own errors
-const MyFileError = std.fs.File.OpenError || error{ConfigInvalid};
+const MyFileError = std.Io.File.OpenError || error{ConfigInvalid};
 ```
 
 ### Full Tested Code
@@ -6726,11 +6776,11 @@ const EnrichedError = struct {
     timestamp: i64,
     context: []const u8,
 
-    fn fromError(err: anyerror, ctx: []const u8) EnrichedError {
+    fn fromError(io: std.Io, err: anyerror, ctx: []const u8) EnrichedError {
         return .{
             .category = categorizeError(err),
             .original = err,
-            .timestamp = std.time.milliTimestamp(),
+            .timestamp = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms))),
             .context = ctx,
         };
     }
@@ -7048,7 +7098,7 @@ const result = operation() catch |err| {
 
     return switch (category) {
         .transient => {
-            std.time.sleep(1000);
+            try io.sleep(.fromNanoseconds(1000), .awake);
             return operation(); // Retry
         },
         .permanent => {
@@ -7258,11 +7308,11 @@ const EnrichedError = struct {
     timestamp: i64,
     context: []const u8,
 
-    fn fromError(err: anyerror, ctx: []const u8) EnrichedError {
+    fn fromError(io: std.Io, err: anyerror, ctx: []const u8) EnrichedError {
         return .{
             .category = categorizeError(err),
             .original = err,
-            .timestamp = std.time.milliTimestamp(),
+            .timestamp = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms))),
             .context = ctx,
         };
     }
@@ -7293,9 +7343,9 @@ fn performOperation(should_fail: bool) !i32 {
     return 100;
 }
 
-fn wrappedOperation(should_fail: bool) !i32 {
+fn wrappedOperation(io: std.Io, should_fail: bool) !i32 {
     return performOperation(should_fail) catch |err| {
-        const enriched = EnrichedError.fromError(err, "Operation context");
+        const enriched = EnrichedError.fromError(io, err, "Operation context");
         std.debug.print("Enriched error: category={s}, error={s}\n", .{
             @tagName(enriched.category),
             @errorName(enriched.original),
@@ -7310,8 +7360,9 @@ fn wrappedOperation(should_fail: bool) !i32 {
 }
 
 test "enrich errors with metadata" {
-    try testing.expectEqual(@as(i32, 100), try wrappedOperation(false));
-    try testing.expectError(error.ShouldRetry, wrappedOperation(true));
+    const io = std.testing.io;
+    try testing.expectEqual(@as(i32, 100), try wrappedOperation(io, false));
+    try testing.expectError(error.ShouldRetry, wrappedOperation(io, true));
 }
 // ANCHOR_END: error_enrichment
 
@@ -7905,18 +7956,18 @@ operation() catch |err| {
 ```zig
 // Wrong - may close file before buffer flush
 var file = try open();
-defer file.close();
+defer file.close(io);
 var buffer = try allocate();
 defer free(buffer);
 return try processFile(file, buffer);
 
 // Right - buffer freed first, then file closed
 var file = try open();
-errdefer file.close();
+errdefer file.close(io);
 var buffer = try allocate();
 errdefer free(buffer);
 const result = try processFile(file, buffer);
-defer file.close();
+defer file.close(io);
 defer free(buffer);
 return result;
 ```
@@ -8531,7 +8582,7 @@ const WarningAccumulator = struct {
 
     fn init(allocator: std.mem.Allocator) WarningAccumulator {
         return .{
-            .warnings = std.ArrayList([]const u8){},
+            .warnings = std.ArrayList([]const u8).empty,
             .allocator = allocator,
         };
     }
@@ -9054,7 +9105,7 @@ const WarningAccumulator = struct {
 
     fn init(allocator: std.mem.Allocator) WarningAccumulator {
         return .{
-            .warnings = std.ArrayList([]const u8){},
+            .warnings = std.ArrayList([]const u8).empty,
             .allocator = allocator,
         };
     }
@@ -9746,7 +9797,7 @@ This shows:
 
 ```zig
 test "detect memory leaks" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
         const leaked = gpa.deinit();
         if (leaked == .leak) {
@@ -10076,16 +10127,16 @@ You need to measure your program's performance, identify bottlenecks, and optimi
 
 ### Solution
 
-Use `std.time.nanoTimestamp()` for high-resolution timing:
+Use `std.Io.Timestamp.now(io, .awake)` for high-resolution timing -- `.awake` is monotonic, so it cannot run backwards mid-measurement the way the wall clock can. `toNanoseconds()` returns an `i96`:
 
 ```zig
-fn measureFunction() !void {
-    const start = std.time.nanoTimestamp();
+fn measureFunction(io: std.Io) !void {
+    const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
 
     // Simulate work
-    std.Thread.sleep(1 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(1 * std.time.ns_per_ms), .awake);
 
-    const end = std.time.nanoTimestamp();
+    const end = std.Io.Timestamp.now(io, .real).toNanoseconds();
     const elapsed = end - start;
 
     std.debug.print("Function took {d} nanoseconds ({d:.2} ms)\n", .{
@@ -10095,7 +10146,8 @@ fn measureFunction() !void {
 }
 
 test "basic timing measurement" {
-    try measureFunction();
+    const io = std.testing.io;
+    try measureFunction(io);
 }
 ```
 
@@ -10112,15 +10164,15 @@ const Timer = struct {
     start_time: i128,
     name: []const u8,
 
-    fn start(name: []const u8) Timer {
+    fn start(io: std.Io, name: []const u8) Timer {
         return .{
-            .start_time = std.time.nanoTimestamp(),
+            .start_time = std.Io.Timestamp.now(io, .real).toNanoseconds(),
             .name = name,
         };
     }
 
-    fn stop(self: *const Timer) i128 {
-        const elapsed = std.time.nanoTimestamp() - self.start_time;
+    fn stop(self: *const Timer, io: std.Io) i128 {
+        const elapsed = std.Io.Timestamp.now(io, .real).toNanoseconds() - self.start_time;
         std.debug.print("[{s}] Elapsed: {d} ns ({d:.2} ms)\n", .{
             self.name,
             elapsed,
@@ -10129,17 +10181,18 @@ const Timer = struct {
         return elapsed;
     }
 
-    fn lap(self: *Timer, label: []const u8) i128 {
-        const elapsed = std.time.nanoTimestamp() - self.start_time;
+    fn lap(self: *Timer, io: std.Io, label: []const u8) i128 {
+        const elapsed = std.Io.Timestamp.now(io, .real).toNanoseconds() - self.start_time;
         std.debug.print("[{s}] {s}: {d} ns\n", .{ self.name, label, elapsed });
-        self.start_time = std.time.nanoTimestamp(); // Reset for next lap
+        self.start_time = std.Io.Timestamp.now(io, .real).toNanoseconds(); // Reset for next lap
         return elapsed;
     }
 };
 
 test "timer utility" {
+    const io = std.testing.io;
     var timer = Timer.start("MyOperation");
-    std.Thread.sleep(2 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(2 * std.time.ns_per_ms), .awake);
     _ = timer.stop();
 }
 ```
@@ -10163,14 +10216,14 @@ fn algorithmB(n: usize) usize {
     return (n * (n - 1)) / 2;
 }
 
-fn benchmarkAlgorithms(n: usize) !void {
-    const start_a = std.time.nanoTimestamp();
+fn benchmarkAlgorithms(io: std.Io, n: usize) !void {
+    const start_a = std.Io.Timestamp.now(io, .real).toNanoseconds();
     const result_a = algorithmA(n);
-    const time_a = std.time.nanoTimestamp() - start_a;
+    const time_a = std.Io.Timestamp.now(io, .real).toNanoseconds() - start_a;
 
-    const start_b = std.time.nanoTimestamp();
+    const start_b = std.Io.Timestamp.now(io, .real).toNanoseconds();
     const result_b = algorithmB(n);
-    const time_b = std.time.nanoTimestamp() - start_b;
+    const time_b = std.Io.Timestamp.now(io, .real).toNanoseconds() - start_b;
 
     std.debug.print("Algorithm A: {d} ns, result: {d}\n", .{ time_a, result_a });
     std.debug.print("Algorithm B: {d} ns, result: {d}\n", .{ time_b, result_b });
@@ -10178,7 +10231,8 @@ fn benchmarkAlgorithms(n: usize) !void {
 }
 
 test "benchmark algorithm comparison" {
-    try benchmarkAlgorithms(100000);
+    const io = std.testing.io;
+    try benchmarkAlgorithms(io, 100000);
 }
 ```
 
@@ -10189,24 +10243,25 @@ Direct comparison reveals which algorithm performs better.
 Measure individual sections to find bottlenecks:
 
 ```zig
-fn complexOperation() !void {
+fn complexOperation(io: std.Io) !void {
     var timer = Timer.start("ComplexOp");
 
     // Section 1
-    std.Thread.sleep(1 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(1 * std.time.ns_per_ms), .awake);
     _ = timer.lap("Section 1: Setup");
 
     // Section 2
-    std.Thread.sleep(3 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(3 * std.time.ns_per_ms), .awake);
     _ = timer.lap("Section 2: Processing");
 
     // Section 3
-    std.Thread.sleep(1 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(1 * std.time.ns_per_ms), .awake);
     _ = timer.lap("Section 3: Cleanup");
 }
 
 test "profile code sections" {
-    try complexOperation();
+    const io = std.testing.io;
+    try complexOperation(io);
 }
 ```
 
@@ -10276,15 +10331,15 @@ Memory profiling reveals allocation patterns and potential leaks.
 Measure per-iteration performance:
 
 ```zig
-fn benchmarkIterations(iterations: usize) !void {
+fn benchmarkIterations(io: std.Io, iterations: usize) !void {
     var sum: usize = 0;
-    const start = std.time.nanoTimestamp();
+    const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
 
     for (0..iterations) |i| {
         sum +%= i;
     }
 
-    const elapsed = std.time.nanoTimestamp() - start;
+    const elapsed = std.Io.Timestamp.now(io, .real).toNanoseconds() - start;
     const per_iter = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(iterations));
 
     std.debug.print("Iterations: {d}\n", .{iterations});
@@ -10296,7 +10351,8 @@ fn benchmarkIterations(iterations: usize) !void {
 }
 
 test "benchmark iterations" {
-    try benchmarkIterations(1_000_000);
+    const io = std.testing.io;
+    try benchmarkIterations(io, 1_000_000);
 }
 ```
 
@@ -10307,18 +10363,18 @@ Per-iteration timing helps assess scalability.
 Account for warmup effects and get accurate measurements:
 
 ```zig
-fn runBenchmarkWithWarmup(comptime func: fn () usize, warmup_runs: usize, measured_runs: usize) !void {
+fn runBenchmarkWithWarmup(io: std.Io, comptime func: fn () usize, warmup_runs: usize, measured_runs: usize) !void {
     // Warmup phase
     for (0..warmup_runs) |_| {
         _ = func();
     }
 
     // Measurement phase
-    const start = std.time.nanoTimestamp();
+    const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
     for (0..measured_runs) |_| {
         _ = func();
     }
-    const elapsed = std.time.nanoTimestamp() - start;
+    const elapsed = std.Io.Timestamp.now(io, .real).toNanoseconds() - start;
 
     const avg = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(measured_runs));
     std.debug.print("Average per run: {d:.2} ns ({d} runs after {d} warmup)\n", .{
@@ -10337,7 +10393,8 @@ fn benchmarkedFunction() usize {
 }
 
 test "benchmark with warmup" {
-    try runBenchmarkWithWarmup(benchmarkedFunction, 100, 1000);
+    const io = std.testing.io;
+    try runBenchmarkWithWarmup(io, benchmarkedFunction, 100, 1000);
 }
 ```
 
@@ -10390,14 +10447,15 @@ const BenchmarkStats = struct {
 };
 
 test "statistical benchmarking" {
+    const io = std.testing.io;
     const runs = 10;
     var stats = try BenchmarkStats.init(testing.allocator, runs);
     defer stats.deinit();
 
     for (0..runs) |i| {
-        const start = std.time.nanoTimestamp();
+        const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
         _ = benchmarkedFunction();
-        const elapsed = std.time.nanoTimestamp() - start;
+        const elapsed = std.Io.Timestamp.now(io, .real).toNanoseconds() - start;
         stats.addSample(i, elapsed);
     }
 
@@ -10491,9 +10549,9 @@ Tracking allocators provide detailed memory usage insights.
 Measure data processing rates:
 
 ```zig
-fn measureThroughput(data_size: usize, iterations: usize) !void {
+fn measureThroughput(io: std.Io, data_size: usize, iterations: usize) !void {
     var sum: usize = 0;
-    const start = std.time.nanoTimestamp();
+    const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
 
     for (0..iterations) |_| {
         for (0..data_size) |i| {
@@ -10501,7 +10559,7 @@ fn measureThroughput(data_size: usize, iterations: usize) !void {
         }
     }
 
-    const elapsed = std.time.nanoTimestamp() - start;
+    const elapsed = std.Io.Timestamp.now(io, .real).toNanoseconds() - start;
     const total_bytes = data_size * iterations * @sizeOf(usize);
     const throughput_mbps = @as(f64, @floatFromInt(total_bytes)) /
                             @as(f64, @floatFromInt(elapsed)) * 1000.0;
@@ -10511,7 +10569,8 @@ fn measureThroughput(data_size: usize, iterations: usize) !void {
 }
 
 test "throughput measurement" {
-    try measureThroughput(10000, 100);
+    const io = std.testing.io;
+    try measureThroughput(io, 10000, 100);
 }
 ```
 
@@ -10563,9 +10622,9 @@ std.debug.print("Speedup: {d:.2}x\n", .{before / after});
 
 **Pattern 1: Simple Timing**
 ```zig
-const start = std.time.nanoTimestamp();
+const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
 operation();
-const elapsed = std.time.nanoTimestamp() - start;
+const elapsed = std.Io.Timestamp.now(io, .real).toNanoseconds() - start;
 ```
 
 **Pattern 2: Scoped Timing**
@@ -10677,9 +10736,9 @@ perf report
 
 **Heap Profiling:**
 ```zig
-var gpa = std.heap.GeneralPurposeAllocator(.{
+var gpa = std.heap.DebugAllocator(.{
     .enable_memory_limit = true,
-}){};
+}).init;
 const allocator = gpa.allocator();
 // ... use allocator ...
 const leaked = gpa.deinit();
@@ -10725,18 +10784,18 @@ const actual = measured - overhead;
 
 **Latency**: Time for single operation
 ```zig
-const start = std.time.nanoTimestamp();
+const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
 singleOperation();
-const latency = std.time.nanoTimestamp() - start;
+const latency = std.Io.Timestamp.now(io, .real).toNanoseconds() - start;
 ```
 
 **Throughput**: Operations per second
 ```zig
-const start = std.time.nanoTimestamp();
+const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
 for (0..operations) |_| {
     singleOperation();
 }
-const elapsed = std.time.nanoTimestamp() - start;
+const elapsed = std.Io.Timestamp.now(io, .real).toNanoseconds() - start;
 const throughput = operations * std.time.ns_per_s / elapsed;
 ```
 
@@ -10761,13 +10820,13 @@ const std = @import("std");
 const testing = std.testing;
 
 // ANCHOR: basic_timing
-fn measureFunction() !void {
-    const start = std.time.nanoTimestamp();
+fn measureFunction(io: std.Io) !void {
+    const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
 
     // Simulate work
-    std.Thread.sleep(1 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(1 * std.time.ns_per_ms), .awake);
 
-    const end = std.time.nanoTimestamp();
+    const end = std.Io.Timestamp.now(io, .real).toNanoseconds();
     const elapsed = end - start;
 
     std.debug.print("Function took {d} nanoseconds ({d:.2} ms)\n", .{
@@ -10777,7 +10836,8 @@ fn measureFunction() !void {
 }
 
 test "basic timing measurement" {
-    try measureFunction();
+    const io = std.testing.io;
+    try measureFunction(io);
 }
 // ANCHOR_END: basic_timing
 
@@ -10786,15 +10846,15 @@ const Timer = struct {
     start_time: i128,
     name: []const u8,
 
-    fn start(name: []const u8) Timer {
+    fn start(io: std.Io, name: []const u8) Timer {
         return .{
-            .start_time = std.time.nanoTimestamp(),
+            .start_time = std.Io.Timestamp.now(io, .real).toNanoseconds(),
             .name = name,
         };
     }
 
-    fn stop(self: *const Timer) i128 {
-        const elapsed = std.time.nanoTimestamp() - self.start_time;
+    fn stop(self: *const Timer, io: std.Io) i128 {
+        const elapsed = std.Io.Timestamp.now(io, .real).toNanoseconds() - self.start_time;
         std.debug.print("[{s}] Elapsed: {d} ns ({d:.2} ms)\n", .{
             self.name,
             elapsed,
@@ -10803,18 +10863,19 @@ const Timer = struct {
         return elapsed;
     }
 
-    fn lap(self: *Timer, label: []const u8) i128 {
-        const elapsed = std.time.nanoTimestamp() - self.start_time;
+    fn lap(self: *Timer, io: std.Io, label: []const u8) i128 {
+        const elapsed = std.Io.Timestamp.now(io, .real).toNanoseconds() - self.start_time;
         std.debug.print("[{s}] {s}: {d} ns\n", .{ self.name, label, elapsed });
-        self.start_time = std.time.nanoTimestamp(); // Reset for next lap
+        self.start_time = std.Io.Timestamp.now(io, .real).toNanoseconds(); // Reset for next lap
         return elapsed;
     }
 };
 
 test "timer utility" {
-    var timer = Timer.start("MyOperation");
-    std.Thread.sleep(2 * std.time.ns_per_ms);
-    _ = timer.stop();
+    const io = std.testing.io;
+    var timer = Timer.start(io, "MyOperation");
+    try io.sleep(.fromNanoseconds(2 * std.time.ns_per_ms), .awake);
+    _ = timer.stop(io);
 }
 // ANCHOR_END: timer_utility
 
@@ -10831,14 +10892,14 @@ fn algorithmB(n: usize) usize {
     return (n * (n - 1)) / 2;
 }
 
-fn benchmarkAlgorithms(n: usize) !void {
-    const start_a = std.time.nanoTimestamp();
+fn benchmarkAlgorithms(io: std.Io, n: usize) !void {
+    const start_a = std.Io.Timestamp.now(io, .real).toNanoseconds();
     const result_a = algorithmA(n);
-    const time_a = std.time.nanoTimestamp() - start_a;
+    const time_a = std.Io.Timestamp.now(io, .real).toNanoseconds() - start_a;
 
-    const start_b = std.time.nanoTimestamp();
+    const start_b = std.Io.Timestamp.now(io, .real).toNanoseconds();
     const result_b = algorithmB(n);
-    const time_b = std.time.nanoTimestamp() - start_b;
+    const time_b = std.Io.Timestamp.now(io, .real).toNanoseconds() - start_b;
 
     std.debug.print("Algorithm A: {d} ns, result: {d}\n", .{ time_a, result_a });
     std.debug.print("Algorithm B: {d} ns, result: {d}\n", .{ time_b, result_b });
@@ -10846,29 +10907,31 @@ fn benchmarkAlgorithms(n: usize) !void {
 }
 
 test "benchmark algorithm comparison" {
-    try benchmarkAlgorithms(100000);
+    const io = std.testing.io;
+    try benchmarkAlgorithms(io, 100000);
 }
 // ANCHOR_END: benchmark_comparison
 
 // ANCHOR: profiling_sections
-fn complexOperation() !void {
-    var timer = Timer.start("ComplexOp");
+fn complexOperation(io: std.Io) !void {
+    var timer = Timer.start(io, "ComplexOp");
 
     // Section 1
-    std.Thread.sleep(1 * std.time.ns_per_ms);
-    _ = timer.lap("Section 1: Setup");
+    try io.sleep(.fromNanoseconds(1 * std.time.ns_per_ms), .awake);
+    _ = timer.lap(io, "Section 1: Setup");
 
     // Section 2
-    std.Thread.sleep(3 * std.time.ns_per_ms);
-    _ = timer.lap("Section 2: Processing");
+    try io.sleep(.fromNanoseconds(3 * std.time.ns_per_ms), .awake);
+    _ = timer.lap(io, "Section 2: Processing");
 
     // Section 3
-    std.Thread.sleep(1 * std.time.ns_per_ms);
-    _ = timer.lap("Section 3: Cleanup");
+    try io.sleep(.fromNanoseconds(1 * std.time.ns_per_ms), .awake);
+    _ = timer.lap(io, "Section 3: Cleanup");
 }
 
 test "profile code sections" {
-    try complexOperation();
+    const io = std.testing.io;
+    try complexOperation(io);
 }
 // ANCHOR_END: profiling_sections
 
@@ -10926,15 +10989,15 @@ test "memory profiling" {
 // ANCHOR_END: memory_profiling
 
 // ANCHOR: iteration_benchmark
-fn benchmarkIterations(iterations: usize) !void {
+fn benchmarkIterations(io: std.Io, iterations: usize) !void {
     var sum: usize = 0;
-    const start = std.time.nanoTimestamp();
+    const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
 
     for (0..iterations) |i| {
         sum +%= i;
     }
 
-    const elapsed = std.time.nanoTimestamp() - start;
+    const elapsed = std.Io.Timestamp.now(io, .real).toNanoseconds() - start;
     const per_iter = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(iterations));
 
     std.debug.print("Iterations: {d}\n", .{iterations});
@@ -10946,23 +11009,24 @@ fn benchmarkIterations(iterations: usize) !void {
 }
 
 test "benchmark iterations" {
-    try benchmarkIterations(1_000_000);
+    const io = std.testing.io;
+    try benchmarkIterations(io, 1_000_000);
 }
 // ANCHOR_END: iteration_benchmark
 
 // ANCHOR: warmup_benchmark
-fn runBenchmarkWithWarmup(comptime func: fn () usize, warmup_runs: usize, measured_runs: usize) !void {
+fn runBenchmarkWithWarmup(io: std.Io, comptime func: fn () usize, warmup_runs: usize, measured_runs: usize) !void {
     // Warmup phase
     for (0..warmup_runs) |_| {
         _ = func();
     }
 
     // Measurement phase
-    const start = std.time.nanoTimestamp();
+    const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
     for (0..measured_runs) |_| {
         _ = func();
     }
-    const elapsed = std.time.nanoTimestamp() - start;
+    const elapsed = std.Io.Timestamp.now(io, .real).toNanoseconds() - start;
 
     const avg = @as(f64, @floatFromInt(elapsed)) / @as(f64, @floatFromInt(measured_runs));
     std.debug.print("Average per run: {d:.2} ns ({d} runs after {d} warmup)\n", .{
@@ -10981,7 +11045,8 @@ fn benchmarkedFunction() usize {
 }
 
 test "benchmark with warmup" {
-    try runBenchmarkWithWarmup(benchmarkedFunction, 100, 1000);
+    const io = std.testing.io;
+    try runBenchmarkWithWarmup(io, benchmarkedFunction, 100, 1000);
 }
 // ANCHOR_END: warmup_benchmark
 
@@ -11028,14 +11093,15 @@ const BenchmarkStats = struct {
 };
 
 test "statistical benchmarking" {
+    const io = std.testing.io;
     const runs = 10;
     var stats = try BenchmarkStats.init(testing.allocator, runs);
     defer stats.deinit();
 
     for (0..runs) |i| {
-        const start = std.time.nanoTimestamp();
+        const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
         _ = benchmarkedFunction();
-        const elapsed = std.time.nanoTimestamp() - start;
+        const elapsed = std.Io.Timestamp.now(io, .real).toNanoseconds() - start;
         stats.addSample(i, elapsed);
     }
 
@@ -11117,9 +11183,9 @@ test "allocation tracking" {
 // ANCHOR_END: allocation_tracking
 
 // ANCHOR: throughput_measurement
-fn measureThroughput(data_size: usize, iterations: usize) !void {
+fn measureThroughput(io: std.Io, data_size: usize, iterations: usize) !void {
     var sum: usize = 0;
-    const start = std.time.nanoTimestamp();
+    const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
 
     for (0..iterations) |_| {
         for (0..data_size) |i| {
@@ -11127,7 +11193,7 @@ fn measureThroughput(data_size: usize, iterations: usize) !void {
         }
     }
 
-    const elapsed = std.time.nanoTimestamp() - start;
+    const elapsed = std.Io.Timestamp.now(io, .real).toNanoseconds() - start;
     const total_bytes = data_size * iterations * @sizeOf(usize);
     const throughput_mbps = @as(f64, @floatFromInt(total_bytes)) /
                             @as(f64, @floatFromInt(elapsed)) * 1000.0;
@@ -11137,7 +11203,8 @@ fn measureThroughput(data_size: usize, iterations: usize) !void {
 }
 
 test "throughput measurement" {
-    try measureThroughput(10000, 100);
+    const io = std.testing.io;
+    try measureThroughput(io, 10000, 100);
 }
 // ANCHOR_END: throughput_measurement
 ```
@@ -11371,7 +11438,7 @@ const ObjectPool = struct {
         const objects = try allocator.alloc(?Object, capacity);
         @memset(objects, null);
 
-        var free_list = std.ArrayList(usize){};
+        var free_list = std.ArrayList(usize).empty;
         try free_list.ensureTotalCapacity(allocator, capacity);
         for (0..capacity) |i| {
             try free_list.append(allocator, capacity - 1 - i);
@@ -11516,7 +11583,7 @@ Pre-allocate capacity for string operations:
 
 ```zig
 fn buildStringNaive(allocator: std.mem.Allocator) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     for (0..100) |i| {
         const str = try std.fmt.allocPrint(allocator, "{d} ", .{i});
         defer allocator.free(str);
@@ -11526,11 +11593,11 @@ fn buildStringNaive(allocator: std.mem.Allocator) ![]u8 {
 }
 
 fn buildStringEfficient(allocator: std.mem.Allocator) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     try result.ensureTotalCapacity(allocator, 400); // Pre-allocate
 
     for (0..100) |i| {
-        try result.writer(allocator).print("{d} ", .{i});
+        try result.print(allocator, "{d} ", .{i});
     }
     return result.toOwnedSlice(allocator);
 }
@@ -11811,9 +11878,10 @@ Prevent regressions with performance tests:
 
 ```zig
 test "performance regression check" {
-    const start = std.time.nanoTimestamp();
+    const io = std.testing.io;
+    const start = std.Io.Timestamp.now(io, .real).toNanoseconds();
     criticalFunction();
-    const elapsed = std.time.nanoTimestamp() - start;
+    const elapsed = std.Io.Timestamp.now(io, .real).toNanoseconds() - start;
 
     const max_ns = 1_000_000; // 1ms limit
     try testing.expect(elapsed < max_ns);
@@ -12000,7 +12068,7 @@ const ObjectPool = struct {
         const objects = try allocator.alloc(?Object, capacity);
         @memset(objects, null);
 
-        var free_list = std.ArrayList(usize){};
+        var free_list = std.ArrayList(usize).empty;
         try free_list.ensureTotalCapacity(allocator, capacity);
         for (0..capacity) |i| {
             try free_list.append(allocator, capacity - 1 - i);
@@ -12121,7 +12189,7 @@ test "avoid bounds checks" {
 
 // ANCHOR: string_building
 fn buildStringNaive(allocator: std.mem.Allocator) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     for (0..100) |i| {
         const str = try std.fmt.allocPrint(allocator, "{d} ", .{i});
         defer allocator.free(str);
@@ -12131,11 +12199,11 @@ fn buildStringNaive(allocator: std.mem.Allocator) ![]u8 {
 }
 
 fn buildStringEfficient(allocator: std.mem.Allocator) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     try result.ensureTotalCapacity(allocator, 400); // Pre-allocate
 
     for (0..100) |i| {
-        try result.writer(allocator).print("{d} ", .{i});
+        try result.print(allocator, "{d} ", .{i});
     }
     return result.toOwnedSlice(allocator);
 }

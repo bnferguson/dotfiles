@@ -1,6 +1,6 @@
 # Files & I/O Recipes
 
-*19 tested recipes for Zig 0.15.2*
+*19 recipes for Zig 0.16.0 — 2 not yet migrated (see `scripts/verify_recipes.py`)*
 
 ## Quick Reference
 
@@ -44,12 +44,12 @@ You need to read text from a file or write text to a file efficiently, handling 
 
 ```zig
 /// Write text content to a file using buffered I/O
-pub fn writeTextFile(path: []const u8, content: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn writeTextFile(io: std.Io, path: []const u8, content: []const u8) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writer.writeAll(content);
@@ -57,17 +57,15 @@ pub fn writeTextFile(path: []const u8, content: []const u8) !void {
 }
 
 /// Read entire text file into memory
-pub fn readTextFile(
-    allocator: std.mem.Allocator,
-    path: []const u8,
-) ![]u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readTextFile(io: std.Io, allocator: std.mem.Allocator,
+    path: []const u8,) ![]u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(io)).size;
     const buffer = try allocator.alloc(u8, file_size);
 
-    const bytes_read = try file.readAll(buffer);
+    const bytes_read = try file.readPositionalAll(io, buffer, 0);
     return buffer[0..bytes_read];
 }
 ```
@@ -76,15 +74,13 @@ pub fn readTextFile(
 
 ```zig
 /// Process a file line by line and collect lines into an array
-pub fn readLinesIntoList(
-    allocator: std.mem.Allocator,
-    path: []const u8,
-) !std.array_list.Managed([]u8) {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readLinesIntoList(io: std.Io, allocator: std.mem.Allocator,
+    path: []const u8,) !std.array_list.Managed([]u8) {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     var read_buf: [4096]u8 = undefined;
-    var file_reader = file.reader(&read_buf);
+    var file_reader = file.reader(io, &read_buf);
     const reader = &file_reader.interface;
 
     var lines = std.array_list.Managed([]u8).init(allocator);
@@ -123,15 +119,13 @@ pub fn readLinesIntoList(
 
 ```zig
 /// Write formatted lines to a file
-pub fn writeFormattedLines(
-    path: []const u8,
-    data: []const i32,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn writeFormattedLines(io: std.Io, path: []const u8,
+    data: []const i32,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (data, 0..) |value, i| {
@@ -142,22 +136,20 @@ pub fn writeFormattedLines(
 }
 
 /// Read from one file and write to another, transforming content
-pub fn processLargeFile(
-    allocator: std.mem.Allocator,
+pub fn processLargeFile(io: std.Io, allocator: std.mem.Allocator,
     input_path: []const u8,
-    output_path: []const u8,
-) !usize {
-    const input = try std.fs.cwd().openFile(input_path, .{});
-    defer input.close();
+    output_path: []const u8,) !usize {
+    const input = try std.Io.Dir.cwd().openFile(io, input_path, .{});
+    defer input.close(io);
 
-    const output = try std.fs.cwd().createFile(output_path, .{});
-    defer output.close();
+    const output = try std.Io.Dir.cwd().createFile(io, output_path, .{});
+    defer output.close(io);
 
     var read_buf: [4096]u8 = undefined;
     var write_buf: [4096]u8 = undefined;
 
-    var input_reader = input.reader(&read_buf);
-    var output_writer = output.writer(&write_buf);
+    var input_reader = input.reader(io, &read_buf);
+    var output_writer = output.writer(io, &write_buf);
 
     const reader = &input_reader.interface;
     const writer = &output_writer.interface;
@@ -202,7 +194,7 @@ pub fn processLargeFile(
 
 ### Discussion
 
-### Zig 0.15.2 I/O API
+### Zig 0.16.0 I/O API
 
 Starting with Zig 0.15.1, the I/O system was redesigned with buffered I/O as the default. Key changes:
 
@@ -230,12 +222,17 @@ Buffered readers and writers significantly improve performance by reducing the n
 
 ### Buffer Sizes
 
-The standard library uses reasonable default buffer sizes (4096 bytes). You can customize buffer sizes if needed:
+Zig 0.16 has no separate buffering wrapper. A reader owns whatever buffer you hand it, so
+the size is the size of the array you declare:
 
 ```zig
+// The buffer is the buffering. There is no bufferedReader to wrap this in.
 var buffer: [8192]u8 = undefined;
-var buffered = std.io.bufferedReaderSize(4096, file.reader());
+var file_reader = file.reader(io, &buffer);
+const reader = &file_reader.interface;
 ```
+
+Pass a larger array for fewer, bigger reads. Pass `&.{}` for unbuffered access.
 
 ### Error Handling
 
@@ -249,7 +246,7 @@ File operations can fail for many reasons:
 Always handle errors explicitly with `try`, `catch`, or proper error propagation:
 
 ```zig
-const file = std.fs.cwd().openFile(path, .{}) catch |err| {
+const file = std.Io.Dir.cwd().openFile(io, path, .{}) catch |err| {
     std.debug.print("Failed to open {s}: {}\n", .{ path, err });
     return err;
 };
@@ -286,7 +283,7 @@ Zig treats `\n` as the line delimiter. For cross-platform text files:
 To handle Windows-style line endings:
 
 ```zig
-const trimmed = std.mem.trimRight(u8, line, "\r");
+const trimmed = std.mem.trimEnd(u8, line, "\r");
 ```
 
 ### File Modes
@@ -295,16 +292,15 @@ When creating files, specify the mode:
 
 ```zig
 // Truncate existing file (default)
-const file = try std.fs.cwd().createFile(path, .{});
+const file = try std.Io.Dir.cwd().createFile(io, path, .{});
 
 // Append to existing file
-const file = try std.fs.cwd().openFile(path, .{
+const file = try std.Io.Dir.cwd().openFile(io, path, .{
     .mode = .write_only,
 });
-try file.seekFromEnd(0);
 
 // Create only if doesn't exist
-const file = try std.fs.cwd().createFile(path, .{
+const file = try std.Io.Dir.cwd().createFile(io, path, .{
     .exclusive = true,
 });
 ```
@@ -315,12 +311,14 @@ Choose the right strategy based on your needs:
 
 **Full file read** - Good for small to medium files:
 ```zig
-const content = try file.readToEndAlloc(allocator, max_size);
+var content_buffer: [4096]u8 = undefined;
+var content_reader = file.reader(io, &content_buffer);
+const content = try content_reader.interface.allocRemaining(allocator, .limited(max_size));
 ```
 
 **Line by line** - Best for large files or when processing sequentially:
 ```zig
-while (try reader.readUntilDelimiterOrEof(&buffer, '\n')) |line| {
+while (reader.takeDelimiterExclusive('\n') catch null) |line| {
     // Process line
 }
 ```
@@ -361,7 +359,7 @@ with open('file.txt', 'r') as f:
 
 ```zig
 // Recipe 5.1: Reading and writing text data
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to efficiently read and write text files using
 // buffered I/O operations, handle line-by-line processing, and manage file resources.
@@ -371,12 +369,12 @@ const testing = std.testing;
 
 // ANCHOR: write_read_text
 /// Write text content to a file using buffered I/O
-pub fn writeTextFile(path: []const u8, content: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn writeTextFile(io: std.Io, path: []const u8, content: []const u8) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writer.writeAll(content);
@@ -384,32 +382,28 @@ pub fn writeTextFile(path: []const u8, content: []const u8) !void {
 }
 
 /// Read entire text file into memory
-pub fn readTextFile(
-    allocator: std.mem.Allocator,
-    path: []const u8,
-) ![]u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readTextFile(io: std.Io, allocator: std.mem.Allocator,
+    path: []const u8,) ![]u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(io)).size;
     const buffer = try allocator.alloc(u8, file_size);
 
-    const bytes_read = try file.readAll(buffer);
+    const bytes_read = try file.readPositionalAll(io, buffer, 0);
     return buffer[0..bytes_read];
 }
 // ANCHOR_END: write_read_text
 
 // ANCHOR: line_processing
 /// Process a file line by line and collect lines into an array
-pub fn readLinesIntoList(
-    allocator: std.mem.Allocator,
-    path: []const u8,
-) !std.array_list.Managed([]u8) {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readLinesIntoList(io: std.Io, allocator: std.mem.Allocator,
+    path: []const u8,) !std.array_list.Managed([]u8) {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     var read_buf: [4096]u8 = undefined;
-    var file_reader = file.reader(&read_buf);
+    var file_reader = file.reader(io, &read_buf);
     const reader = &file_reader.interface;
 
     var lines = std.array_list.Managed([]u8).init(allocator);
@@ -446,15 +440,13 @@ pub fn readLinesIntoList(
 
 // ANCHOR: stream_transform
 /// Write formatted lines to a file
-pub fn writeFormattedLines(
-    path: []const u8,
-    data: []const i32,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn writeFormattedLines(io: std.Io, path: []const u8,
+    data: []const i32,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (data, 0..) |value, i| {
@@ -465,22 +457,20 @@ pub fn writeFormattedLines(
 }
 
 /// Read from one file and write to another, transforming content
-pub fn processLargeFile(
-    allocator: std.mem.Allocator,
+pub fn processLargeFile(io: std.Io, allocator: std.mem.Allocator,
     input_path: []const u8,
-    output_path: []const u8,
-) !usize {
-    const input = try std.fs.cwd().openFile(input_path, .{});
-    defer input.close();
+    output_path: []const u8,) !usize {
+    const input = try std.Io.Dir.cwd().openFile(io, input_path, .{});
+    defer input.close(io);
 
-    const output = try std.fs.cwd().createFile(output_path, .{});
-    defer output.close();
+    const output = try std.Io.Dir.cwd().createFile(io, output_path, .{});
+    defer output.close(io);
 
     var read_buf: [4096]u8 = undefined;
     var write_buf: [4096]u8 = undefined;
 
-    var input_reader = input.reader(&read_buf);
-    var output_writer = output.writer(&write_buf);
+    var input_reader = input.reader(io, &read_buf);
+    var output_writer = output.writer(io, &write_buf);
 
     const reader = &input_reader.interface;
     const writer = &output_writer.interface;
@@ -524,26 +514,24 @@ pub fn processLargeFile(
 // ANCHOR_END: stream_transform
 
 /// Append text to an existing file
-pub fn appendToFile(path: []const u8, content: []const u8) !void {
-    const file = try std.fs.cwd().openFile(path, .{
+pub fn appendToFile(io: std.Io, path: []const u8, content: []const u8) !void {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{
         .mode = .read_write,
     });
-    defer file.close();
+    defer file.close(io);
 
-    const end_pos = try file.getEndPos();
-    try file.seekTo(end_pos);
-
-    // Use unbuffered write for append to avoid issues with file positioning
-    _ = try file.write(content);
+    // Appending is a positional write at the current end of the file.
+    const end_pos = try file.length(io);
+    try file.writePositionalAll(io, content, end_pos);
 }
 
 /// Count lines in a file without loading entire file into memory
-pub fn countLines(allocator: std.mem.Allocator, path: []const u8) !usize {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn countLines(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !usize {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     var read_buf: [4096]u8 = undefined;
-    var file_reader = file.reader(&read_buf);
+    var file_reader = file.reader(io, &read_buf);
     const reader = &file_reader.interface;
 
     var count: usize = 0;
@@ -570,31 +558,33 @@ pub fn countLines(allocator: std.mem.Allocator, path: []const u8) !usize {
 // Tests
 
 test "write and read text file" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const test_path = "test_write_read.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const content = "Hello, Zig!\nThis is a test file.\nWith multiple lines.";
 
     // Write file
-    try writeTextFile(test_path, content);
+    try writeTextFile(io, test_path, content);
 
     // Read file
-    const read_content = try readTextFile(allocator, test_path);
+    const read_content = try readTextFile(io, allocator, test_path);
     defer allocator.free(read_content);
 
     try testing.expectEqualStrings(content, read_content);
 }
 
 test "read lines into list" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const test_path = "test_lines.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const content = "Line 1\nLine 2\nLine 3";
-    try writeTextFile(test_path, content);
+    try writeTextFile(io, test_path, content);
 
-    var lines = try readLinesIntoList(allocator, test_path);
+    var lines = try readLinesIntoList(io, allocator, test_path);
     defer {
         for (lines.items) |line| {
             allocator.free(line);
@@ -609,14 +599,15 @@ test "read lines into list" {
 }
 
 test "write formatted lines" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const test_path = "test_formatted.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const data = [_]i32{ 10, 20, 30, 40, 50 };
-    try writeFormattedLines(test_path, &data);
+    try writeFormattedLines(io, test_path, &data);
 
-    const content = try readTextFile(allocator, test_path);
+    const content = try readTextFile(io, allocator, test_path);
     defer allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "Item 0: 10") != null);
@@ -624,19 +615,20 @@ test "write formatted lines" {
 }
 
 test "process large file with transformation" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const input_path = "test_input.txt";
     const output_path = "test_output.txt";
-    defer std.fs.cwd().deleteFile(input_path) catch {};
-    defer std.fs.cwd().deleteFile(output_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, input_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, output_path) catch {};
 
     const content = "hello world\nzig is awesome\nfile io test";
-    try writeTextFile(input_path, content);
+    try writeTextFile(io, input_path, content);
 
-    const line_count = try processLargeFile(allocator, input_path, output_path);
+    const line_count = try processLargeFile(io, allocator, input_path, output_path);
     try testing.expectEqual(@as(usize, 3), line_count);
 
-    const output_content = try readTextFile(allocator, output_path);
+    const output_content = try readTextFile(io, allocator, output_path);
     defer allocator.free(output_content);
 
     try testing.expect(std.mem.indexOf(u8, output_content, "HELLO WORLD") != null);
@@ -644,18 +636,19 @@ test "process large file with transformation" {
 }
 
 test "append to file" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const test_path = "test_append.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write initial content
-    try writeTextFile(test_path, "First line\n");
+    try writeTextFile(io, test_path, "First line\n");
 
     // Append more content
-    try appendToFile(test_path, "Second line\n");
-    try appendToFile(test_path, "Third line\n");
+    try appendToFile(io, test_path, "Second line\n");
+    try appendToFile(io, test_path, "Third line\n");
 
-    const content = try readTextFile(allocator, test_path);
+    const content = try readTextFile(io, allocator, test_path);
     defer allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "First line") != null);
@@ -664,58 +657,62 @@ test "append to file" {
 }
 
 test "count lines" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const test_path = "test_count.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5";
-    try writeTextFile(test_path, content);
+    try writeTextFile(io, test_path, content);
 
-    const count = try countLines(allocator, test_path);
+    const count = try countLines(io, allocator, test_path);
     try testing.expectEqual(@as(usize, 5), count);
 }
 
 test "handle empty file" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const test_path = "test_empty.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
-    try writeTextFile(test_path, "");
+    try writeTextFile(io, test_path, "");
 
-    const content = try readTextFile(allocator, test_path);
+    const content = try readTextFile(io, allocator, test_path);
     defer allocator.free(content);
 
     try testing.expectEqual(@as(usize, 0), content.len);
 
-    const count = try countLines(allocator, test_path);
+    const count = try countLines(io, allocator, test_path);
     try testing.expectEqual(@as(usize, 0), count);
 }
 
 test "handle file with single line no newline" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const test_path = "test_single.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
-    try writeTextFile(test_path, "Single line");
+    try writeTextFile(io, test_path, "Single line");
 
-    const content = try readTextFile(allocator, test_path);
+    const content = try readTextFile(io, allocator, test_path);
     defer allocator.free(content);
 
     try testing.expectEqualStrings("Single line", content);
 
-    const count = try countLines(allocator, test_path);
+    const count = try countLines(io, allocator, test_path);
     try testing.expectEqual(@as(usize, 1), count);
 }
 
 test "handle windows line endings" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const test_path = "test_crlf.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const content = "Line 1\r\nLine 2\r\nLine 3\r\n";
-    try writeTextFile(test_path, content);
+    try writeTextFile(io, test_path, content);
 
-    var lines = try readLinesIntoList(allocator, test_path);
+    var lines = try readLinesIntoList(io, allocator, test_path);
     defer {
         for (lines.items) |line| {
             allocator.free(line);
@@ -726,24 +723,25 @@ test "handle windows line endings" {
     try testing.expectEqual(@as(usize, 3), lines.items.len);
 
     // Note: lines will have \r at the end, need to trim
-    const line1 = std.mem.trimRight(u8, lines.items[0], "\r");
+    const line1 = std.mem.trimEnd(u8, lines.items[0], "\r");
     try testing.expectEqualStrings("Line 1", line1);
 }
 
 test "memory safety with arena allocator" {
+    const io = std.testing.io;
     const test_path = "test_arena.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const content = "Line 1\nLine 2\nLine 3\nLine 4\nLine 5\n";
-    try writeTextFile(test_path, content);
+    try writeTextFile(io, test_path, content);
 
     var arena = std.heap.ArenaAllocator.init(testing.allocator);
     defer arena.deinit();
     const arena_alloc = arena.allocator();
 
     // Read file multiple times - all allocations cleaned up together
-    const read1 = try readTextFile(arena_alloc, test_path);
-    const read2 = try readTextFile(arena_alloc, test_path);
+    const read1 = try readTextFile(io, arena_alloc, test_path);
+    const read2 = try readTextFile(io, arena_alloc, test_path);
 
     try testing.expectEqualStrings(content, read1);
     try testing.expectEqualStrings(content, read2);
@@ -775,12 +773,12 @@ You need to write formatted data to a file, similar to how `std.debug.print` wor
 
 ```zig
 /// Print formatted data to a file using the writer interface
-pub fn printToFile(path: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printToFile(io: std.Io, path: []const u8) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writer.print("Hello, {s}!\n", .{"World"});
@@ -791,12 +789,12 @@ pub fn printToFile(path: []const u8) !void {
 }
 
 /// Demonstrate printing various data types with different format specifiers
-pub fn printMixedData(path: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printMixedData(io: std.Io, path: []const u8) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     // Integers with different bases
@@ -828,12 +826,12 @@ const Person = struct {
 };
 
 /// Print structured data (array of structs) to a file
-pub fn printStructData(path: []const u8, people: []const Person) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printStructData(io: std.Io, path: []const u8, people: []const Person) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writer.print("People Database\n", .{});
@@ -852,16 +850,14 @@ pub fn printStructData(path: []const u8, people: []const Person) !void {
 }
 
 /// Print a formatted table with headers and data rows
-pub fn printTable(
-    path: []const u8,
+pub fn printTable(io: std.Io, path: []const u8,
     headers: []const []const u8,
-    data: []const []const []const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    data: []const []const []const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     // Print headers
@@ -892,16 +888,14 @@ pub fn printTable(
 
 ```zig
 /// Print only values that meet a condition, return count
-pub fn printWithConditions(
-    path: []const u8,
+pub fn printWithConditions(io: std.Io, path: []const u8,
     values: []const i32,
-    threshold: i32,
-) !usize {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    threshold: i32,) !usize {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     var count: usize = 0;
@@ -922,41 +916,36 @@ pub fn printWithConditions(
 }
 
 /// Append a log entry with timestamp to a log file
-pub fn printLog(
-    path: []const u8,
+pub fn printLog(io: std.Io, path: []const u8,
     level: []const u8,
-    message: []const u8,
-) !void {
+    message: []const u8,) !void {
     // Open file for appending by using OpenFlags
-    const file = try std.fs.cwd().openFile(path, .{
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{
         .mode = .write_only,
     });
-    defer file.close();
+    defer file.close(io);
 
-    // Seek to end for appending
-    try file.seekFromEnd(0);
+    // Appending is a positional write at the current end of the file.
+    const end_pos = try file.length(io);
 
-    const timestamp = std.time.timestamp();
+    const timestamp = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
 
     // Format the message
     var buf: [512]u8 = undefined;
     const log_line = try std.fmt.bufPrint(&buf, "[{}] {s}: {s}\n", .{ timestamp, level, message });
 
-    // Write directly without buffering to avoid issues
-    _ = try file.write(log_line);
+    try file.writePositionalAll(io, log_line, end_pos);
 }
 
 /// Print a report with error handling for data generation
-pub fn printReport(
-    path: []const u8,
+pub fn printReport(io: std.Io, path: []const u8,
     allocator: std.mem.Allocator,
-    generate_data: *const fn (std.mem.Allocator) anyerror![]const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    generate_data: *const fn (std.mem.Allocator) anyerror![]const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writer.print("=== Report ===\n\n", .{});
@@ -973,12 +962,12 @@ pub fn printReport(
 }
 
 /// Print numbers with various alignment options
-pub fn printAlignedNumbers(path: []const u8, numbers: []const i32) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printAlignedNumbers(io: std.Io, path: []const u8, numbers: []const i32) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writer.print("Left aligned:   ", .{});
@@ -1003,15 +992,13 @@ pub fn printAlignedNumbers(path: []const u8, numbers: []const i32) !void {
 }
 
 /// Print statistics summary
-pub fn printStatistics(
-    path: []const u8,
-    values: []const f64,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printStatistics(io: std.Io, path: []const u8,
+    values: []const f64,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     var sum: f64 = 0;
@@ -1097,7 +1084,7 @@ writer.print("Data: {}\n", .{value}) catch |err| {
 
 ### Performance Considerations
 
-**Buffered writing is automatic** with the new Zig 0.15.2 API. The buffer you provide to `file.writer(&buffer)` is used for batching write operations.
+**Buffered writing is automatic** with the new Zig 0.16.0 API. The buffer you provide to `file.writer(&buffer)` is used for batching write operations.
 
 **Buffer size matters:**
 - Smaller buffers (1KB-4KB): More frequent flushes, good for logs
@@ -1107,7 +1094,7 @@ writer.print("Data: {}\n", .{value}) catch |err| {
 **For maximum performance:**
 ```zig
 var write_buf: [8192]u8 = undefined;  // Larger buffer
-var file_writer = file.writer(&write_buf);
+var file_writer = file.writer(io, &write_buf);
 const writer = &file_writer.interface;
 
 // Batch many print calls
@@ -1164,7 +1151,7 @@ fclose(f);
 
 ```zig
 // Recipe 5.2: Printing to a file
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to use formatted printing to write data to files,
 // similar to how std.debug.print works for stdout but directed to file handles.
@@ -1174,12 +1161,12 @@ const testing = std.testing;
 
 // ANCHOR: basic_printing
 /// Print formatted data to a file using the writer interface
-pub fn printToFile(path: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printToFile(io: std.Io, path: []const u8) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writer.print("Hello, {s}!\n", .{"World"});
@@ -1190,12 +1177,12 @@ pub fn printToFile(path: []const u8) !void {
 }
 
 /// Demonstrate printing various data types with different format specifiers
-pub fn printMixedData(path: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printMixedData(io: std.Io, path: []const u8) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     // Integers with different bases
@@ -1225,12 +1212,12 @@ const Person = struct {
 };
 
 /// Print structured data (array of structs) to a file
-pub fn printStructData(path: []const u8, people: []const Person) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printStructData(io: std.Io, path: []const u8, people: []const Person) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writer.print("People Database\n", .{});
@@ -1249,16 +1236,14 @@ pub fn printStructData(path: []const u8, people: []const Person) !void {
 }
 
 /// Print a formatted table with headers and data rows
-pub fn printTable(
-    path: []const u8,
+pub fn printTable(io: std.Io, path: []const u8,
     headers: []const []const u8,
-    data: []const []const []const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    data: []const []const []const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     // Print headers
@@ -1287,16 +1272,14 @@ pub fn printTable(
 
 // ANCHOR: conditional_logging
 /// Print only values that meet a condition, return count
-pub fn printWithConditions(
-    path: []const u8,
+pub fn printWithConditions(io: std.Io, path: []const u8,
     values: []const i32,
-    threshold: i32,
-) !usize {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    threshold: i32,) !usize {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     var count: usize = 0;
@@ -1317,41 +1300,36 @@ pub fn printWithConditions(
 }
 
 /// Append a log entry with timestamp to a log file
-pub fn printLog(
-    path: []const u8,
+pub fn printLog(io: std.Io, path: []const u8,
     level: []const u8,
-    message: []const u8,
-) !void {
+    message: []const u8,) !void {
     // Open file for appending by using OpenFlags
-    const file = try std.fs.cwd().openFile(path, .{
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{
         .mode = .write_only,
     });
-    defer file.close();
+    defer file.close(io);
 
-    // Seek to end for appending
-    try file.seekFromEnd(0);
+    // Appending is a positional write at the current end of the file.
+    const end_pos = try file.length(io);
 
-    const timestamp = std.time.timestamp();
+    const timestamp = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
 
     // Format the message
     var buf: [512]u8 = undefined;
     const log_line = try std.fmt.bufPrint(&buf, "[{}] {s}: {s}\n", .{ timestamp, level, message });
 
-    // Write directly without buffering to avoid issues
-    _ = try file.write(log_line);
+    try file.writePositionalAll(io, log_line, end_pos);
 }
 
 /// Print a report with error handling for data generation
-pub fn printReport(
-    path: []const u8,
+pub fn printReport(io: std.Io, path: []const u8,
     allocator: std.mem.Allocator,
-    generate_data: *const fn (std.mem.Allocator) anyerror![]const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    generate_data: *const fn (std.mem.Allocator) anyerror![]const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writer.print("=== Report ===\n\n", .{});
@@ -1368,12 +1346,12 @@ pub fn printReport(
 }
 
 /// Print numbers with various alignment options
-pub fn printAlignedNumbers(path: []const u8, numbers: []const i32) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printAlignedNumbers(io: std.Io, path: []const u8, numbers: []const i32) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writer.print("Left aligned:   ", .{});
@@ -1398,15 +1376,13 @@ pub fn printAlignedNumbers(path: []const u8, numbers: []const i32) !void {
 }
 
 /// Print statistics summary
-pub fn printStatistics(
-    path: []const u8,
-    values: []const f64,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printStatistics(io: std.Io, path: []const u8,
+    values: []const f64,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     var sum: f64 = 0;
@@ -1436,15 +1412,18 @@ pub fn printStatistics(
 // Tests
 
 test "basic printing to file" {
+    const io = std.testing.io;
     const test_path = "test_print_basic.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
-    try printToFile(test_path);
+    try printToFile(io, test_path);
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "Hello, World!") != null);
@@ -1453,15 +1432,18 @@ test "basic printing to file" {
 }
 
 test "print mixed data types" {
+    const io = std.testing.io;
     const test_path = "test_print_mixed.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
-    try printMixedData(test_path);
+    try printMixedData(io, test_path);
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 2048);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(2048));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "Decimal: 255") != null);
@@ -1471,8 +1453,9 @@ test "print mixed data types" {
 }
 
 test "print structured data" {
+    const io = std.testing.io;
     const test_path = "test_print_struct.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const people = [_]Person{
         .{ .name = "Alice", .age = 30, .height = 1.65 },
@@ -1480,12 +1463,14 @@ test "print structured data" {
         .{ .name = "Charlie", .age = 35, .height = 1.75 },
     };
 
-    try printStructData(test_path, &people);
+    try printStructData(io, test_path, &people);
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 2048);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(2048));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "Alice") != null);
@@ -1495,8 +1480,9 @@ test "print structured data" {
 }
 
 test "print table" {
+    const io = std.testing.io;
     const test_path = "test_print_table.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const headers = [_][]const u8{ "Name", "Age", "City" };
     const row1 = [_][]const u8{ "Alice", "30", "NYC" };
@@ -1504,12 +1490,14 @@ test "print table" {
     const row3 = [_][]const u8{ "Charlie", "35", "Chicago" };
     const data = [_][]const []const u8{ &row1, &row2, &row3 };
 
-    try printTable(test_path, &headers, &data);
+    try printTable(io, test_path, &headers, &data);
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 2048);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(2048));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "Name") != null);
@@ -1518,18 +1506,21 @@ test "print table" {
 }
 
 test "print with conditions" {
+    const io = std.testing.io;
     const test_path = "test_print_conditions.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const values = [_]i32{ 10, 25, 30, 5, 50, 15, 40 };
-    const count = try printWithConditions(test_path, &values, 20);
+    const count = try printWithConditions(io, test_path, &values, 20);
 
     try testing.expectEqual(@as(usize, 4), count);
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "25") != null);
@@ -1540,25 +1531,28 @@ test "print with conditions" {
 }
 
 test "print log entries" {
+    const io = std.testing.io;
     const test_path = "test_print_log.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create initial file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
     }
 
     // Append log entries
-    try printLog(test_path, "INFO", "Application started");
-    try printLog(test_path, "WARN", "Low memory warning");
-    try printLog(test_path, "ERROR", "Connection failed");
+    try printLog(io, test_path, "INFO", "Application started");
+    try printLog(io, test_path, "WARN", "Low memory warning");
+    try printLog(io, test_path, "ERROR", "Connection failed");
 
     // Read and verify
     const content = blk: {
-        const file = try std.fs.cwd().openFile(test_path, .{});
-        defer file.close();
-        break :blk try file.readToEndAlloc(testing.allocator, 2048);
+        const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+        defer file.close(io);
+        var read_buffer: [4096]u8 = undefined;
+        var file_reader = file.reader(io, &read_buffer);
+        break :blk try file_reader.interface.allocRemaining(testing.allocator, .limited(2048));
     };
     defer testing.allocator.free(content);
 
@@ -1584,15 +1578,18 @@ fn generateErrorData(_: std.mem.Allocator) ![]const u8 {
 }
 
 test "print report with success" {
+    const io = std.testing.io;
     const test_path = "test_print_report.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
-    try printReport(test_path, testing.allocator, generateTestData);
+    try printReport(io, test_path, testing.allocator, generateTestData);
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "=== Report ===") != null);
@@ -1600,32 +1597,38 @@ test "print report with success" {
 }
 
 test "print report with error" {
+    const io = std.testing.io;
     const test_path = "test_print_report_error.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
-    const result = printReport(test_path, testing.allocator, generateErrorData);
+    const result = printReport(io, test_path, testing.allocator, generateErrorData);
     try testing.expectError(error.TestError, result);
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "Error generating data") != null);
 }
 
 test "print aligned numbers" {
+    const io = std.testing.io;
     const test_path = "test_print_aligned.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const numbers = [_]i32{ 1, 42, 999, 12345 };
-    try printAlignedNumbers(test_path, &numbers);
+    try printAlignedNumbers(io, test_path, &numbers);
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "Left aligned") != null);
@@ -1634,16 +1637,19 @@ test "print aligned numbers" {
 }
 
 test "print statistics" {
+    const io = std.testing.io;
     const test_path = "test_print_stats.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const values = [_]f64{ 10.5, 20.3, 15.7, 8.2, 30.1 };
-    try printStatistics(test_path, &values);
+    try printStatistics(io, test_path, &values);
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expect(std.mem.indexOf(u8, content, "Statistics Summary") != null);
@@ -1653,15 +1659,16 @@ test "print statistics" {
 }
 
 test "memory safety check - no allocations" {
+    const io = std.testing.io;
     const test_path = "test_memory_safe.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // All these operations should not allocate
-    try printToFile(test_path);
-    try printMixedData(test_path);
+    try printToFile(io, test_path);
+    try printMixedData(io, test_path);
 
     const numbers = [_]i32{ 1, 2, 3 };
-    try printAlignedNumbers(test_path, &numbers);
+    try printAlignedNumbers(io, test_path, &numbers);
 
     // If we reach here without allocation errors, the test passes
 }
@@ -1691,15 +1698,13 @@ You want to print data to a file with custom separators between values (like tab
 
 ```zig
 /// Print rows with tab separators
-pub fn printTabDelimited(
-    path: []const u8,
-    rows: []const []const []const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printTabDelimited(io: std.Io, path: []const u8,
+    rows: []const []const []const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (rows) |row| {
@@ -1716,15 +1721,13 @@ pub fn printTabDelimited(
 }
 
 /// Print CSV with proper escaping
-pub fn printCsv(
-    path: []const u8,
-    rows: []const []const []const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printCsv(io: std.Io, path: []const u8,
+    rows: []const []const []const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (rows) |row| {
@@ -1758,16 +1761,14 @@ pub fn printCsv(
 }
 
 /// Print values with a custom separator
-pub fn printWithSeparator(
-    path: []const u8,
+pub fn printWithSeparator(io: std.Io, path: []const u8,
     values: []const []const u8,
-    separator: []const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    separator: []const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (values, 0..) |value, i| {
@@ -1785,15 +1786,13 @@ pub fn printWithSeparator(
 
 ```zig
 /// Print lines with Windows CRLF line endings
-pub fn printWithCrlf(
-    path: []const u8,
-    lines: []const []const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printWithCrlf(io: std.Io, path: []const u8,
+    lines: []const []const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (lines) |line| {
@@ -1805,17 +1804,15 @@ pub fn printWithCrlf(
 }
 
 /// Print numbers with custom separator and precision
-pub fn printNumbersWithFormat(
-    path: []const u8,
+pub fn printNumbersWithFormat(io: std.Io, path: []const u8,
     numbers: []const f64,
     separator: []const u8,
-    precision: usize,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    precision: usize,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (numbers, 0..) |num, i| {
@@ -1836,15 +1833,13 @@ pub fn printNumbersWithFormat(
 }
 
 /// Print chunks concatenated with no line endings
-pub fn printConcatenated(
-    path: []const u8,
-    chunks: []const []const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printConcatenated(io: std.Io, path: []const u8,
+    chunks: []const []const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (chunks) |chunk| {
@@ -1862,16 +1857,14 @@ pub const LineEnding = enum {
 };
 
 /// Print lines with configurable line endings
-pub fn printWithLineEnding(
-    path: []const u8,
+pub fn printWithLineEnding(io: std.Io, path: []const u8,
     lines: []const []const u8,
-    ending: LineEnding,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    ending: LineEnding,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     const line_end = switch (ending) {
@@ -1893,16 +1886,14 @@ pub fn printWithLineEnding(
 
 ```zig
 /// Print JSON array with optional indentation
-pub fn printJsonArray(
-    path: []const u8,
+pub fn printJsonArray(io: std.Io, path: []const u8,
     values: []const []const u8,
-    indent: bool,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    indent: bool,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writer.writeAll("[");
@@ -1930,17 +1921,15 @@ pub const KeyValue = struct {
 };
 
 /// Print key-value pairs with custom format
-pub fn printKeyValuePairs(
-    path: []const u8,
+pub fn printKeyValuePairs(io: std.Io, path: []const u8,
     pairs: []const KeyValue,
     pair_separator: []const u8,
-    kv_separator: []const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    kv_separator: []const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (pairs, 0..) |pair, i| {
@@ -2034,7 +2023,7 @@ Different platforms use different line endings:
 ```zig
 // Use larger buffer for bulk data
 var write_buf: [16384]u8 = undefined;  // 16KB buffer
-var file_writer = file.writer(&write_buf);
+var file_writer = file.writer(io, &write_buf);
 const writer = &file_writer.interface;
 
 // Batch many writes before flushing
@@ -2075,7 +2064,7 @@ writer.writerow(row)
 
 ```zig
 // Recipe 5.3: Printing with different separators and line endings
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates how to customize output formatting with different
 // separators, delimiters, and line endings for various file formats.
@@ -2085,15 +2074,13 @@ const testing = std.testing;
 
 // ANCHOR: delimited_output
 /// Print rows with tab separators
-pub fn printTabDelimited(
-    path: []const u8,
-    rows: []const []const []const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printTabDelimited(io: std.Io, path: []const u8,
+    rows: []const []const []const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (rows) |row| {
@@ -2110,15 +2097,13 @@ pub fn printTabDelimited(
 }
 
 /// Print CSV with proper escaping
-pub fn printCsv(
-    path: []const u8,
-    rows: []const []const []const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printCsv(io: std.Io, path: []const u8,
+    rows: []const []const []const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (rows) |row| {
@@ -2152,16 +2137,14 @@ pub fn printCsv(
 }
 
 /// Print values with a custom separator
-pub fn printWithSeparator(
-    path: []const u8,
+pub fn printWithSeparator(io: std.Io, path: []const u8,
     values: []const []const u8,
-    separator: []const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    separator: []const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (values, 0..) |value, i| {
@@ -2177,15 +2160,13 @@ pub fn printWithSeparator(
 
 // ANCHOR: line_endings
 /// Print lines with Windows CRLF line endings
-pub fn printWithCrlf(
-    path: []const u8,
-    lines: []const []const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printWithCrlf(io: std.Io, path: []const u8,
+    lines: []const []const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (lines) |line| {
@@ -2197,17 +2178,15 @@ pub fn printWithCrlf(
 }
 
 /// Print numbers with custom separator and precision
-pub fn printNumbersWithFormat(
-    path: []const u8,
+pub fn printNumbersWithFormat(io: std.Io, path: []const u8,
     numbers: []const f64,
     separator: []const u8,
-    precision: usize,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    precision: usize,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (numbers, 0..) |num, i| {
@@ -2228,15 +2207,13 @@ pub fn printNumbersWithFormat(
 }
 
 /// Print chunks concatenated with no line endings
-pub fn printConcatenated(
-    path: []const u8,
-    chunks: []const []const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn printConcatenated(io: std.Io, path: []const u8,
+    chunks: []const []const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (chunks) |chunk| {
@@ -2254,16 +2231,14 @@ pub const LineEnding = enum {
 };
 
 /// Print lines with configurable line endings
-pub fn printWithLineEnding(
-    path: []const u8,
+pub fn printWithLineEnding(io: std.Io, path: []const u8,
     lines: []const []const u8,
-    ending: LineEnding,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    ending: LineEnding,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     const line_end = switch (ending) {
@@ -2283,16 +2258,14 @@ pub fn printWithLineEnding(
 
 // ANCHOR: format_variations
 /// Print JSON array with optional indentation
-pub fn printJsonArray(
-    path: []const u8,
+pub fn printJsonArray(io: std.Io, path: []const u8,
     values: []const []const u8,
-    indent: bool,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    indent: bool,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writer.writeAll("[");
@@ -2320,17 +2293,15 @@ pub const KeyValue = struct {
 };
 
 /// Print key-value pairs with custom format
-pub fn printKeyValuePairs(
-    path: []const u8,
+pub fn printKeyValuePairs(io: std.Io, path: []const u8,
     pairs: []const KeyValue,
     pair_separator: []const u8,
-    kv_separator: []const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    kv_separator: []const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (pairs, 0..) |pair, i| {
@@ -2349,20 +2320,23 @@ pub fn printKeyValuePairs(
 // Tests
 
 test "print tab delimited" {
+    const io = std.testing.io;
     const test_path = "test_tab_delimited.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const row1 = [_][]const u8{ "Name", "Age", "City" };
     const row2 = [_][]const u8{ "Alice", "30", "NYC" };
     const row3 = [_][]const u8{ "Bob", "25", "LA" };
     const rows = [_][]const []const u8{ &row1, &row2, &row3 };
 
-    try printTabDelimited(test_path, &rows);
+    try printTabDelimited(io, test_path, &rows);
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     _ = std.mem.indexOf(u8, content, "Name\tAge\tCity") orelse return error.TestFailed;
@@ -2370,20 +2344,23 @@ test "print tab delimited" {
 }
 
 test "print csv with escaping" {
+    const io = std.testing.io;
     const test_path = "test_csv.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const row1 = [_][]const u8{ "Name", "Description", "Price" };
     const row2 = [_][]const u8{ "Widget", "A nice, useful widget", "$10" };
     const row3 = [_][]const u8{ "Gadget", "Has \"quotes\"", "$20" };
     const rows = [_][]const []const u8{ &row1, &row2, &row3 };
 
-    try printCsv(test_path, &rows);
+    try printCsv(io, test_path, &rows);
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     // Check for proper escaping
@@ -2392,48 +2369,57 @@ test "print csv with escaping" {
 }
 
 test "print with custom separator" {
+    const io = std.testing.io;
     const test_path = "test_custom_sep.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const values = [_][]const u8{ "apple", "banana", "cherry", "date" };
-    try printWithSeparator(test_path, &values, " | ");
+    try printWithSeparator(io, test_path, &values, " | ");
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expectEqualStrings("apple | banana | cherry | date", content);
 }
 
 test "print with CRLF line endings" {
+    const io = std.testing.io;
     const test_path = "test_crlf.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const lines = [_][]const u8{ "Line 1", "Line 2", "Line 3" };
-    try printWithCrlf(test_path, &lines);
+    try printWithCrlf(io, test_path, &lines);
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expectEqualStrings("Line 1\r\nLine 2\r\nLine 3\r\n", content);
 }
 
 test "print numbers with format" {
+    const io = std.testing.io;
     const test_path = "test_numbers_format.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const numbers = [_]f64{ 3.14159, 2.71828, 1.41421 };
-    try printNumbersWithFormat(test_path, &numbers, ", ", 2);
+    try printNumbersWithFormat(io, test_path, &numbers, ", ", 2);
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     _ = std.mem.indexOf(u8, content, "3.14") orelse return error.TestFailed;
@@ -2442,22 +2428,26 @@ test "print numbers with format" {
 }
 
 test "print concatenated without line endings" {
+    const io = std.testing.io;
     const test_path = "test_concatenated.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const chunks = [_][]const u8{ "Hello", " ", "World", "!" };
-    try printConcatenated(test_path, &chunks);
+    try printConcatenated(io, test_path, &chunks);
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expectEqualStrings("Hello World!", content);
 }
 
 test "print with different line endings" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
 
     const lines = [_][]const u8{ "Line 1", "Line 2", "Line 3" };
@@ -2465,14 +2455,16 @@ test "print with different line endings" {
     // Test LF (Unix)
     {
         const test_path = "test_lf.txt";
-        defer std.fs.cwd().deleteFile(test_path) catch {};
+        defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
-        try printWithLineEnding(test_path, &lines, .lf);
+        try printWithLineEnding(io, test_path, &lines, .lf);
 
-        const file = try std.fs.cwd().openFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+        defer file.close(io);
 
-        const content = try file.readToEndAlloc(allocator, 1024);
+        var content_buffer: [4096]u8 = undefined;
+        var content_reader = file.reader(io, &content_buffer);
+        const content = try content_reader.interface.allocRemaining(allocator, .limited(1024));
         defer allocator.free(content);
 
         try testing.expectEqualStrings("Line 1\nLine 2\nLine 3\n", content);
@@ -2481,14 +2473,16 @@ test "print with different line endings" {
     // Test CRLF (Windows)
     {
         const test_path = "test_crlf2.txt";
-        defer std.fs.cwd().deleteFile(test_path) catch {};
+        defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
-        try printWithLineEnding(test_path, &lines, .crlf);
+        try printWithLineEnding(io, test_path, &lines, .crlf);
 
-        const file = try std.fs.cwd().openFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+        defer file.close(io);
 
-        const content = try file.readToEndAlloc(allocator, 1024);
+        var content_buffer: [4096]u8 = undefined;
+        var content_reader = file.reader(io, &content_buffer);
+        const content = try content_reader.interface.allocRemaining(allocator, .limited(1024));
         defer allocator.free(content);
 
         try testing.expectEqualStrings("Line 1\r\nLine 2\r\nLine 3\r\n", content);
@@ -2497,14 +2491,16 @@ test "print with different line endings" {
     // Test CR (Old Mac)
     {
         const test_path = "test_cr.txt";
-        defer std.fs.cwd().deleteFile(test_path) catch {};
+        defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
-        try printWithLineEnding(test_path, &lines, .cr);
+        try printWithLineEnding(io, test_path, &lines, .cr);
 
-        const file = try std.fs.cwd().openFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+        defer file.close(io);
 
-        const content = try file.readToEndAlloc(allocator, 1024);
+        var content_buffer: [4096]u8 = undefined;
+        var content_reader = file.reader(io, &content_buffer);
+        const content = try content_reader.interface.allocRemaining(allocator, .limited(1024));
         defer allocator.free(content);
 
         try testing.expectEqualStrings("Line 1\rLine 2\rLine 3\r", content);
@@ -2512,6 +2508,7 @@ test "print with different line endings" {
 }
 
 test "print json array" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
 
     const values = [_][]const u8{ "apple", "banana", "cherry" };
@@ -2519,14 +2516,16 @@ test "print json array" {
     // Test without indentation
     {
         const test_path = "test_json_compact.txt";
-        defer std.fs.cwd().deleteFile(test_path) catch {};
+        defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
-        try printJsonArray(test_path, &values, false);
+        try printJsonArray(io, test_path, &values, false);
 
-        const file = try std.fs.cwd().openFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+        defer file.close(io);
 
-        const content = try file.readToEndAlloc(allocator, 1024);
+        var content_buffer: [4096]u8 = undefined;
+        var content_reader = file.reader(io, &content_buffer);
+        const content = try content_reader.interface.allocRemaining(allocator, .limited(1024));
         defer allocator.free(content);
 
         try testing.expectEqualStrings("[\"apple\",\"banana\",\"cherry\"]", content);
@@ -2535,14 +2534,16 @@ test "print json array" {
     // Test with indentation
     {
         const test_path = "test_json_indent.txt";
-        defer std.fs.cwd().deleteFile(test_path) catch {};
+        defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
-        try printJsonArray(test_path, &values, true);
+        try printJsonArray(io, test_path, &values, true);
 
-        const file = try std.fs.cwd().openFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+        defer file.close(io);
 
-        const content = try file.readToEndAlloc(allocator, 1024);
+        var content_buffer: [4096]u8 = undefined;
+        var content_reader = file.reader(io, &content_buffer);
+        const content = try content_reader.interface.allocRemaining(allocator, .limited(1024));
         defer allocator.free(content);
 
         _ = std.mem.indexOf(u8, content, "[\n  \"apple\",\n") orelse return error.TestFailed;
@@ -2550,8 +2551,9 @@ test "print json array" {
 }
 
 test "print key-value pairs" {
+    const io = std.testing.io;
     const test_path = "test_kvpairs.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const pairs = [_]KeyValue{
         .{ .key = "name", .value = "Alice" },
@@ -2559,44 +2561,52 @@ test "print key-value pairs" {
         .{ .key = "city", .value = "NYC" },
     };
 
-    try printKeyValuePairs(test_path, &pairs, "; ", "=");
+    try printKeyValuePairs(io, test_path, &pairs, "; ", "=");
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expectEqualStrings("name=Alice; age=30; city=NYC", content);
 }
 
 test "empty input handling" {
+    const io = std.testing.io;
     const test_path = "test_empty.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const empty: []const []const u8 = &[_][]const u8{};
-    try printWithSeparator(test_path, empty, ",");
+    try printWithSeparator(io, test_path, empty, ",");
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expectEqual(@as(usize, 0), content.len);
 }
 
 test "single value no separator" {
+    const io = std.testing.io;
     const test_path = "test_single.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const values = [_][]const u8{"single"};
-    try printWithSeparator(test_path, &values, ",");
+    try printWithSeparator(io, test_path, &values, ",");
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const content = try file.readToEndAlloc(testing.allocator, 1024);
+    var content_buffer: [4096]u8 = undefined;
+    var content_reader = file.reader(io, &content_buffer);
+    const content = try content_reader.interface.allocRemaining(testing.allocator, .limited(1024));
     defer testing.allocator.free(content);
 
     try testing.expectEqualStrings("single", content);
@@ -2634,20 +2644,20 @@ fn writeIntToWriter(writer: anytype, comptime T: type, value: T, endian: std.bui
 }
 
 /// Helper to read an integer by reading raw bytes
-fn readIntFromFile(file: std.fs.File, comptime T: type, endian: std.builtin.Endian) !T {
+fn readIntFromFile(io: std.Io, file: std.Io.File, comptime T: type, endian: std.builtin.Endian) !T {
     var buf: [@sizeOf(T)]u8 = undefined;
-    const bytes_read = try file.read(&buf);
+    const bytes_read = try file.readPositionalAll(io, &buf, 0);
     if (bytes_read != @sizeOf(T)) return error.UnexpectedEndOfFile;
     return std.mem.readInt(T, &buf, endian);
 }
 
 /// Write various integer types to a binary file
-pub fn writeIntegers(path: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn writeIntegers(io: std.Io, path: []const u8) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     // Write unsigned integers
@@ -2665,18 +2675,18 @@ pub fn writeIntegers(path: []const u8) !void {
 }
 
 /// Read integers from a binary file
-pub fn readIntegers(path: []const u8) ![7]i64 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readIntegers(io: std.Io, path: []const u8) ![7]i64 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     var results: [7]i64 = undefined;
-    results[0] = try readIntFromFile(file, u8, .little);
-    results[1] = try readIntFromFile(file, u16, .little);
-    results[2] = try readIntFromFile(file, u32, .little);
-    results[3] = @intCast(try readIntFromFile(file, u64, .little));
-    results[4] = try readIntFromFile(file, i8, .little);
-    results[5] = try readIntFromFile(file, i16, .little);
-    results[6] = try readIntFromFile(file, i32, .little);
+    results[0] = try readIntFromFile(io, file, u8, .little);
+    results[1] = try readIntFromFile(io, file, u16, .little);
+    results[2] = try readIntFromFile(io, file, u32, .little);
+    results[3] = @intCast(try readIntFromFile(io, file, u64, .little));
+    results[4] = try readIntFromFile(io, file, i8, .little);
+    results[5] = try readIntFromFile(io, file, i16, .little);
+    results[6] = try readIntFromFile(io, file, i32, .little);
 
     return results;
 }
@@ -2686,12 +2696,12 @@ pub fn readIntegers(path: []const u8) ![7]i64 {
 
 ```zig
 /// Write floating point numbers as binary
-pub fn writeBinaryFloats(path: []const u8, values: []const f64) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn writeBinaryFloats(io: std.Io, path: []const u8, values: []const f64) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (values) |value| {
@@ -2703,14 +2713,12 @@ pub fn writeBinaryFloats(path: []const u8, values: []const f64) !void {
 }
 
 /// Read floating point numbers from binary file
-pub fn readBinaryFloats(
-    allocator: std.mem.Allocator,
-    path: []const u8,
-) ![]f64 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readBinaryFloats(io: std.Io, allocator: std.mem.Allocator,
+    path: []const u8,) ![]f64 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(io)).size;
     const count = file_size / @sizeOf(f64);
 
     const values = try allocator.alloc(f64, count);
@@ -2733,12 +2741,12 @@ pub const BinaryHeader = packed struct {
 };
 
 /// Write a binary header to file
-pub fn writeStructHeader(path: []const u8, header: BinaryHeader) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn writeStructHeader(io: std.Io, path: []const u8, header: BinaryHeader) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writeIntToWriter(writer, u32, header.magic, .little);
@@ -2750,9 +2758,9 @@ pub fn writeStructHeader(path: []const u8, header: BinaryHeader) !void {
 }
 
 /// Read a binary header from file
-pub fn readStructHeader(path: []const u8) !BinaryHeader {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readStructHeader(io: std.Io, path: []const u8) !BinaryHeader {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     return BinaryHeader{
         .magic = try readIntFromFile(file, u32, .little),
@@ -2763,12 +2771,12 @@ pub fn readStructHeader(path: []const u8) !BinaryHeader {
 }
 
 /// Write raw bytes with length prefix
-pub fn writeRawBytes(path: []const u8, data: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn writeRawBytes(io: std.Io, path: []const u8, data: []const u8) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writeIntToWriter(writer, u64, data.len, .little);
@@ -2777,15 +2785,15 @@ pub fn writeRawBytes(path: []const u8, data: []const u8) !void {
 }
 
 /// Read raw bytes with length prefix
-pub fn readRawBytes(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readRawBytes(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     const length = try readIntFromFile(file, u64, .little);
     const data = try allocator.alloc(u8, length);
     errdefer allocator.free(data);
 
-    const bytes_read = try file.read(data);
+    const bytes_read = try file.readPositionalAll(io, data, 0);
     if (bytes_read != length) return error.UnexpectedEndOfFile;
 
     return data;
@@ -2803,7 +2811,7 @@ pub const Point3D = struct {
         try writeIntToWriter(writer, u32, @bitCast(self.z), .little);
     }
 
-    pub fn read(file: std.fs.File) !Point3D {
+    pub fn read(file: std.Io.File) !Point3D {
         return Point3D{
             .x = @bitCast(try readIntFromFile(file, u32, .little)),
             .y = @bitCast(try readIntFromFile(file, u32, .little)),
@@ -2813,12 +2821,12 @@ pub const Point3D = struct {
 };
 
 /// Write an array of 3D points to file
-pub fn writeMesh(path: []const u8, points: []const Point3D) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn writeMesh(io: std.Io, path: []const u8, points: []const Point3D) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writeIntToWriter(writer, u64, points.len, .little);
@@ -2831,16 +2839,16 @@ pub fn writeMesh(path: []const u8, points: []const Point3D) !void {
 }
 
 /// Read an array of 3D points from file
-pub fn readMesh(allocator: std.mem.Allocator, path: []const u8) ![]Point3D {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readMesh(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![]Point3D {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     const count = try readIntFromFile(file, u64, .little);
     const points = try allocator.alloc(Point3D, count);
     errdefer allocator.free(points);
 
     for (points) |*point| {
-        point.* = try Point3D.read(file);
+        point.* = try Point3D.read(io, file);
     }
 
     return points;
@@ -2851,12 +2859,12 @@ pub fn readMesh(allocator: std.mem.Allocator, path: []const u8) ![]Point3D {
 
 ```zig
 /// Write with big-endian byte order
-pub fn writeWithBigEndian(path: []const u8, value: u32) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn writeWithBigEndian(io: std.Io, path: []const u8, value: u32) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writeIntToWriter(writer, u32, value, .big);
@@ -2864,24 +2872,22 @@ pub fn writeWithBigEndian(path: []const u8, value: u32) !void {
 }
 
 /// Read with specified endianness
-pub fn readWithEndianness(path: []const u8, endian: std.builtin.Endian) !u32 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readWithEndianness(io: std.Io, path: []const u8, endian: std.builtin.Endian) !u32 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     return try readIntFromFile(file, u32, endian);
 }
 
 /// Write mixed binary data (header + payload)
-pub fn writeCompleteFile(
-    path: []const u8,
+pub fn writeCompleteFile(io: std.Io, path: []const u8,
     magic: u32,
-    data: []const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    data: []const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     const header = BinaryHeader{
@@ -2901,13 +2907,11 @@ pub fn writeCompleteFile(
 }
 
 /// Read and validate complete binary file
-pub fn readCompleteFile(
-    allocator: std.mem.Allocator,
+pub fn readCompleteFile(io: std.Io, allocator: std.mem.Allocator,
     path: []const u8,
-    expected_magic: u32,
-) ![]u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+    expected_magic: u32,) ![]u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     const header = BinaryHeader{
         .magic = try readIntFromFile(file, u32, .little),
@@ -2922,7 +2926,7 @@ pub fn readCompleteFile(
     const data = try allocator.alloc(u8, header.data_size);
     errdefer allocator.free(data);
 
-    const bytes_read = try file.read(data);
+    const bytes_read = try file.readPositionalAll(io, data, 0);
     if (bytes_read != header.data_size) return error.UnexpectedEndOfFile;
 
     return data;
@@ -2999,7 +3003,7 @@ const int_bits: u32 = @bitCast(float_value);
 try writer.writeInt(u32, int_bits, .little);
 
 // Reading back
-const read_bits = try reader.readInt(u32, .little);
+const read_bits = std.mem.readInt(u32, try reader.takeArray(@divExact(@bitSizeOf(u32), 8)), .little);
 const float_back: f32 = @bitCast(read_bits);
 ```
 
@@ -3026,12 +3030,12 @@ Always validate:
 ```zig
 // Good - buffered
 var buf: [8192]u8 = undefined;
-var buffered_reader = file.reader(&buf);
+var buffered_reader = file.reader(io, &buf);
 const reader = &buffered_reader.interface;
 
 // Reading many small values is efficient
 for (0..1000) |_| {
-    const val = try reader.readInt(u32, .little);
+    const val = std.mem.readInt(u32, try reader.takeArray(@divExact(@bitSizeOf(u32), 8)), .little);
 }
 ```
 
@@ -3039,17 +3043,17 @@ for (0..1000) |_| {
 ```zig
 // Slow - many syscalls
 for (buffer) |*byte| {
-    byte.* = try reader.readByte();
+    byte.* = try reader.takeByte();
 }
 
 // Fast - single read
-_ = try reader.readAll(buffer);
+_ = try reader.readSliceAll(buffer);
 ```
 
 **Use readAll for known-size data:**
 ```zig
 var buffer: [1024]u8 = undefined;
-const bytes_read = try reader.readAll(&buffer);
+const bytes_read = try reader.readPositionalAll(io, &buffer, 0);
 if (bytes_read != buffer.len) return error.UnexpectedEndOfFile;
 ```
 
@@ -3059,7 +3063,7 @@ When reading binary data:
 
 1. **Validate sizes before allocation:**
 ```zig
-const size = try reader.readInt(u64, .little);
+const size = std.mem.readInt(u64, try reader.takeArray(@divExact(@bitSizeOf(u64), 8)), .little);
 if (size > 100_000_000) return error.SizeTooLarge;
 const data = try allocator.alloc(u8, size);
 ```
@@ -3073,7 +3077,7 @@ errdefer allocator.free(data);
 
 3. **Check read lengths:**
 ```zig
-const bytes_read = try reader.readAll(data);
+const bytes_read = try reader.read(data);
 if (bytes_read != data.len) return error.UnexpectedEndOfFile;
 ```
 
@@ -3105,7 +3109,7 @@ fclose(f);
 
 ```zig
 // Recipe 5.4: Reading and writing binary data
-// Target Zig Version: 0.15.2
+// Target Zig Version: 0.16.0
 //
 // This recipe demonstrates reading and writing binary data to files, including
 // integers, floats, packed structs, and handling endianness for cross-platform files.
@@ -3122,20 +3126,20 @@ fn writeIntToWriter(writer: anytype, comptime T: type, value: T, endian: std.bui
 }
 
 /// Helper to read an integer by reading raw bytes
-fn readIntFromFile(file: std.fs.File, comptime T: type, endian: std.builtin.Endian) !T {
+fn readIntFromFile(io: std.Io, file: std.Io.File, comptime T: type, endian: std.builtin.Endian) !T {
     var buf: [@sizeOf(T)]u8 = undefined;
-    const bytes_read = try file.read(&buf);
+    const bytes_read = try file.readPositionalAll(io, &buf, 0);
     if (bytes_read != @sizeOf(T)) return error.UnexpectedEndOfFile;
     return std.mem.readInt(T, &buf, endian);
 }
 
 /// Write various integer types to a binary file
-pub fn writeIntegers(path: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn writeIntegers(io: std.Io, path: []const u8) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     // Write unsigned integers
@@ -3153,18 +3157,18 @@ pub fn writeIntegers(path: []const u8) !void {
 }
 
 /// Read integers from a binary file
-pub fn readIntegers(path: []const u8) ![7]i64 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readIntegers(io: std.Io, path: []const u8) ![7]i64 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     var results: [7]i64 = undefined;
-    results[0] = try readIntFromFile(file, u8, .little);
-    results[1] = try readIntFromFile(file, u16, .little);
-    results[2] = try readIntFromFile(file, u32, .little);
-    results[3] = @intCast(try readIntFromFile(file, u64, .little));
-    results[4] = try readIntFromFile(file, i8, .little);
-    results[5] = try readIntFromFile(file, i16, .little);
-    results[6] = try readIntFromFile(file, i32, .little);
+    results[0] = try readIntFromFile(io, file, u8, .little);
+    results[1] = try readIntFromFile(io, file, u16, .little);
+    results[2] = try readIntFromFile(io, file, u32, .little);
+    results[3] = @intCast(try readIntFromFile(io, file, u64, .little));
+    results[4] = try readIntFromFile(io, file, i8, .little);
+    results[5] = try readIntFromFile(io, file, i16, .little);
+    results[6] = try readIntFromFile(io, file, i32, .little);
 
     return results;
 }
@@ -3172,12 +3176,12 @@ pub fn readIntegers(path: []const u8) ![7]i64 {
 
 // ANCHOR: binary_structs
 /// Write floating point numbers as binary
-pub fn writeBinaryFloats(path: []const u8, values: []const f64) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn writeBinaryFloats(io: std.Io, path: []const u8, values: []const f64) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     for (values) |value| {
@@ -3189,21 +3193,19 @@ pub fn writeBinaryFloats(path: []const u8, values: []const f64) !void {
 }
 
 /// Read floating point numbers from binary file
-pub fn readBinaryFloats(
-    allocator: std.mem.Allocator,
-    path: []const u8,
-) ![]f64 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readBinaryFloats(io: std.Io, allocator: std.mem.Allocator,
+    path: []const u8,) ![]f64 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(io)).size;
     const count = file_size / @sizeOf(f64);
 
     const values = try allocator.alloc(f64, count);
     errdefer allocator.free(values);
 
     for (values) |*value| {
-        const bits = try readIntFromFile(file, u64, .little);
+        const bits = try readIntFromFile(io, file, u64, .little);
         value.* = @bitCast(bits);
     }
 
@@ -3219,12 +3221,12 @@ pub const BinaryHeader = packed struct {
 };
 
 /// Write a binary header to file
-pub fn writeStructHeader(path: []const u8, header: BinaryHeader) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn writeStructHeader(io: std.Io, path: []const u8, header: BinaryHeader) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writeIntToWriter(writer, u32, header.magic, .little);
@@ -3236,25 +3238,25 @@ pub fn writeStructHeader(path: []const u8, header: BinaryHeader) !void {
 }
 
 /// Read a binary header from file
-pub fn readStructHeader(path: []const u8) !BinaryHeader {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readStructHeader(io: std.Io, path: []const u8) !BinaryHeader {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     return BinaryHeader{
-        .magic = try readIntFromFile(file, u32, .little),
-        .version = try readIntFromFile(file, u16, .little),
-        .flags = try readIntFromFile(file, u16, .little),
-        .data_size = try readIntFromFile(file, u64, .little),
+        .magic = try readIntFromFile(io, file, u32, .little),
+        .version = try readIntFromFile(io, file, u16, .little),
+        .flags = try readIntFromFile(io, file, u16, .little),
+        .data_size = try readIntFromFile(io, file, u64, .little),
     };
 }
 
 /// Write raw bytes with length prefix
-pub fn writeRawBytes(path: []const u8, data: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn writeRawBytes(io: std.Io, path: []const u8, data: []const u8) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writeIntToWriter(writer, u64, data.len, .little);
@@ -3263,15 +3265,15 @@ pub fn writeRawBytes(path: []const u8, data: []const u8) !void {
 }
 
 /// Read raw bytes with length prefix
-pub fn readRawBytes(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readRawBytes(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    const length = try readIntFromFile(file, u64, .little);
+    const length = try readIntFromFile(io, file, u64, .little);
     const data = try allocator.alloc(u8, length);
     errdefer allocator.free(data);
 
-    const bytes_read = try file.read(data);
+    const bytes_read = try file.readPositionalAll(io, data, 0);
     if (bytes_read != length) return error.UnexpectedEndOfFile;
 
     return data;
@@ -3289,22 +3291,22 @@ pub const Point3D = struct {
         try writeIntToWriter(writer, u32, @bitCast(self.z), .little);
     }
 
-    pub fn read(file: std.fs.File) !Point3D {
+    pub fn read(io: std.Io, file: std.Io.File) !Point3D {
         return Point3D{
-            .x = @bitCast(try readIntFromFile(file, u32, .little)),
-            .y = @bitCast(try readIntFromFile(file, u32, .little)),
-            .z = @bitCast(try readIntFromFile(file, u32, .little)),
+            .x = @bitCast(try readIntFromFile(io, file, u32, .little)),
+            .y = @bitCast(try readIntFromFile(io, file, u32, .little)),
+            .z = @bitCast(try readIntFromFile(io, file, u32, .little)),
         };
     }
 };
 
 /// Write an array of 3D points to file
-pub fn writeMesh(path: []const u8, points: []const Point3D) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn writeMesh(io: std.Io, path: []const u8, points: []const Point3D) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writeIntToWriter(writer, u64, points.len, .little);
@@ -3317,16 +3319,16 @@ pub fn writeMesh(path: []const u8, points: []const Point3D) !void {
 }
 
 /// Read an array of 3D points from file
-pub fn readMesh(allocator: std.mem.Allocator, path: []const u8) ![]Point3D {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readMesh(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![]Point3D {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    const count = try readIntFromFile(file, u64, .little);
+    const count = try readIntFromFile(io, file, u64, .little);
     const points = try allocator.alloc(Point3D, count);
     errdefer allocator.free(points);
 
     for (points) |*point| {
-        point.* = try Point3D.read(file);
+        point.* = try Point3D.read(io, file);
     }
 
     return points;
@@ -3335,12 +3337,12 @@ pub fn readMesh(allocator: std.mem.Allocator, path: []const u8) ![]Point3D {
 
 // ANCHOR: endianness_validation
 /// Write with big-endian byte order
-pub fn writeWithBigEndian(path: []const u8, value: u32) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+pub fn writeWithBigEndian(io: std.Io, path: []const u8, value: u32) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     try writeIntToWriter(writer, u32, value, .big);
@@ -3348,24 +3350,22 @@ pub fn writeWithBigEndian(path: []const u8, value: u32) !void {
 }
 
 /// Read with specified endianness
-pub fn readWithEndianness(path: []const u8, endian: std.builtin.Endian) !u32 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readWithEndianness(io: std.Io, path: []const u8, endian: std.builtin.Endian) !u32 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    return try readIntFromFile(file, u32, endian);
+    return try readIntFromFile(io, file, u32, endian);
 }
 
 /// Write mixed binary data (header + payload)
-pub fn writeCompleteFile(
-    path: []const u8,
+pub fn writeCompleteFile(io: std.Io, path: []const u8,
     magic: u32,
-    data: []const u8,
-) !void {
-    const file = try std.fs.cwd().createFile(path, .{});
-    defer file.close();
+    data: []const u8,) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     const header = BinaryHeader{
@@ -3385,19 +3385,17 @@ pub fn writeCompleteFile(
 }
 
 /// Read and validate complete binary file
-pub fn readCompleteFile(
-    allocator: std.mem.Allocator,
+pub fn readCompleteFile(io: std.Io, allocator: std.mem.Allocator,
     path: []const u8,
-    expected_magic: u32,
-) ![]u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+    expected_magic: u32,) ![]u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     const header = BinaryHeader{
-        .magic = try readIntFromFile(file, u32, .little),
-        .version = try readIntFromFile(file, u16, .little),
-        .flags = try readIntFromFile(file, u16, .little),
-        .data_size = try readIntFromFile(file, u64, .little),
+        .magic = try readIntFromFile(io, file, u32, .little),
+        .version = try readIntFromFile(io, file, u16, .little),
+        .flags = try readIntFromFile(io, file, u16, .little),
+        .data_size = try readIntFromFile(io, file, u64, .little),
     };
 
     if (header.magic != expected_magic) return error.InvalidMagicNumber;
@@ -3406,7 +3404,7 @@ pub fn readCompleteFile(
     const data = try allocator.alloc(u8, header.data_size);
     errdefer allocator.free(data);
 
-    const bytes_read = try file.read(data);
+    const bytes_read = try file.readPositionalAll(io, data, 0);
     if (bytes_read != header.data_size) return error.UnexpectedEndOfFile;
 
     return data;
@@ -3416,11 +3414,12 @@ pub fn readCompleteFile(
 // Tests
 
 test "write and read integers" {
+    const io = std.testing.io;
     const test_path = "test_integers.bin";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
-    try writeIntegers(test_path);
-    const results = try readIntegers(test_path);
+    try writeIntegers(io, test_path);
+    const results = try readIntegers(io, test_path);
 
     try testing.expectEqual(@as(i64, 255), results[0]);
     try testing.expectEqual(@as(i64, 65535), results[1]);
@@ -3432,14 +3431,15 @@ test "write and read integers" {
 }
 
 test "write and read floats" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const test_path = "test_floats.bin";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const input = [_]f64{ 3.14159, 2.71828, 1.41421, -273.15 };
-    try writeBinaryFloats(test_path, &input);
+    try writeBinaryFloats(io, test_path, &input);
 
-    const output = try readBinaryFloats(allocator, test_path);
+    const output = try readBinaryFloats(io, allocator, test_path);
     defer allocator.free(output);
 
     try testing.expectEqual(@as(usize, 4), output.len);
@@ -3450,8 +3450,9 @@ test "write and read floats" {
 }
 
 test "write and read struct header" {
+    const io = std.testing.io;
     const test_path = "test_header.bin";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const header = BinaryHeader{
         .magic = 0x12345678,
@@ -3460,8 +3461,8 @@ test "write and read struct header" {
         .data_size = 1024,
     };
 
-    try writeStructHeader(test_path, header);
-    const read_header = try readStructHeader(test_path);
+    try writeStructHeader(io, test_path, header);
+    const read_header = try readStructHeader(io, test_path);
 
     try testing.expectEqual(header.magic, read_header.magic);
     try testing.expectEqual(header.version, read_header.version);
@@ -3470,23 +3471,25 @@ test "write and read struct header" {
 }
 
 test "write and read raw bytes" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const test_path = "test_raw_bytes.bin";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const input = "Hello, Binary World!";
-    try writeRawBytes(test_path, input);
+    try writeRawBytes(io, test_path, input);
 
-    const output = try readRawBytes(allocator, test_path);
+    const output = try readRawBytes(io, allocator, test_path);
     defer allocator.free(output);
 
     try testing.expectEqualStrings(input, output);
 }
 
 test "write and read mesh" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const test_path = "test_mesh.bin";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const input_points = [_]Point3D{
         .{ .x = 1.0, .y = 2.0, .z = 3.0 },
@@ -3494,9 +3497,9 @@ test "write and read mesh" {
         .{ .x = 7.0, .y = 8.0, .z = 9.0 },
     };
 
-    try writeMesh(test_path, &input_points);
+    try writeMesh(io, test_path, &input_points);
 
-    const output_points = try readMesh(allocator, test_path);
+    const output_points = try readMesh(io, allocator, test_path);
     defer allocator.free(output_points);
 
     try testing.expectEqual(@as(usize, 3), output_points.len);
@@ -3509,64 +3512,69 @@ test "write and read mesh" {
 }
 
 test "big-endian vs little-endian" {
+    const io = std.testing.io;
     const test_path = "test_endian.bin";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const value: u32 = 0x12345678;
-    try writeWithBigEndian(test_path, value);
+    try writeWithBigEndian(io, test_path, value);
 
-    const big_result = try readWithEndianness(test_path, .big);
+    const big_result = try readWithEndianness(io, test_path, .big);
     try testing.expectEqual(value, big_result);
 
     // Reading with wrong endianness gives swapped bytes
-    const little_result = try readWithEndianness(test_path, .little);
+    const little_result = try readWithEndianness(io, test_path, .little);
     try testing.expectEqual(@as(u32, 0x78563412), little_result);
 }
 
 test "complete file with validation" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const test_path = "test_complete.bin";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const magic: u32 = 0xDEADBEEF;
     const data = "Test payload data";
 
-    try writeCompleteFile(test_path, magic, data);
+    try writeCompleteFile(io, test_path, magic, data);
 
-    const output = try readCompleteFile(allocator, test_path, magic);
+    const output = try readCompleteFile(io, allocator, test_path, magic);
     defer allocator.free(output);
 
     try testing.expectEqualStrings(data, output);
 }
 
 test "invalid magic number" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const test_path = "test_bad_magic.bin";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
-    try writeCompleteFile(test_path, 0x12345678, "data");
+    try writeCompleteFile(io, test_path, 0x12345678, "data");
 
-    const result = readCompleteFile(allocator, test_path, 0xABCDEF00);
+    const result = readCompleteFile(io, allocator, test_path, 0xABCDEF00);
     try testing.expectError(error.InvalidMagicNumber, result);
 }
 
 test "empty binary data" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const test_path = "test_empty.bin";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
-    try writeRawBytes(test_path, "");
+    try writeRawBytes(io, test_path, "");
 
-    const output = try readRawBytes(allocator, test_path);
+    const output = try readRawBytes(io, allocator, test_path);
     defer allocator.free(output);
 
     try testing.expectEqual(@as(usize, 0), output.len);
 }
 
 test "large binary array" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const test_path = "test_large.bin";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create array of 1000 floats
     const input = try allocator.alloc(f64, 1000);
@@ -3576,9 +3584,9 @@ test "large binary array" {
         val.* = @as(f64, @floatFromInt(i)) * 1.5;
     }
 
-    try writeBinaryFloats(test_path, input);
+    try writeBinaryFloats(io, test_path, input);
 
-    const output = try readBinaryFloats(allocator, test_path);
+    const output = try readBinaryFloats(io, allocator, test_path);
     defer allocator.free(output);
 
     try testing.expectEqual(input.len, output.len);
@@ -3588,16 +3596,17 @@ test "large binary array" {
 }
 
 test "memory safety with errdefer" {
+    const io = std.testing.io;
     const allocator = testing.allocator;
     const test_path = "test_truncated.bin";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write incomplete file
-    const file = try std.fs.cwd().createFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+    defer file.close(io);
 
     var write_buf: [4096]u8 = undefined;
-    var file_writer = file.writer(&write_buf);
+    var file_writer = file.writer(io, &write_buf);
     const writer = &file_writer.interface;
 
     // Write length but no data
@@ -3605,21 +3614,22 @@ test "memory safety with errdefer" {
     try writer.flush();
 
     // This should fail and not leak memory
-    const result = readRawBytes(allocator, test_path);
+    const result = readRawBytes(io, allocator, test_path);
     try testing.expectError(error.UnexpectedEndOfFile, result);
 }
 
 test "binary file size calculation" {
+    const io = std.testing.io;
     const test_path = "test_size.bin";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const values = [_]f64{ 1.0, 2.0, 3.0, 4.0, 5.0 };
-    try writeBinaryFloats(test_path, &values);
+    try writeBinaryFloats(io, test_path, &values);
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(io)).size;
     const expected_size = values.len * @sizeOf(f64);
 
     try testing.expectEqual(expected_size, file_size);
@@ -3650,31 +3660,31 @@ You want to create and write to a file only if it doesn't already exist, prevent
 
 ```zig
 /// Create a file exclusively (fails if file already exists)
-pub fn createExclusive(path: []const u8, data: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{
+pub fn createExclusive(io: std.Io, path: []const u8, data: []const u8) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{
         .exclusive = true,
     });
-    defer file.close();
+    defer file.close(io);
 
-    try file.writeAll(data);
+    try file.writeStreamingAll(io, data);
 }
 
 /// Acquire a lock file (fails if lock already held)
-pub fn acquireLock(lock_path: []const u8) !std.fs.File {
-    return std.fs.cwd().createFile(lock_path, .{
+pub fn acquireLock(io: std.Io, lock_path: []const u8) !std.Io.File {
+    return std.Io.Dir.cwd().createFile(io, lock_path, .{
         .exclusive = true,
     });
 }
 
 /// Release a lock file
-pub fn releaseLock(lock: std.fs.File, lock_path: []const u8) void {
-    lock.close();
-    std.fs.cwd().deleteFile(lock_path) catch {};
+pub fn releaseLock(io: std.Io, lock: std.Io.File, lock_path: []const u8) void {
+    lock.close(io);
+    std.Io.Dir.cwd().deleteFile(io, lock_path) catch {};
 }
 
 /// Create a unique temporary file with random suffix
-pub fn createUniqueFile(allocator: std.mem.Allocator, prefix: []const u8) !struct { path: []const u8, file: std.fs.File } {
-    var prng = std.Random.DefaultPrng.init(@intCast(std.time.timestamp()));
+pub fn createUniqueFile(io: std.Io, allocator: std.mem.Allocator, prefix: []const u8) !struct { path: []const u8, file: std.Io.File } {
+    var prng = std.Random.DefaultPrng.init(@intCast(@as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)))));
     const random = prng.random();
 
     var attempts: usize = 0;
@@ -3683,7 +3693,7 @@ pub fn createUniqueFile(allocator: std.mem.Allocator, prefix: []const u8) !struc
         const path = try std.fmt.allocPrint(allocator, "{s}_{d}.tmp", .{ prefix, suffix });
         errdefer allocator.free(path);
 
-        const file = std.fs.cwd().createFile(path, .{
+        const file = std.Io.Dir.cwd().createFile(io, path, .{
             .exclusive = true,
         }) catch |err| {
             if (err == error.PathAlreadyExists) {
@@ -3704,37 +3714,37 @@ pub fn createUniqueFile(allocator: std.mem.Allocator, prefix: []const u8) !struc
 
 ```zig
 /// Safely update a configuration file using atomic rename
-pub fn safeUpdateConfig(config_path: []const u8, new_content: []const u8, allocator: std.mem.Allocator) !void {
+pub fn safeUpdateConfig(io: std.Io, config_path: []const u8, new_content: []const u8, allocator: std.mem.Allocator) !void {
     // Create unique temp file
     const temp_path = try std.fmt.allocPrint(allocator, "{s}.tmp", .{config_path});
     defer allocator.free(temp_path);
 
     // Write to temp file with exclusive creation
     {
-        const file = try std.fs.cwd().createFile(temp_path, .{
+        const file = try std.Io.Dir.cwd().createFile(io, temp_path, .{
             .exclusive = true,
         });
-        defer file.close();
-        try file.writeAll(new_content);
+        defer file.close(io);
+        try file.writeStreamingAll(io, new_content);
     }
 
     // Atomically replace original file
-    try std.fs.cwd().rename(temp_path, config_path);
+    try std.Io.Dir.cwd().rename(io, temp_path, std.Io.Dir.cwd(), config_path, io);
 }
 
 /// Write exclusively with error cleanup
-pub fn writeExclusiveWithCleanup(path: []const u8, data: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{
+pub fn writeExclusiveWithCleanup(io: std.Io, path: []const u8, data: []const u8) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{
         .exclusive = true,
     });
     errdefer {
-        file.close();
+        file.close(io);
         // Clean up partial file on error
-        std.fs.cwd().deleteFile(path) catch {};
+        std.Io.Dir.cwd().deleteFile(io, path) catch {};
     }
-    defer file.close();
+    defer file.close(io);
 
-    try file.writeAll(data);
+    try file.writeStreamingAll(io, data);
 }
 ```
 
@@ -3748,10 +3758,10 @@ Without `exclusive = true`, `createFile` will truncate existing files:
 
 ```zig
 // This WILL overwrite existing files (default behavior)
-const file = try std.fs.cwd().createFile("data.txt", .{});
+const file = try std.Io.Dir.cwd().createFile(io, "data.txt", .{});
 
 // This will NOT overwrite - fails with PathAlreadyExists
-const file = try std.fs.cwd().createFile("data.txt", .{
+const file = try std.Io.Dir.cwd().createFile(io, "data.txt", .{
     .exclusive = true,
 });
 ```
@@ -3761,11 +3771,11 @@ const file = try std.fs.cwd().createFile("data.txt", .{
 When a file already exists, the operation returns `error.PathAlreadyExists`:
 
 ```zig
-const result = std.fs.cwd().createFile(path, .{ .exclusive = true });
+const result = std.Io.Dir.cwd().createFile(io, path, .{ .exclusive = true });
 if (result) |file| {
-    defer file.close();
+    defer file.close(io);
     // File created successfully, write data
-    try file.writeAll(data);
+    try file.writeStreamingAll(io, data);
 } else |err| switch (err) {
     error.PathAlreadyExists => {
         // File exists - decide what to do
@@ -3781,23 +3791,23 @@ if (result) |file| {
 **Lock Files**: Prevent multiple processes from running simultaneously:
 
 ```zig
-pub fn acquireLock(lock_path: []const u8) !std.fs.File {
-    return std.fs.cwd().createFile(lock_path, .{
+pub fn acquireLock(io: std.Io, lock_path: []const u8) !std.Io.File {
+    return std.Io.Dir.cwd().createFile(io, lock_path, .{
         .exclusive = true,
     });
 }
 
-pub fn releaseLock(lock: std.fs.File, lock_path: []const u8) void {
-    lock.close();
-    std.fs.cwd().deleteFile(lock_path) catch {};
+pub fn releaseLock(io: std.Io, lock: std.Io.File, lock_path: []const u8) void {
+    lock.close(io);
+    std.Io.Dir.cwd().deleteFile(io, lock_path) catch {};
 }
 ```
 
 **Unique Temporary Files**: Generate unique filenames until creation succeeds:
 
 ```zig
-pub fn createUniqueFile(allocator: std.mem.Allocator, prefix: []const u8) !struct { path: []const u8, file: std.fs.File } {
-    var prng = std.Random.DefaultPrng.init(@intCast(std.time.timestamp()));
+pub fn createUniqueFile(io: std.Io, allocator: std.mem.Allocator, prefix: []const u8) !struct { path: []const u8, file: std.Io.File } {
+    var prng = std.Random.DefaultPrng.init(@intCast(@as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)))));
     const random = prng.random();
 
     var attempts: usize = 0;
@@ -3806,7 +3816,7 @@ pub fn createUniqueFile(allocator: std.mem.Allocator, prefix: []const u8) !struc
         const path = try std.fmt.allocPrint(allocator, "{s}_{d}.tmp", .{ prefix, suffix });
         errdefer allocator.free(path);
 
-        const file = std.fs.cwd().createFile(path, .{
+        const file = std.Io.Dir.cwd().createFile(io, path, .{
             .exclusive = true,
         }) catch |err| {
             if (err == error.PathAlreadyExists) {
@@ -3826,22 +3836,22 @@ pub fn createUniqueFile(allocator: std.mem.Allocator, prefix: []const u8) !struc
 **Safe Configuration File Updates**: Write to temporary file, then atomically rename:
 
 ```zig
-pub fn safeUpdateConfig(config_path: []const u8, new_content: []const u8, allocator: std.mem.Allocator) !void {
+pub fn safeUpdateConfig(io: std.Io, config_path: []const u8, new_content: []const u8, allocator: std.mem.Allocator) !void {
     // Create unique temp file
     const temp_path = try std.fmt.allocPrint(allocator, "{s}.tmp", .{config_path});
     defer allocator.free(temp_path);
 
     // Write to temp file with exclusive creation
     {
-        const file = try std.fs.cwd().createFile(temp_path, .{
+        const file = try std.Io.Dir.cwd().createFile(io, temp_path, .{
             .exclusive = true,
         });
-        defer file.close();
-        try file.writeAll(new_content);
+        defer file.close(io);
+        try file.writeStreamingAll(io, new_content);
     }
 
     // Atomically replace original file
-    try std.fs.cwd().rename(temp_path, config_path);
+    try std.Io.Dir.cwd().rename(io, temp_path, std.Io.Dir.cwd(), config_path, io);
 }
 ```
 
@@ -3867,18 +3877,18 @@ The operation is thread-safe and process-safe, making it suitable for inter-proc
 Always use `defer` to ensure files are closed, and `errdefer` to clean up on errors:
 
 ```zig
-pub fn writeExclusiveWithCleanup(path: []const u8, data: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{
+pub fn writeExclusiveWithCleanup(io: std.Io, path: []const u8, data: []const u8) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{
         .exclusive = true,
     });
     errdefer {
-        file.close();
+        file.close(io);
         // Clean up partial file on error
-        std.fs.cwd().deleteFile(path) catch {};
+        std.Io.Dir.cwd().deleteFile(io, path) catch {};
     }
-    defer file.close();
+    defer file.close(io);
 
-    try file.writeAll(data);
+    try file.writeStreamingAll(io, data);
 }
 ```
 
@@ -3889,31 +3899,31 @@ const std = @import("std");
 
 // ANCHOR: exclusive_creation
 /// Create a file exclusively (fails if file already exists)
-pub fn createExclusive(path: []const u8, data: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{
+pub fn createExclusive(io: std.Io, path: []const u8, data: []const u8) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{
         .exclusive = true,
     });
-    defer file.close();
+    defer file.close(io);
 
-    try file.writeAll(data);
+    try file.writeStreamingAll(io, data);
 }
 
 /// Acquire a lock file (fails if lock already held)
-pub fn acquireLock(lock_path: []const u8) !std.fs.File {
-    return std.fs.cwd().createFile(lock_path, .{
+pub fn acquireLock(io: std.Io, lock_path: []const u8) !std.Io.File {
+    return std.Io.Dir.cwd().createFile(io, lock_path, .{
         .exclusive = true,
     });
 }
 
 /// Release a lock file
-pub fn releaseLock(lock: std.fs.File, lock_path: []const u8) void {
-    lock.close();
-    std.fs.cwd().deleteFile(lock_path) catch {};
+pub fn releaseLock(io: std.Io, lock: std.Io.File, lock_path: []const u8) void {
+    lock.close(io);
+    std.Io.Dir.cwd().deleteFile(io, lock_path) catch {};
 }
 
 /// Create a unique temporary file with random suffix
-pub fn createUniqueFile(allocator: std.mem.Allocator, prefix: []const u8) !struct { path: []const u8, file: std.fs.File } {
-    var prng = std.Random.DefaultPrng.init(@intCast(std.time.timestamp()));
+pub fn createUniqueFile(io: std.Io, allocator: std.mem.Allocator, prefix: []const u8) !struct { path: []const u8, file: std.Io.File } {
+    var prng = std.Random.DefaultPrng.init(@intCast(@as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)))));
     const random = prng.random();
 
     var attempts: usize = 0;
@@ -3922,7 +3932,7 @@ pub fn createUniqueFile(allocator: std.mem.Allocator, prefix: []const u8) !struc
         const path = try std.fmt.allocPrint(allocator, "{s}_{d}.tmp", .{ prefix, suffix });
         errdefer allocator.free(path);
 
-        const file = std.fs.cwd().createFile(path, .{
+        const file = std.Io.Dir.cwd().createFile(io, path, .{
             .exclusive = true,
         }) catch |err| {
             if (err == error.PathAlreadyExists) {
@@ -3941,98 +3951,101 @@ pub fn createUniqueFile(allocator: std.mem.Allocator, prefix: []const u8) !struc
 
 // ANCHOR: atomic_operations
 /// Safely update a configuration file using atomic rename
-pub fn safeUpdateConfig(config_path: []const u8, new_content: []const u8, allocator: std.mem.Allocator) !void {
+pub fn safeUpdateConfig(io: std.Io, config_path: []const u8, new_content: []const u8, allocator: std.mem.Allocator) !void {
     // Create unique temp file
     const temp_path = try std.fmt.allocPrint(allocator, "{s}.tmp", .{config_path});
     defer allocator.free(temp_path);
 
     // Write to temp file with exclusive creation
     {
-        const file = try std.fs.cwd().createFile(temp_path, .{
+        const file = try std.Io.Dir.cwd().createFile(io, temp_path, .{
             .exclusive = true,
         });
-        defer file.close();
-        try file.writeAll(new_content);
+        defer file.close(io);
+        try file.writeStreamingAll(io, new_content);
     }
 
     // Atomically replace original file
-    try std.fs.cwd().rename(temp_path, config_path);
+    try std.Io.Dir.cwd().rename(temp_path, std.Io.Dir.cwd(), config_path, io);
 }
 
 /// Write exclusively with error cleanup
-pub fn writeExclusiveWithCleanup(path: []const u8, data: []const u8) !void {
-    const file = try std.fs.cwd().createFile(path, .{
+pub fn writeExclusiveWithCleanup(io: std.Io, path: []const u8, data: []const u8) !void {
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{
         .exclusive = true,
     });
     errdefer {
-        file.close();
+        file.close(io);
         // Clean up partial file on error
-        std.fs.cwd().deleteFile(path) catch {};
+        std.Io.Dir.cwd().deleteFile(io, path) catch {};
     }
-    defer file.close();
+    defer file.close(io);
 
-    try file.writeAll(data);
+    try file.writeStreamingAll(io, data);
 }
 // ANCHOR_END: atomic_operations
 
 // Tests
 
 test "exclusive file creation" {
+    const io = std.testing.io;
     const test_path = "/tmp/exclusive_test.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // First creation succeeds
-    try createExclusive(test_path, "first write");
+    try createExclusive(io, test_path, "first write");
 
     // Second attempt fails
-    const result = createExclusive(test_path, "second write");
+    const result = createExclusive(io, test_path, "second write");
     try std.testing.expectError(error.PathAlreadyExists, result);
 
     // Original content preserved
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
     var buf: [32]u8 = undefined;
-    const bytes_read = try file.read(&buf);
+    const bytes_read = try file.readPositionalAll(io, &buf, 0);
     try std.testing.expectEqualStrings("first write", buf[0..bytes_read]);
 }
 
 test "non-exclusive overwrites" {
+    const io = std.testing.io;
     const test_path = "/tmp/non_exclusive_test.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // First write
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("first");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "first");
     }
 
     // Second write overwrites (default behavior)
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("second");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "second");
     }
 
     // Second content is present
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
     var buf: [32]u8 = undefined;
-    const bytes_read = try file.read(&buf);
+    const bytes_read = try file.readPositionalAll(io, &buf, 0);
     try std.testing.expectEqualStrings("second", buf[0..bytes_read]);
 }
 
 test "exclusive creation error handling" {
+    const io = std.testing.io;
     const test_path = "/tmp/exclusive_error_test.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create initial file
-    try createExclusive(test_path, "data");
+    try createExclusive(io, test_path, "data");
 
     // Try to create again with error handling
-    const result = std.fs.cwd().createFile(test_path, .{ .exclusive = true });
+    const result = std.Io.Dir.cwd().createFile(io, test_path, .{ .exclusive = true });
     if (result) |file| {
-        file.close();
+        file.close(io);
         try std.testing.expect(false); // Should not reach here
     } else |err| switch (err) {
         error.PathAlreadyExists => {
@@ -4043,40 +4056,42 @@ test "exclusive creation error handling" {
 }
 
 test "lock file acquire and release" {
+    const io = std.testing.io;
     const lock_path = "/tmp/test.lock";
-    defer std.fs.cwd().deleteFile(lock_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, lock_path) catch {};
 
     // Acquire lock
-    const lock = try acquireLock(lock_path);
+    const lock = try acquireLock(io, lock_path);
 
     // Try to acquire again (should fail)
-    const result = acquireLock(lock_path);
+    const result = acquireLock(io, lock_path);
     try std.testing.expectError(error.PathAlreadyExists, result);
 
     // Release lock
-    releaseLock(lock, lock_path);
+    releaseLock(io, lock, lock_path);
 
     // Can acquire again after release
-    const lock2 = try acquireLock(lock_path);
-    releaseLock(lock2, lock_path);
+    const lock2 = try acquireLock(io, lock_path);
+    releaseLock(io, lock2, lock_path);
 }
 
 test "unique file creation" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     // Create first unique file
-    const result1 = try createUniqueFile(allocator, "/tmp/unique");
+    const result1 = try createUniqueFile(io, allocator, "/tmp/unique");
     defer {
-        result1.file.close();
-        std.fs.cwd().deleteFile(result1.path) catch {};
+        result1.file.close(io);
+        std.Io.Dir.cwd().deleteFile(io, result1.path) catch {};
         allocator.free(result1.path);
     }
 
     // Create second unique file (different path)
-    const result2 = try createUniqueFile(allocator, "/tmp/unique");
+    const result2 = try createUniqueFile(io, allocator, "/tmp/unique");
     defer {
-        result2.file.close();
-        std.fs.cwd().deleteFile(result2.path) catch {};
+        result2.file.close(io);
+        std.Io.Dir.cwd().deleteFile(io, result2.path) catch {};
         allocator.free(result2.path);
     }
 
@@ -4084,66 +4099,69 @@ test "unique file creation" {
     try std.testing.expect(!std.mem.eql(u8, result1.path, result2.path));
 
     // Both files should exist
-    try result1.file.writeAll("file1");
-    try result2.file.writeAll("file2");
+    try result1.file.writeStreamingAll(io, "file1");
+    try result2.file.writeStreamingAll(io, "file2");
 }
 
 test "safe config update" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
     const config_path = "/tmp/config.json";
-    defer std.fs.cwd().deleteFile(config_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, config_path) catch {};
 
     // Initial config
-    try safeUpdateConfig(config_path, "{ \"version\": 1 }", allocator);
+    try safeUpdateConfig(io, config_path, "{ \"version\": 1 }", allocator);
 
     // Verify initial content
     {
-        const file = try std.fs.cwd().openFile(config_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, config_path, .{});
+        defer file.close(io);
         var buf: [64]u8 = undefined;
-        const bytes_read = try file.read(&buf);
+        const bytes_read = try file.readPositionalAll(io, &buf, 0);
         try std.testing.expectEqualStrings("{ \"version\": 1 }", buf[0..bytes_read]);
     }
 
     // Update config
-    try safeUpdateConfig(config_path, "{ \"version\": 2 }", allocator);
+    try safeUpdateConfig(io, config_path, "{ \"version\": 2 }", allocator);
 
     // Verify updated content
     {
-        const file = try std.fs.cwd().openFile(config_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, config_path, .{});
+        defer file.close(io);
         var buf: [64]u8 = undefined;
-        const bytes_read = try file.read(&buf);
+        const bytes_read = try file.readPositionalAll(io, &buf, 0);
         try std.testing.expectEqualStrings("{ \"version\": 2 }", buf[0..bytes_read]);
     }
 }
 
 test "write exclusive with cleanup" {
+    const io = std.testing.io;
     const test_path = "/tmp/exclusive_cleanup_test.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write successfully
-    try writeExclusiveWithCleanup(test_path, "test data");
+    try writeExclusiveWithCleanup(io, test_path, "test data");
 
     // Verify content
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
     var buf: [32]u8 = undefined;
-    const bytes_read = try file.read(&buf);
+    const bytes_read = try file.readPositionalAll(io, &buf, 0);
     try std.testing.expectEqualStrings("test data", buf[0..bytes_read]);
 }
 
 test "multiple exclusive attempts" {
+    const io = std.testing.io;
     const test_path = "/tmp/multi_exclusive_test.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Try creating multiple times
-    try createExclusive(test_path, "first");
+    try createExclusive(io, test_path, "first");
 
     var failures: usize = 0;
     var i: usize = 0;
     while (i < 10) : (i += 1) {
-        createExclusive(test_path, "attempt") catch {
+        createExclusive(io, test_path, "attempt") catch {
             failures += 1;
             continue;
         };
@@ -4154,59 +4172,62 @@ test "multiple exclusive attempts" {
 }
 
 test "exclusive with empty content" {
+    const io = std.testing.io;
     const test_path = "/tmp/exclusive_empty_test.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create with empty content
-    try createExclusive(test_path, "");
+    try createExclusive(io, test_path, "");
 
     // Verify file exists and is empty
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
-    const stat = try file.stat();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
+    const stat = try file.stat(io);
     try std.testing.expectEqual(@as(u64, 0), stat.size);
 }
 
 test "exclusive creation in subdirectory" {
+    const io = std.testing.io;
     const dir_path = "/tmp/test_subdir";
     const test_path = "/tmp/test_subdir/exclusive.txt";
 
     // Create directory
-    std.fs.cwd().makeDir(dir_path) catch {};
-    defer std.fs.cwd().deleteTree(dir_path) catch {};
+    std.Io.Dir.cwd().createDir(io, dir_path, .default_dir) catch {};
+    defer std.Io.Dir.cwd().deleteTree(io, dir_path) catch {};
 
     // Create file exclusively
-    const file = try std.fs.cwd().createFile(test_path, .{
+    const file = try std.Io.Dir.cwd().createFile(io, test_path, .{
         .exclusive = true,
     });
-    defer file.close();
-    try file.writeAll("content");
+    defer file.close(io);
+    try file.writeStreamingAll(io, "content");
 
     // Verify
-    const read_file = try std.fs.cwd().openFile(test_path, .{});
-    defer read_file.close();
+    const read_file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer read_file.close(io);
     var buf: [32]u8 = undefined;
-    const bytes_read = try read_file.read(&buf);
+    const bytes_read = try read_file.readPositionalAll(io, &buf, 0);
     try std.testing.expectEqualStrings("content", buf[0..bytes_read]);
 }
 
 test "lock pattern with defer" {
+    const io = std.testing.io;
     const lock_path = "/tmp/test_defer.lock";
-    defer std.fs.cwd().deleteFile(lock_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, lock_path) catch {};
 
     // Acquire and auto-release with defer
     {
-        const lock = try acquireLock(lock_path);
-        defer releaseLock(lock, lock_path);
+        const lock = try acquireLock(io, lock_path);
+        defer releaseLock(io, lock, lock_path);
 
         // Lock is held here
-        const result = acquireLock(lock_path);
+        const result = acquireLock(io, lock_path);
         try std.testing.expectError(error.PathAlreadyExists, result);
     }
 
     // Lock released, can acquire again
-    const lock2 = try acquireLock(lock_path);
-    releaseLock(lock2, lock_path);
+    const lock2 = try acquireLock(io, lock_path);
+    releaseLock(io, lock2, lock_path);
 }
 ```
 
@@ -4228,27 +4249,27 @@ You want to use I/O operations (readers and writers) on in-memory string data in
 
 ```zig
 /// Parse a number from a string buffer
-pub fn parseFromString(data: []const u8) !u32 {
-    var fbs = std.io.fixedBufferStream(data);
-    const reader = fbs.reader();
+pub fn parseFromString(io: std.Io, data: []const u8) !u32 {
+    var fbs = std.Io.Reader.fixed(data);
+    const reader = &fbs;
 
     // Read line by line
     var line_buf: [64]u8 = undefined;
-    const line = try reader.readUntilDelimiter(&line_buf, '\n');
+    const line = try reader.takeDelimiterExclusive('\n');
 
     return try std.fmt.parseInt(u32, line, 10);
 }
 
 /// Format a log message using a buffer stream
-pub fn formatMessage(allocator: std.mem.Allocator, level: []const u8, text: []const u8) ![]u8 {
+pub fn formatMessage(io: std.Io, allocator: std.mem.Allocator, level: []const u8, text: []const u8) ![]u8 {
     var buffer: [512]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
-    const timestamp = std.time.timestamp();
+    const timestamp = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
     try writer.print("[{d}] {s}: {s}", .{ timestamp, level, text });
 
-    return try allocator.dupe(u8, fbs.getWritten());
+    return try allocator.dupe(u8, fbs.buffered());
 }
 
 /// Item for report building
@@ -4258,10 +4279,10 @@ pub const Item = struct {
 };
 
 /// Build a formatted report
-pub fn buildReport(allocator: std.mem.Allocator, items: []const Item) ![]u8 {
+pub fn buildReport(io: std.Io, allocator: std.mem.Allocator, items: []const Item) ![]u8 {
     var buffer: [4096]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     try writer.writeAll("REPORT\n");
     try writer.writeAll("======\n\n");
@@ -4272,7 +4293,7 @@ pub fn buildReport(allocator: std.mem.Allocator, items: []const Item) ![]u8 {
 
     try writer.writeAll("\n");
 
-    return try allocator.dupe(u8, fbs.getWritten());
+    return try allocator.dupe(u8, fbs.buffered());
 }
 ```
 
@@ -4286,25 +4307,19 @@ fn writeData(writer: anytype, value: u32) !void {
 
 /// Parse binary header from memory
 pub fn parseHeader(data: []const u8) !struct { magic: u32, version: u16 } {
-    var fbs = std.io.fixedBufferStream(data);
-    const reader = fbs.reader();
+    var reader = std.Io.Reader.fixed(data);
 
-    var buf: [4]u8 = undefined;
-    _ = try reader.read(&buf);
-    const magic = std.mem.readInt(u32, &buf, .little);
-
-    var buf2: [2]u8 = undefined;
-    _ = try reader.read(&buf2);
-    const version = std.mem.readInt(u16, &buf2, .little);
+    const magic = std.mem.readInt(u32, try reader.takeArray(4), .little);
+    const version = std.mem.readInt(u16, try reader.takeArray(2), .little);
 
     return .{ .magic = magic, .version = version };
 }
 
 /// Build a binary packet
-pub fn buildPacket(allocator: std.mem.Allocator, msg_type: u8, payload: []const u8) ![]u8 {
+pub fn buildPacket(io: std.Io, allocator: std.mem.Allocator, msg_type: u8, payload: []const u8) ![]u8 {
     var buffer: [1024]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     // Write header
     try writer.writeByte(msg_type);
@@ -4316,7 +4331,7 @@ pub fn buildPacket(allocator: std.mem.Allocator, msg_type: u8, payload: []const 
     // Write payload
     try writer.writeAll(payload);
 
-    return try allocator.dupe(u8, fbs.getWritten());
+    return try allocator.dupe(u8, fbs.buffered());
 }
 ```
 
@@ -4328,24 +4343,24 @@ A `fixedBufferStream` wraps a fixed-size byte array and provides reader/writer i
 
 ```zig
 var buffer: [256]u8 = undefined;
-var fbs = std.io.fixedBufferStream(&buffer);
+var fbs = std.Io.Writer.fixed(&buffer);
 
 // Get reader and writer
-const reader = fbs.reader();
-const writer = fbs.writer();
+const reader = &fbs;
+const writer = &fbs;
 ```
 
 The stream maintains a position that advances as you read or write:
 
 ```zig
 var buf: [50]u8 = undefined;
-var fbs = std.io.fixedBufferStream(&buf);
-const writer = fbs.writer();
+var fbs = std.Io.Writer.fixed(&buf);
+const writer = &fbs;
 
 try writer.writeAll("First");
 try writer.writeAll(" Second");
 
-const written = fbs.getWritten();
+const written = fbs.buffered();
 // written is "First Second"
 ```
 
@@ -4354,20 +4369,21 @@ const written = fbs.getWritten();
 You can treat existing string data as a readable stream:
 
 ```zig
-pub fn parseFromString(data: []const u8) !u32 {
-    var fbs = std.io.fixedBufferStream(data);
-    const reader = fbs.reader();
+pub fn parseFromString(io: std.Io, data: []const u8) !u32 {
+    var fbs = std.Io.Reader.fixed(data);
+    const reader = &fbs;
 
     // Read line by line
     var line_buf: [64]u8 = undefined;
-    const line = try reader.readUntilDelimiter(&line_buf, '\n');
+    const line = try reader.takeDelimiterExclusive('\n');
 
     return try std.fmt.parseInt(u32, line, 10);
 }
 
 test "parse from string" {
+    const io = std.testing.io;
     const data = "42\nmore data";
-    const value = try parseFromString(data);
+    const value = try parseFromString(io, data);
     try std.testing.expectEqual(@as(u32, 42), value);
 }
 ```
@@ -4377,15 +4393,15 @@ test "parse from string" {
 Build formatted strings using writer operations:
 
 ```zig
-pub fn formatMessage(allocator: std.mem.Allocator, level: []const u8, text: []const u8) ![]u8 {
+pub fn formatMessage(io: std.Io, allocator: std.mem.Allocator, level: []const u8, text: []const u8) ![]u8 {
     var buffer: [512]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
-    const timestamp = std.time.timestamp();
+    const timestamp = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
     try writer.print("[{d}] {s}: {s}", .{ timestamp, level, text });
 
-    return try allocator.dupe(u8, fbs.getWritten());
+    return try allocator.dupe(u8, fbs.buffered());
 }
 ```
 
@@ -4395,20 +4411,21 @@ You can manipulate the stream position for random access:
 
 ```zig
 test "seeking in buffer" {
+    const io = std.testing.io;
     var buffer: [100]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     // Write data
     try writer.writeAll("0123456789");
 
     // Seek to position 5
-    fbs.pos = 5;
+    fbs.end = 5;
 
     // Overwrite from position 5
     try writer.writeAll("ABCDE");
 
-    const written = fbs.getWritten();
+    const written = fbs.buffered();
     try std.testing.expectEqualStrings("01234ABCDE", written);
 }
 ```
@@ -4417,20 +4434,21 @@ Reset to read what was written:
 
 ```zig
 test "write then read" {
+    const io = std.testing.io;
     var buffer: [100]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = std.Io.Writer.fixed(&buffer);
 
     // Write data
-    const writer = fbs.writer();
+    const writer = &fbs;
     try writer.writeAll("test data");
 
     // Reset to beginning
-    fbs.pos = 0;
+    fbs.end = 0;
 
     // Read data
-    const reader = fbs.reader();
+    const reader = &fbs;
     var read_buf: [10]u8 = undefined;
-    const bytes_read = try reader.read(&read_buf);
+    const bytes_read = try reader.readPositionalAll(io, &read_buf, 0);
 
     try std.testing.expectEqualStrings("test data", read_buf[0..bytes_read]);
 }
@@ -4441,10 +4459,10 @@ test "write then read" {
 **Building Complex Strings:**
 
 ```zig
-pub fn buildReport(allocator: std.mem.Allocator, items: []const Item) ![]u8 {
+pub fn buildReport(io: std.Io, allocator: std.mem.Allocator, items: []const Item) ![]u8 {
     var buffer: [4096]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     try writer.writeAll("REPORT\n");
     try writer.writeAll("======\n\n");
@@ -4455,7 +4473,7 @@ pub fn buildReport(allocator: std.mem.Allocator, items: []const Item) ![]u8 {
 
     try writer.writeAll("\n");
 
-    return try allocator.dupe(u8, fbs.getWritten());
+    return try allocator.dupe(u8, fbs.buffered());
 }
 ```
 
@@ -4467,12 +4485,13 @@ fn writeData(writer: anytype, value: u32) !void {
 }
 
 test "writeData output" {
+    const io = std.testing.io;
     var buffer: [100]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = std.Io.Writer.fixed(&buffer);
 
-    try writeData(fbs.writer(), 42);
+    try writeData(&fbs, 42);
 
-    try std.testing.expectEqualStrings("Value: 42\n", fbs.getWritten());
+    try std.testing.expectEqualStrings("Value: 42\n", fbs.buffered());
 }
 ```
 
@@ -4480,11 +4499,11 @@ test "writeData output" {
 
 ```zig
 pub fn parseHeader(data: []const u8) !struct { magic: u32, version: u16 } {
-    var fbs = std.io.fixedBufferStream(data);
-    const reader = fbs.reader();
+    var fbs = std.Io.Reader.fixed(data);
+    const reader = &fbs;
 
-    const magic = try reader.readInt(u32, .little);
-    const version = try reader.readInt(u16, .little);
+    const magic = std.mem.readInt(u32, try reader.takeArray(@divExact(@bitSizeOf(u32), 8)), .little);
+    const version = std.mem.readInt(u16, try reader.takeArray(@divExact(@bitSizeOf(u16), 8)), .little);
 
     return .{ .magic = magic, .version = version };
 }
@@ -4493,10 +4512,10 @@ pub fn parseHeader(data: []const u8) !struct { magic: u32, version: u16 } {
 **Building Binary Data in Memory:**
 
 ```zig
-pub fn buildPacket(allocator: std.mem.Allocator, msg_type: u8, payload: []const u8) ![]u8 {
+pub fn buildPacket(io: std.Io, allocator: std.mem.Allocator, msg_type: u8, payload: []const u8) ![]u8 {
     var buffer: [1024]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     // Write header
     try writer.writeByte(msg_type);
@@ -4505,7 +4524,7 @@ pub fn buildPacket(allocator: std.mem.Allocator, msg_type: u8, payload: []const 
     // Write payload
     try writer.writeAll(payload);
 
-    return try allocator.dupe(u8, fbs.getWritten());
+    return try allocator.dupe(u8, fbs.buffered());
 }
 ```
 
@@ -4516,10 +4535,11 @@ For dynamic growth, use `std.ArrayList(u8)`:
 ```zig
 test "dynamic string building" {
     const allocator = std.testing.allocator;
-    var list: std.ArrayList(u8) = .{};
+    var list: std.ArrayList(u8) = .empty;
     defer list.deinit(allocator);
 
-    const writer = list.writer(allocator);
+    var list_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &list);
+    const writer = &list_writer.writer;
 
     var i: u32 = 0;
     while (i < 100) : (i += 1) {
@@ -4541,9 +4561,10 @@ Fixed buffer streams can fail if you exceed capacity:
 
 ```zig
 test "buffer overflow" {
+    const io = std.testing.io;
     var buffer: [10]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     const result = writer.writeAll("This is too long");
     try std.testing.expectError(error.NoSpaceLeft, result);
@@ -4592,26 +4613,24 @@ const std = @import("std");
 // ANCHOR: string_buffer_io
 /// Parse a number from a string buffer
 pub fn parseFromString(data: []const u8) !u32 {
-    var fbs = std.io.fixedBufferStream(data);
-    const reader = fbs.reader();
+    var reader = std.Io.Reader.fixed(data);
 
     // Read line by line
-    var line_buf: [64]u8 = undefined;
-    const line = try reader.readUntilDelimiter(&line_buf, '\n');
+    const line = try reader.takeDelimiterExclusive('\n');
 
     return try std.fmt.parseInt(u32, line, 10);
 }
 
 /// Format a log message using a buffer stream
-pub fn formatMessage(allocator: std.mem.Allocator, level: []const u8, text: []const u8) ![]u8 {
+pub fn formatMessage(io: std.Io, allocator: std.mem.Allocator, level: []const u8, text: []const u8) ![]u8 {
     var buffer: [512]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
-    const timestamp = std.time.timestamp();
+    const timestamp = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s)));
     try writer.print("[{d}] {s}: {s}", .{ timestamp, level, text });
 
-    return try allocator.dupe(u8, fbs.getWritten());
+    return try allocator.dupe(u8, fbs.buffered());
 }
 
 /// Item for report building
@@ -4623,8 +4642,8 @@ pub const Item = struct {
 /// Build a formatted report
 pub fn buildReport(allocator: std.mem.Allocator, items: []const Item) ![]u8 {
     var buffer: [4096]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     try writer.writeAll("REPORT\n");
     try writer.writeAll("======\n\n");
@@ -4635,7 +4654,7 @@ pub fn buildReport(allocator: std.mem.Allocator, items: []const Item) ![]u8 {
 
     try writer.writeAll("\n");
 
-    return try allocator.dupe(u8, fbs.getWritten());
+    return try allocator.dupe(u8, fbs.buffered());
 }
 // ANCHOR_END: string_buffer_io
 
@@ -4647,16 +4666,10 @@ fn writeData(writer: anytype, value: u32) !void {
 
 /// Parse binary header from memory
 pub fn parseHeader(data: []const u8) !struct { magic: u32, version: u16 } {
-    var fbs = std.io.fixedBufferStream(data);
-    const reader = fbs.reader();
+    var reader = std.Io.Reader.fixed(data);
 
-    var buf: [4]u8 = undefined;
-    _ = try reader.read(&buf);
-    const magic = std.mem.readInt(u32, &buf, .little);
-
-    var buf2: [2]u8 = undefined;
-    _ = try reader.read(&buf2);
-    const version = std.mem.readInt(u16, &buf2, .little);
+    const magic = std.mem.readInt(u32, try reader.takeArray(4), .little);
+    const version = std.mem.readInt(u16, try reader.takeArray(2), .little);
 
     return .{ .magic = magic, .version = version };
 }
@@ -4664,8 +4677,8 @@ pub fn parseHeader(data: []const u8) !struct { magic: u32, version: u16 } {
 /// Build a binary packet
 pub fn buildPacket(allocator: std.mem.Allocator, msg_type: u8, payload: []const u8) ![]u8 {
     var buffer: [1024]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     // Write header
     try writer.writeByte(msg_type);
@@ -4677,7 +4690,7 @@ pub fn buildPacket(allocator: std.mem.Allocator, msg_type: u8, payload: []const 
     // Write payload
     try writer.writeAll(payload);
 
-    return try allocator.dupe(u8, fbs.getWritten());
+    return try allocator.dupe(u8, fbs.buffered());
 }
 // ANCHOR_END: binary_buffers
 
@@ -4685,15 +4698,15 @@ pub fn buildPacket(allocator: std.mem.Allocator, msg_type: u8, payload: []const 
 
 test "basic string I/O" {
     var buffer: [100]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = std.Io.Writer.fixed(&buffer);
 
     // Write to buffer
-    const writer = fbs.writer();
+    const writer = &fbs;
     try writer.writeAll("Hello, ");
     try writer.print("{s}!", .{"World"});
 
     // Get written data
-    const written = fbs.getWritten();
+    const written = fbs.buffered();
     try std.testing.expectEqualStrings("Hello, World!", written);
 }
 
@@ -4704,8 +4717,9 @@ test "parse from string" {
 }
 
 test "format message" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
-    const result = try formatMessage(allocator, "INFO", "test message");
+    const result = try formatMessage(io, allocator, "INFO", "test message");
     defer allocator.free(result);
 
     // Check that it contains the expected parts
@@ -4715,38 +4729,38 @@ test "format message" {
 
 test "seeking in buffer" {
     var buffer: [100]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     // Write data
     try writer.writeAll("0123456789");
 
     // Seek to position 5
-    fbs.pos = 5;
+    fbs.end = 5;
 
     // Overwrite from position 5
     try writer.writeAll("ABCDE");
 
-    const written = fbs.getWritten();
+    const written = fbs.buffered();
     try std.testing.expectEqualStrings("01234ABCDE", written);
 }
 
 test "write then read" {
     var buffer: [100]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = std.Io.Writer.fixed(&buffer);
 
     // Write data
-    const writer = fbs.writer();
+    const writer = &fbs;
     try writer.writeAll("test data");
 
     // Get what was written
-    const written = fbs.getWritten();
+    const written = fbs.buffered();
 
     // Create new stream over written data for reading
-    var read_fbs = std.io.fixedBufferStream(written);
-    const reader = read_fbs.reader();
+    var read_fbs = std.Io.Reader.fixed(written);
+    const reader = &read_fbs;
     var read_buf: [10]u8 = undefined;
-    const bytes_read = try reader.read(&read_buf);
+    const bytes_read = try reader.readSliceShort(&read_buf);
 
     try std.testing.expectEqualStrings("test data", read_buf[0..bytes_read]);
 }
@@ -4770,17 +4784,17 @@ test "build report" {
 
 test "writeData output" {
     var buffer: [100]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = std.Io.Writer.fixed(&buffer);
 
-    try writeData(fbs.writer(), 42);
+    try writeData(&fbs, 42);
 
-    try std.testing.expectEqualStrings("Value: 42\n", fbs.getWritten());
+    try std.testing.expectEqualStrings("Value: 42\n", fbs.buffered());
 }
 
 test "parse binary header" {
     var buffer: [6]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     // Write header
     var magic_buf: [4]u8 = undefined;
@@ -4813,10 +4827,11 @@ test "build packet" {
 
 test "dynamic string building" {
     const allocator = std.testing.allocator;
-    var list: std.ArrayList(u8) = .{};
+    var list: std.ArrayList(u8) = .empty;
     defer list.deinit(allocator);
 
-    const writer = list.writer(allocator);
+    var list_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &list);
+    const writer = &list_writer.writer;
 
     var i: u32 = 0;
     while (i < 10) : (i += 1) {
@@ -4831,8 +4846,8 @@ test "dynamic string building" {
 
 test "buffer overflow" {
     var buffer: [10]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     const result = writer.writeAll("This is too long");
     try std.testing.expectError(error.NoSpaceLeft, result);
@@ -4840,129 +4855,127 @@ test "buffer overflow" {
 
 test "multiple writes and reads" {
     var buffer: [100]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = std.Io.Writer.fixed(&buffer);
 
     // Write multiple items
-    const writer = fbs.writer();
+    const writer = &fbs;
     try writer.writeAll("line 1\n");
     try writer.writeAll("line 2\n");
     try writer.writeAll("line 3\n");
 
-    // Reset and read
-    fbs.pos = 0;
-    const reader = fbs.reader();
+    // Read the bytes back through a reader over what was written.
+    var read_stream = std.Io.Reader.fixed(fbs.buffered());
+    const reader = &read_stream;
 
-    var line_buf: [20]u8 = undefined;
 
-    const line1 = try reader.readUntilDelimiter(&line_buf, '\n');
+    const line1 = try reader.takeDelimiterExclusive('\n');
     try std.testing.expectEqualStrings("line 1", line1);
 
-    const line2 = try reader.readUntilDelimiter(&line_buf, '\n');
+    const line2 = try reader.takeDelimiterExclusive('\n');
     try std.testing.expectEqualStrings("line 2", line2);
 
-    const line3 = try reader.readUntilDelimiter(&line_buf, '\n');
+    const line3 = try reader.takeDelimiterExclusive('\n');
     try std.testing.expectEqualStrings("line 3", line3);
 }
 
-test "getWritten vs getPos" {
+test "buffered vs end" {
     var buffer: [100]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     try writer.writeAll("test");
 
     // pos tracks current position
-    try std.testing.expectEqual(@as(usize, 4), fbs.pos);
+    try std.testing.expectEqual(@as(usize, 4), fbs.end);
 
-    // getWritten returns slice up to current position
-    try std.testing.expectEqualStrings("test", fbs.getWritten());
+    // buffered() returns the slice written so far
+    try std.testing.expectEqualStrings("test", fbs.buffered());
 }
 
 test "reset and reuse buffer" {
     var buffer: [100]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     // First use
     try writer.writeAll("first");
-    try std.testing.expectEqualStrings("first", fbs.getWritten());
+    try std.testing.expectEqualStrings("first", fbs.buffered());
 
     // Reset
-    fbs.reset();
-    try std.testing.expectEqual(@as(usize, 0), fbs.pos);
+    fbs.end = 0;
+    try std.testing.expectEqual(@as(usize, 0), fbs.end);
 
     // Second use
     try writer.writeAll("second");
-    try std.testing.expectEqualStrings("second", fbs.getWritten());
+    try std.testing.expectEqualStrings("second", fbs.buffered());
 }
 
 test "reader read methods" {
     const data = "Hello\nWorld\n123";
-    var fbs = std.io.fixedBufferStream(data);
-    const reader = fbs.reader();
+    var fbs = std.Io.Reader.fixed(data);
+    const reader = &fbs;
 
     // Read until delimiter
-    var buf: [20]u8 = undefined;
-    const line1 = try reader.readUntilDelimiter(&buf, '\n');
+    const line1 = try reader.takeDelimiterExclusive('\n');
     try std.testing.expectEqualStrings("Hello", line1);
 
     // Read exact number of bytes
     var exact: [5]u8 = undefined;
-    try reader.readNoEof(&exact);
+    try reader.readSliceAll(&exact);
     try std.testing.expectEqualStrings("World", &exact);
 }
 
 test "counting bytes written" {
     var buffer: [100]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
-    const start_pos = fbs.pos;
+    const start_pos = fbs.end;
     try writer.writeAll("test data");
-    const bytes_written = fbs.pos - start_pos;
+    const bytes_written = fbs.end - start_pos;
 
     try std.testing.expectEqual(@as(usize, 9), bytes_written);
 }
 
 test "partial reads" {
     const data = "0123456789";
-    var fbs = std.io.fixedBufferStream(data);
-    const reader = fbs.reader();
+    var fbs = std.Io.Reader.fixed(data);
+    const reader = &fbs;
 
     var buf: [5]u8 = undefined;
 
     // First read
-    const read1 = try reader.read(&buf);
+    const read1 = try reader.readSliceShort(&buf);
     try std.testing.expectEqual(@as(usize, 5), read1);
     try std.testing.expectEqualStrings("01234", buf[0..read1]);
 
     // Second read
-    const read2 = try reader.read(&buf);
+    const read2 = try reader.readSliceShort(&buf);
     try std.testing.expectEqual(@as(usize, 5), read2);
     try std.testing.expectEqualStrings("56789", buf[0..read2]);
 
     // Third read (EOF)
-    const read3 = try reader.read(&buf);
+    const read3 = try reader.readSliceShort(&buf);
     try std.testing.expectEqual(@as(usize, 0), read3);
 }
 
 test "mixing read and write operations" {
     var buffer: [100]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
+    var fbs = std.Io.Writer.fixed(&buffer);
 
     // Write initial data
-    try fbs.writer().writeAll("initial");
+    try fbs.writeAll("initial");
 
     // Read from beginning
-    fbs.pos = 0;
+    var read_stream = std.Io.Reader.fixed(fbs.buffered());
     var read_buf: [7]u8 = undefined;
-    try fbs.reader().readNoEof(&read_buf);
+    try read_stream.readSliceAll(&read_buf);
     try std.testing.expectEqualStrings("initial", &read_buf);
 
     // Continue writing
-    try fbs.writer().writeAll(" more");
+    try fbs.writeAll(" more");
 
-    try std.testing.expectEqualStrings("initial more", fbs.getWritten());
+    try std.testing.expectEqualStrings("initial more", fbs.buffered());
 }
 ```
 
@@ -4984,14 +4997,14 @@ You need to read and decompress files compressed with gzip or zlib.
 
 ```zig
 /// Read and decompress a gzip file
-pub fn readGzipFile(path: []const u8, allocator: std.mem.Allocator) ![]u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readGzipFile(io: std.Io, path: []const u8, allocator: std.mem.Allocator) ![]u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     var reader_buffer: [8192]u8 = undefined;
     var decompress_buffer: [std.compress.flate.max_window_len]u8 = undefined;
 
-    var file_reader = file.reader(&reader_buffer);
+    var file_reader = file.reader(io, &reader_buffer);
     var decompressor = std.compress.flate.Decompress.init(
         &file_reader.interface,
         .gzip,
@@ -4999,14 +5012,22 @@ pub fn readGzipFile(path: []const u8, allocator: std.mem.Allocator) ![]u8 {
     );
 
     // Read in chunks until EOF
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     var chunk_buffer: [4096]u8 = undefined;
     while (true) {
+        // `error.ReadFailed` is a placeholder: the decompressor stashes the
+        // real error on `.err`. Breaking on the placeholder would silently
+        // return a truncated result for a corrupt file, so unwrap and
+        // propagate. There are two levels of it -- when the underlying file
+        // read is what failed, the decompressor stashes the placeholder too,
+        // and the real cause is on the file reader.
         const n = decompressor.reader.readSliceShort(&chunk_buffer) catch |err| switch (err) {
-            error.ReadFailed => break,
-            else => return err,
+            error.ReadFailed => return switch (decompressor.err.?) {
+                error.ReadFailed => file_reader.err.?,
+                else => |cause| cause,
+            },
         };
         if (n == 0) break;
         try result.appendSlice(allocator, chunk_buffer[0..n]);
@@ -5016,14 +5037,14 @@ pub fn readGzipFile(path: []const u8, allocator: std.mem.Allocator) ![]u8 {
 }
 
 /// Read and decompress a zlib file
-pub fn readZlibFile(path: []const u8, allocator: std.mem.Allocator) ![]u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readZlibFile(io: std.Io, path: []const u8, allocator: std.mem.Allocator) ![]u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     var reader_buffer: [8192]u8 = undefined;
     var decompress_buffer: [std.compress.flate.max_window_len]u8 = undefined;
 
-    var file_reader = file.reader(&reader_buffer);
+    var file_reader = file.reader(io, &reader_buffer);
     var decompressor = std.compress.flate.Decompress.init(
         &file_reader.interface,
         .zlib,
@@ -5031,14 +5052,22 @@ pub fn readZlibFile(path: []const u8, allocator: std.mem.Allocator) ![]u8 {
     );
 
     // Read in chunks until EOF
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     var chunk_buffer: [4096]u8 = undefined;
     while (true) {
+        // `error.ReadFailed` is a placeholder: the decompressor stashes the
+        // real error on `.err`. Breaking on the placeholder would silently
+        // return a truncated result for a corrupt file, so unwrap and
+        // propagate. There are two levels of it -- when the underlying file
+        // read is what failed, the decompressor stashes the placeholder too,
+        // and the real cause is on the file reader.
         const n = decompressor.reader.readSliceShort(&chunk_buffer) catch |err| switch (err) {
-            error.ReadFailed => break,
-            else => return err,
+            error.ReadFailed => return switch (decompressor.err.?) {
+                error.ReadFailed => file_reader.err.?,
+                else => |cause| cause,
+            },
         };
         if (n == 0) break;
         try result.appendSlice(allocator, chunk_buffer[0..n]);
@@ -5083,17 +5112,17 @@ var decompressor = std.compress.flate.Decompress.init(
 
 ```zig
 /// Stream decompress a gzip file to another file
-pub fn streamDecompressFile(src_path: []const u8, dst_path: []const u8) !void {
-    const src = try std.fs.cwd().openFile(src_path, .{});
-    defer src.close();
+pub fn streamDecompressFile(io: std.Io, src_path: []const u8, dst_path: []const u8) !void {
+    const src = try std.Io.Dir.cwd().openFile(io, src_path, .{});
+    defer src.close(io);
 
-    const dst = try std.fs.cwd().createFile(dst_path, .{});
-    defer dst.close();
+    const dst = try std.Io.Dir.cwd().createFile(io, dst_path, .{});
+    defer dst.close(io);
 
     var reader_buffer: [8192]u8 = undefined;
     var decompress_buffer: [std.compress.flate.max_window_len]u8 = undefined;
 
-    var src_reader = src.reader(&reader_buffer);
+    var src_reader = src.reader(io, &reader_buffer);
     var decompressor = std.compress.flate.Decompress.init(
         &src_reader.interface,
         .gzip,
@@ -5105,10 +5134,9 @@ pub fn streamDecompressFile(src_path: []const u8, dst_path: []const u8) !void {
     while (true) {
         const n = decompressor.reader.readSliceShort(&chunk_buffer) catch |err| switch (err) {
             error.ReadFailed => break,
-            else => return err,
         };
         if (n == 0) break;
-        try dst.writeAll(chunk_buffer[0..n]);
+        try dst.writeStreamingAll(io, chunk_buffer[0..n]);
     }
 }
 ```
@@ -5131,7 +5159,9 @@ pub fn safeDecompress(path: []const u8, allocator: std.mem.Allocator) ![]u8 {
             std.debug.print("Truncated gzip file\n", .{});
             return error.TruncatedFile;
         },
-        else => return err,
+        // Open, allocation and the rest of the flate error set are not
+        // gzip-format problems, so pass them through untranslated.
+        else => |other| return other,
     };
 }
 ```
@@ -5208,7 +5238,7 @@ var dec = Decompress.init(&reader, .gzip, &.{});
 
 ### Note on Compression
 
-As of Zig 0.15.2, the compression side of `std.compress.flate` is not yet fully implemented. For creating gzip/zlib files, you'll need to:
+As of Zig 0.16.0, the compression side of `std.compress.flate` is not yet fully implemented. For creating gzip/zlib files, you'll need to:
 
 1. Use external tools (`gzip`, `zlib`)
 2. Wait for Zig stdlib completion
@@ -5231,14 +5261,14 @@ const std = @import("std");
 
 // ANCHOR: decompress_gzip
 /// Read and decompress a gzip file
-pub fn readGzipFile(path: []const u8, allocator: std.mem.Allocator) ![]u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readGzipFile(io: std.Io, path: []const u8, allocator: std.mem.Allocator) ![]u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     var reader_buffer: [8192]u8 = undefined;
     var decompress_buffer: [std.compress.flate.max_window_len]u8 = undefined;
 
-    var file_reader = file.reader(&reader_buffer);
+    var file_reader = file.reader(io, &reader_buffer);
     var decompressor = std.compress.flate.Decompress.init(
         &file_reader.interface,
         .gzip,
@@ -5246,14 +5276,22 @@ pub fn readGzipFile(path: []const u8, allocator: std.mem.Allocator) ![]u8 {
     );
 
     // Read in chunks until EOF
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     var chunk_buffer: [4096]u8 = undefined;
     while (true) {
+        // `error.ReadFailed` is a placeholder: the decompressor stashes the
+        // real error on `.err`. Breaking on the placeholder would silently
+        // return a truncated result for a corrupt file, so unwrap and
+        // propagate. There are two levels of it -- when the underlying file
+        // read is what failed, the decompressor stashes the placeholder too,
+        // and the real cause is on the file reader.
         const n = decompressor.reader.readSliceShort(&chunk_buffer) catch |err| switch (err) {
-            error.ReadFailed => break,
-            else => return err,
+            error.ReadFailed => return switch (decompressor.err.?) {
+                error.ReadFailed => file_reader.err.?,
+                else => |cause| cause,
+            },
         };
         if (n == 0) break;
         try result.appendSlice(allocator, chunk_buffer[0..n]);
@@ -5263,14 +5301,14 @@ pub fn readGzipFile(path: []const u8, allocator: std.mem.Allocator) ![]u8 {
 }
 
 /// Read and decompress a zlib file
-pub fn readZlibFile(path: []const u8, allocator: std.mem.Allocator) ![]u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn readZlibFile(io: std.Io, path: []const u8, allocator: std.mem.Allocator) ![]u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     var reader_buffer: [8192]u8 = undefined;
     var decompress_buffer: [std.compress.flate.max_window_len]u8 = undefined;
 
-    var file_reader = file.reader(&reader_buffer);
+    var file_reader = file.reader(io, &reader_buffer);
     var decompressor = std.compress.flate.Decompress.init(
         &file_reader.interface,
         .zlib,
@@ -5278,14 +5316,22 @@ pub fn readZlibFile(path: []const u8, allocator: std.mem.Allocator) ![]u8 {
     );
 
     // Read in chunks until EOF
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     var chunk_buffer: [4096]u8 = undefined;
     while (true) {
+        // `error.ReadFailed` is a placeholder: the decompressor stashes the
+        // real error on `.err`. Breaking on the placeholder would silently
+        // return a truncated result for a corrupt file, so unwrap and
+        // propagate. There are two levels of it -- when the underlying file
+        // read is what failed, the decompressor stashes the placeholder too,
+        // and the real cause is on the file reader.
         const n = decompressor.reader.readSliceShort(&chunk_buffer) catch |err| switch (err) {
-            error.ReadFailed => break,
-            else => return err,
+            error.ReadFailed => return switch (decompressor.err.?) {
+                error.ReadFailed => file_reader.err.?,
+                else => |cause| cause,
+            },
         };
         if (n == 0) break;
         try result.appendSlice(allocator, chunk_buffer[0..n]);
@@ -5297,17 +5343,17 @@ pub fn readZlibFile(path: []const u8, allocator: std.mem.Allocator) ![]u8 {
 
 // ANCHOR: stream_decompress
 /// Stream decompress a gzip file to another file
-pub fn streamDecompressFile(src_path: []const u8, dst_path: []const u8) !void {
-    const src = try std.fs.cwd().openFile(src_path, .{});
-    defer src.close();
+pub fn streamDecompressFile(io: std.Io, src_path: []const u8, dst_path: []const u8) !void {
+    const src = try std.Io.Dir.cwd().openFile(io, src_path, .{});
+    defer src.close(io);
 
-    const dst = try std.fs.cwd().createFile(dst_path, .{});
-    defer dst.close();
+    const dst = try std.Io.Dir.cwd().createFile(io, dst_path, .{});
+    defer dst.close(io);
 
     var reader_buffer: [8192]u8 = undefined;
     var decompress_buffer: [std.compress.flate.max_window_len]u8 = undefined;
 
-    var src_reader = src.reader(&reader_buffer);
+    var src_reader = src.reader(io, &reader_buffer);
     var decompressor = std.compress.flate.Decompress.init(
         &src_reader.interface,
         .gzip,
@@ -5319,18 +5365,17 @@ pub fn streamDecompressFile(src_path: []const u8, dst_path: []const u8) !void {
     while (true) {
         const n = decompressor.reader.readSliceShort(&chunk_buffer) catch |err| switch (err) {
             error.ReadFailed => break,
-            else => return err,
         };
         if (n == 0) break;
-        try dst.writeAll(chunk_buffer[0..n]);
+        try dst.writeStreamingAll(io, chunk_buffer[0..n]);
     }
 }
 // ANCHOR_END: stream_decompress
 
 // ANCHOR: error_handling
 /// Safe decompression with error handling
-pub fn safeDecompress(path: []const u8, allocator: std.mem.Allocator) ![]u8 {
-    return readGzipFile(path, allocator) catch |err| switch (err) {
+pub fn safeDecompress(io: std.Io, path: []const u8, allocator: std.mem.Allocator) ![]u8 {
+    return readGzipFile(io, path, allocator) catch |err| switch (err) {
         error.BadGzipHeader => {
             std.debug.print("Invalid gzip file format\n", .{});
             return error.InvalidFormat;
@@ -5343,26 +5388,27 @@ pub fn safeDecompress(path: []const u8, allocator: std.mem.Allocator) ![]u8 {
             std.debug.print("Truncated gzip file\n", .{});
             return error.TruncatedFile;
         },
-        else => return err,
+        // Open, allocation and the rest of the flate error set are not
+        // gzip-format problems, so pass them through untranslated.
+        else => |other| return other,
     };
 }
 // ANCHOR_END: error_handling
 
 // Helper to create gzipped test files using system gzip
-fn createGzipFile(path: []const u8, content: []const u8, allocator: std.mem.Allocator) !void {
+fn createGzipFile(io: std.Io, path: []const u8, content: []const u8, allocator: std.mem.Allocator) !void {
     // Write uncompressed file
     const temp_path = try std.fmt.allocPrint(allocator, "{s}.tmp", .{path});
     defer allocator.free(temp_path);
 
     {
-        const file = try std.fs.cwd().createFile(temp_path, .{});
-        defer file.close();
-        try file.writeAll(content);
+        const file = try std.Io.Dir.cwd().createFile(io, temp_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, content);
     }
 
     // Compress with system gzip
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
+    const result = try std.process.run(allocator, io, .{
         .argv = &.{ "gzip", "-c", temp_path },
     });
     defer allocator.free(result.stdout);
@@ -5370,53 +5416,54 @@ fn createGzipFile(path: []const u8, content: []const u8, allocator: std.mem.Allo
 
     // Write compressed output
     {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
-        try file.writeAll(result.stdout);
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, result.stdout);
     }
 
     // Cleanup temp file
-    std.fs.cwd().deleteFile(temp_path) catch {};
+    std.Io.Dir.cwd().deleteFile(io, temp_path) catch {};
 }
 
 // Tests
 
 test "read gzip file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
     const test_path = "/tmp/test_read.gz";
     const test_content = "Hello, Gzip World!";
 
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create gzipped file
-    try createGzipFile(test_path, test_content, allocator);
+    try createGzipFile(io, test_path, test_content, allocator);
 
     // Read and decompress
-    const data = try readGzipFile(test_path, allocator);
+    const data = try readGzipFile(io, test_path, allocator);
     defer allocator.free(data);
 
     try std.testing.expectEqualStrings(test_content, data);
 }
 
 test "read zlib file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
     const test_path = "/tmp/test_zlib.zz";
     const test_content = "Zlib test data";
 
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create temp file
     const temp_path = "/tmp/test_zlib_temp.txt";
     {
-        const file = try std.fs.cwd().createFile(temp_path, .{});
-        defer file.close();
-        try file.writeAll(test_content);
+        const file = try std.Io.Dir.cwd().createFile(io, temp_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, test_content);
     }
-    defer std.fs.cwd().deleteFile(temp_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, temp_path) catch {};
 
     // Compress with zlib (using python for zlib compression)
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
+    const result = try std.process.run(allocator, io, .{
         .argv = &.{ "python3", "-c", "import zlib, sys; sys.stdout.buffer.write(zlib.compress(open(sys.argv[1], 'rb').read()))", temp_path },
     });
     defer allocator.free(result.stdout);
@@ -5424,82 +5471,86 @@ test "read zlib file" {
 
     // Write compressed output
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll(result.stdout);
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, result.stdout);
     }
 
     // Read and decompress
-    const data = try readZlibFile(test_path, allocator);
+    const data = try readZlibFile(io, test_path, allocator);
     defer allocator.free(data);
 
     try std.testing.expectEqualStrings(test_content, data);
 }
 
 test "stream decompress file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
     const src_path = "/tmp/test_stream_src.gz";
     const dst_path = "/tmp/test_stream_dst.txt";
     const test_content = "Stream decompression test\n" ** 100;
 
-    defer std.fs.cwd().deleteFile(src_path) catch {};
-    defer std.fs.cwd().deleteFile(dst_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, src_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, dst_path) catch {};
 
     // Create gzipped file
-    try createGzipFile(src_path, test_content, allocator);
+    try createGzipFile(io, src_path, test_content, allocator);
 
     // Stream decompress
-    try streamDecompressFile(src_path, dst_path);
+    try streamDecompressFile(io, src_path, dst_path);
 
     // Verify
-    const result = try std.fs.cwd().readFileAlloc(allocator, dst_path, 10 * 1024 * 1024);
+    const result = try std.Io.Dir.cwd().readFileAlloc(io, dst_path, allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(result);
 
     try std.testing.expectEqualStrings(test_content, result);
 }
 
 test "read empty gzip file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
     const test_path = "/tmp/test_empty.gz";
 
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create empty gzipped file
-    try createGzipFile(test_path, "", allocator);
+    try createGzipFile(io, test_path, "", allocator);
 
     // Read
-    const data = try readGzipFile(test_path, allocator);
+    const data = try readGzipFile(io, test_path, allocator);
     defer allocator.free(data);
 
     try std.testing.expectEqual(@as(usize, 0), data.len);
 }
 
 test "read large gzip file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
     const test_path = "/tmp/test_large.gz";
 
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create large content
-    var large_content: std.ArrayList(u8) = .{};
+    var large_content: std.ArrayList(u8) = .empty;
     defer large_content.deinit(allocator);
 
     var i: usize = 0;
     while (i < 10000) : (i += 1) {
-        try large_content.writer(allocator).print("Line {d}\n", .{i});
+        try large_content.print(allocator, "Line {d}\n", .{i});
     }
 
     // Create gzipped file
-    try createGzipFile(test_path, large_content.items, allocator);
+    try createGzipFile(io, test_path, large_content.items, allocator);
 
     // Read and decompress
-    const data = try readGzipFile(test_path, allocator);
+    const data = try readGzipFile(io, test_path, allocator);
     defer allocator.free(data);
 
     try std.testing.expectEqualStrings(large_content.items, data);
 }
 
 test "read binary gzip data" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
     const test_path = "/tmp/test_binary.gz";
 
@@ -5509,55 +5560,58 @@ test "read binary gzip data" {
         byte.* = @intCast(i);
     }
 
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create gzipped file
-    try createGzipFile(test_path, &binary_data, allocator);
+    try createGzipFile(io, test_path, &binary_data, allocator);
 
     // Read and decompress
-    const data = try readGzipFile(test_path, allocator);
+    const data = try readGzipFile(io, test_path, allocator);
     defer allocator.free(data);
 
     try std.testing.expectEqualSlices(u8, &binary_data, data);
 }
 
 test "multiple reads from same file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
     const test_path = "/tmp/test_multiple.gz";
     const test_content = "Multiple reads test";
 
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create gzipped file
-    try createGzipFile(test_path, test_content, allocator);
+    try createGzipFile(io, test_path, test_content, allocator);
 
     // Read multiple times
     var i: usize = 0;
     while (i < 3) : (i += 1) {
-        const data = try readGzipFile(test_path, allocator);
+        const data = try readGzipFile(io, test_path, allocator);
         defer allocator.free(data);
         try std.testing.expectEqualStrings(test_content, data);
     }
 }
 
 test "decompress unicode content" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
     const test_path = "/tmp/test_unicode.gz";
     const test_content = "Hello, 世界! Привет мир! 🚀";
 
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create gzipped file
-    try createGzipFile(test_path, test_content, allocator);
+    try createGzipFile(io, test_path, test_content, allocator);
 
     // Read and decompress
-    const data = try readGzipFile(test_path, allocator);
+    const data = try readGzipFile(io, test_path, allocator);
     defer allocator.free(data);
 
     try std.testing.expectEqualStrings(test_content, data);
 }
 
 test "stream chunks correctly" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
     const src_path = "/tmp/test_chunks.gz";
     const dst_path = "/tmp/test_chunks_out.txt";
@@ -5565,34 +5619,35 @@ test "stream chunks correctly" {
     // Create content larger than chunk size
     const test_content = "x" ** 10000;
 
-    defer std.fs.cwd().deleteFile(src_path) catch {};
-    defer std.fs.cwd().deleteFile(dst_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, src_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, dst_path) catch {};
 
     // Create gzipped file
-    try createGzipFile(src_path, test_content, allocator);
+    try createGzipFile(io, src_path, test_content, allocator);
 
     // Stream decompress
-    try streamDecompressFile(src_path, dst_path);
+    try streamDecompressFile(io, src_path, dst_path);
 
     // Verify
-    const result = try std.fs.cwd().readFileAlloc(allocator, dst_path, 10 * 1024 * 1024);
+    const result = try std.Io.Dir.cwd().readFileAlloc(io, dst_path, allocator, .limited(10 * 1024 * 1024));
     defer allocator.free(result);
 
     try std.testing.expectEqualStrings(test_content, result);
 }
 
 test "gzip file with multiple lines" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
     const test_path = "/tmp/test_lines.gz";
     const test_content = "line 1\nline 2\nline 3\n";
 
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create gzipped file
-    try createGzipFile(test_path, test_content, allocator);
+    try createGzipFile(io, test_path, test_content, allocator);
 
     // Read
-    const data = try readGzipFile(test_path, allocator);
+    const data = try readGzipFile(io, test_path, allocator);
     defer allocator.free(data);
 
     // Count lines
@@ -5626,17 +5681,17 @@ You need to read a binary file containing fixed-size records, processing them on
 /// Basic record iterator
 pub fn RecordIterator(comptime T: type) type {
     return struct {
-        file: std.fs.File,
+        file: std.Io.File,
         buffer: [@sizeOf(T)]u8 = undefined,
 
         const Self = @This();
 
-        pub fn init(file: std.fs.File) Self {
+        pub fn init(file: std.Io.File) Self {
             return .{ .file = file };
         }
 
-        pub fn next(self: *Self) !?T {
-            const bytes_read = try self.file.read(&self.buffer);
+        pub fn next(self: *Self, io: std.Io) !?T {
+            const bytes_read = try self.file.readPositionalAll(io, &self.buffer, 0);
 
             if (bytes_read == 0) return null;
             if (bytes_read < @sizeOf(T)) return error.PartialRecord;
@@ -5649,7 +5704,7 @@ pub fn RecordIterator(comptime T: type) type {
 /// Buffered record iterator for better performance
 pub fn BufferedRecordIterator(comptime T: type, comptime buffer_count: usize) type {
     return struct {
-        file: std.fs.File,
+        file: std.Io.File,
         buffer: [buffer_count * @sizeOf(T)]u8 = undefined,
         position: usize = 0,
         count: usize = 0,
@@ -5657,14 +5712,14 @@ pub fn BufferedRecordIterator(comptime T: type, comptime buffer_count: usize) ty
         const Self = @This();
         const record_size = @sizeOf(T);
 
-        pub fn init(file: std.fs.File) Self {
+        pub fn init(file: std.Io.File) Self {
             return .{ .file = file };
         }
 
-        pub fn next(self: *Self) !?T {
+        pub fn next(self: *Self, io: std.Io) !?T {
             // Refill buffer if empty
             if (self.position >= self.count) {
-                const bytes_read = try self.file.read(&self.buffer);
+                const bytes_read = try self.file.readPositionalAll(io, &self.buffer, 0);
                 if (bytes_read == 0) return null;
 
                 self.count = bytes_read / record_size;
@@ -5692,49 +5747,49 @@ pub fn BufferedRecordIterator(comptime T: type, comptime buffer_count: usize) ty
 /// Random-access record file
 pub fn RecordFile(comptime T: type) type {
     return struct {
-        file: std.fs.File,
+        file: std.Io.File,
+        /// Which record the next read starts at.
+        position: usize = 0,
 
         const Self = @This();
         const record_size = @sizeOf(T);
 
-        pub fn init(file: std.fs.File) Self {
+        pub fn init(file: std.Io.File) Self {
             return .{ .file = file };
         }
 
         pub fn seekToRecord(self: *Self, index: usize) !void {
-            try self.file.seekTo(index * record_size);
         }
 
-        pub fn readRecord(self: *Self) !T {
+        pub fn readRecord(self: *Self, io: std.Io) !T {
             var buffer: [record_size]u8 = undefined;
-            const bytes_read = try self.file.read(&buffer);
+            const bytes_read = try self.file.readPositionalAll(io, &buffer, index * record_size);
 
             if (bytes_read < record_size) return error.PartialRecord;
 
             return @bitCast(buffer);
         }
 
-        pub fn writeRecord(self: *Self, record: T) !void {
+        pub fn writeRecord(self: *Self, io: std.Io, record: T) !void {
             const bytes: [record_size]u8 = @bitCast(record);
-            try self.file.writeAll(&bytes);
+            try self.file.writeStreamingAll(io, &bytes);
         }
 
-        pub fn getRecordCount(self: *Self) !usize {
-            const size = (try self.file.stat()).size;
+        pub fn getRecordCount(self: *Self, io: std.Io) !usize {
+            const size = (try self.file.stat(io)).size;
             return size / record_size;
         }
     };
 }
 
 /// Read a record in reverse order
-pub fn readRecordReverse(comptime T: type, file: std.fs.File, index: usize) !T {
+pub fn readRecordReverse(io: std.Io, comptime T: type, file: std.Io.File, index: usize) !T {
     const record_size = @sizeOf(T);
     const offset = index * record_size;
 
-    try file.seekTo(offset);
 
     var buffer: [record_size]u8 = undefined;
-    const bytes_read = try file.read(&buffer);
+    const bytes_read = try file.readPositionalAll(io, &buffer, offset);
 
     if (bytes_read < record_size) return error.PartialRecord;
 
@@ -5746,19 +5801,17 @@ pub fn readRecordReverse(comptime T: type, file: std.fs.File, index: usize) !T {
 
 ```zig
 /// Process records in batches
-pub fn processBatch(
-    comptime T: type,
-    file: std.fs.File,
+pub fn processBatch(io: std.Io, comptime T: type,
+    file: std.Io.File,
     allocator: std.mem.Allocator,
     batch_size: usize,
-    processor: *const fn ([]const T) anyerror!void,
-) !void {
+    processor: *const fn ([]const T) anyerror!void,) !void {
     const record_size = @sizeOf(T);
     const buffer = try allocator.alignedAlloc(u8, std.mem.Alignment.of(T), batch_size * record_size);
     defer allocator.free(buffer);
 
     while (true) {
-        const bytes_read = try file.read(buffer);
+        const bytes_read = try file.readPositionalAll(io, buffer, 0);
         if (bytes_read == 0) break;
 
         const record_count = bytes_read / record_size;
@@ -5801,17 +5854,17 @@ The simplest iterator reads one record at a time:
 ```zig
 pub fn RecordIterator(comptime T: type) type {
     return struct {
-        file: std.fs.File,
+        file: std.Io.File,
         buffer: [@sizeOf(T)]u8 = undefined,
 
         const Self = @This();
 
-        pub fn init(file: std.fs.File) Self {
+        pub fn init(file: std.Io.File) Self {
             return .{ .file = file };
         }
 
-        pub fn next(self: *Self) !?T {
-            const bytes_read = try self.file.read(&self.buffer);
+        pub fn next(self: *Self, io: std.Io) !?T {
+            const bytes_read = try self.file.readPositionalAll(io, &self.buffer, 0);
 
             if (bytes_read == 0) return null;
             if (bytes_read < @sizeOf(T)) return error.PartialRecord;
@@ -5824,8 +5877,8 @@ pub fn RecordIterator(comptime T: type) type {
 
 Usage:
 ```zig
-const file = try std.fs.cwd().openFile("data.bin", .{});
-defer file.close();
+const file = try std.Io.Dir.cwd().openFile(io, "data.bin", .{});
+defer file.close(io);
 
 var iter = RecordIterator(PlayerRecord).init(file);
 while (try iter.next()) |record| {
@@ -5840,7 +5893,7 @@ For better performance, read multiple records at once:
 ```zig
 pub fn BufferedRecordIterator(comptime T: type, comptime buffer_count: usize) type {
     return struct {
-        file: std.fs.File,
+        file: std.Io.File,
         buffer: [buffer_count * @sizeOf(T)]u8 = undefined,
         position: usize = 0,
         count: usize = 0,
@@ -5848,14 +5901,14 @@ pub fn BufferedRecordIterator(comptime T: type, comptime buffer_count: usize) ty
         const Self = @This();
         const record_size = @sizeOf(T);
 
-        pub fn init(file: std.fs.File) Self {
+        pub fn init(file: std.Io.File) Self {
             return .{ .file = file };
         }
 
-        pub fn next(self: *Self) !?T {
+        pub fn next(self: *Self, io: std.Io) !?T {
             // Refill buffer if empty
             if (self.position >= self.count) {
-                const bytes_read = try self.file.read(&self.buffer);
+                const bytes_read = try self.file.readPositionalAll(io, &self.buffer, 0);
                 if (bytes_read == 0) return null;
 
                 self.count = bytes_read / record_size;
@@ -5884,35 +5937,36 @@ Jump directly to a record by index:
 ```zig
 pub fn RecordFile(comptime T: type) type {
     return struct {
-        file: std.fs.File,
+        file: std.Io.File,
+        /// Which record the next read starts at.
+        position: usize = 0,
 
         const Self = @This();
         const record_size = @sizeOf(T);
 
-        pub fn init(file: std.fs.File) Self {
+        pub fn init(file: std.Io.File) Self {
             return .{ .file = file };
         }
 
         pub fn seekToRecord(self: *Self, index: usize) !void {
-            try self.file.seekTo(index * record_size);
         }
 
-        pub fn readRecord(self: *Self) !T {
+        pub fn readRecord(self: *Self, io: std.Io) !T {
             var buffer: [record_size]u8 = undefined;
-            const bytes_read = try self.file.read(&buffer);
+            const bytes_read = try self.file.readPositionalAll(io, &buffer, index * record_size);
 
             if (bytes_read < record_size) return error.PartialRecord;
 
             return @bitCast(buffer);
         }
 
-        pub fn writeRecord(self: *Self, record: T) !void {
+        pub fn writeRecord(self: *Self, io: std.Io, record: T) !void {
             const bytes: [record_size]u8 = @bitCast(record);
-            try self.file.writeAll(&bytes);
+            try self.file.writeStreamingAll(io, &bytes);
         }
 
-        pub fn getRecordCount(self: *Self) !usize {
-            const size = (try self.file.stat()).size;
+        pub fn getRecordCount(self: *Self, io: std.Io) !usize {
+            const size = (try self.file.stat(io)).size;
             return size / record_size;
         }
     };
@@ -5936,32 +5990,31 @@ const total = try record_file.getRecordCount();
 Iterate backwards through records:
 
 ```zig
-pub fn readRecordReverse(comptime T: type, file: std.fs.File, index: usize) !T {
+pub fn readRecordReverse(io: std.Io, comptime T: type, file: std.Io.File, index: usize) !T {
     const record_size = @sizeOf(T);
     const offset = index * record_size;
 
-    try file.seekTo(offset);
 
     var buffer: [record_size]u8 = undefined;
-    const bytes_read = try file.read(&buffer);
+    const bytes_read = try file.readPositionalAll(io, &buffer, offset);
 
     if (bytes_read < record_size) return error.PartialRecord;
 
     return @bitCast(buffer);
 }
 
-pub fn reverseIterator(comptime T: type, file: std.fs.File) !struct {
-    file: std.fs.File,
+pub fn reverseIterator(io: std.Io, comptime T: type, file: std.Io.File) !struct {
+    file: std.Io.File,
     count: usize,
     index: usize,
 
-    pub fn next(self: *@This()) !?T {
+    pub fn next(self: *@This(), io: std.Io) !?T {
         if (self.index == 0) return null;
         self.index -= 1;
-        return readRecordReverse(T, self.file, self.index);
+        return readRecordReverse(io, T, self.file, self.index);
     }
 } {
-    const size = (try file.stat()).size;
+    const size = (try file.stat(io)).size;
     const record_count = size / @sizeOf(T);
 
     return .{
@@ -6006,19 +6059,17 @@ const NetworkRecord = extern struct {
 Process records in batches for better performance:
 
 ```zig
-pub fn processBatch(
-    comptime T: type,
-    file: std.fs.File,
+pub fn processBatch(io: std.Io, comptime T: type,
+    file: std.Io.File,
     allocator: std.mem.Allocator,
     batch_size: usize,
-    processor: fn ([]const T) anyerror!void,
-) !void {
+    processor: fn ([]const T) anyerror!void,) !void {
     const record_size = @sizeOf(T);
     const buffer = try allocator.alloc(u8, batch_size * record_size);
     defer allocator.free(buffer);
 
     while (true) {
-        const bytes_read = try file.read(buffer);
+        const bytes_read = try file.readPositionalAll(io, buffer, 0);
         if (bytes_read == 0) break;
 
         const record_count = bytes_read / record_size;
@@ -6038,19 +6089,19 @@ Add validation to ensure record integrity:
 ```zig
 pub fn ValidatedRecordIterator(comptime T: type) type {
     return struct {
-        file: std.fs.File,
+        file: std.Io.File,
         buffer: [@sizeOf(T)]u8 = undefined,
         validator: *const fn (T) bool,
 
         const Self = @This();
 
-        pub fn init(file: std.fs.File, validator: *const fn (T) bool) Self {
+        pub fn init(file: std.Io.File, validator: *const fn (T) bool) Self {
             return .{ .file = file, .validator = validator };
         }
 
-        pub fn next(self: *Self) !?T {
+        pub fn next(self: *Self, io: std.Io) !?T {
             while (true) {
-                const bytes_read = try self.file.read(&self.buffer);
+                const bytes_read = try self.file.readPositionalAll(io, &self.buffer, 0);
                 if (bytes_read == 0) return null;
                 if (bytes_read < @sizeOf(T)) return error.PartialRecord;
 
@@ -6082,12 +6133,12 @@ pub fn MappedRecordFile(comptime T: type) type {
         const Self = @This();
         const record_size = @sizeOf(T);
 
-        pub fn init(file: std.fs.File) !Self {
-            const size = (try file.stat()).size;
+        pub fn init(io: std.Io, file: std.Io.File) !Self {
+            const size = (try file.stat(io)).size;
             const data = try std.posix.mmap(
                 null,
                 size,
-                std.posix.PROT.READ,
+                .{ .READ = true },
                 .{ .TYPE = .SHARED },
                 file.handle,
                 0,
@@ -6132,9 +6183,9 @@ pub const RecordError = error{
     CorruptedData,
 };
 
-pub fn safeReadRecord(comptime T: type, file: std.fs.File) RecordError!T {
+pub fn safeReadRecord(io: std.Io, comptime T: type, file: std.Io.File) RecordError!T {
     var buffer: [@sizeOf(T)]u8 = undefined;
-    const bytes_read = file.read(&buffer) catch return error.CorruptedData;
+    const bytes_read = file.readPositionalAll(io, &buffer, 0) catch return error.CorruptedData;
 
     if (bytes_read == 0) return error.PartialRecord;
     if (bytes_read < @sizeOf(T)) return error.PartialRecord;
@@ -6184,17 +6235,17 @@ const std = @import("std");
 /// Basic record iterator
 pub fn RecordIterator(comptime T: type) type {
     return struct {
-        file: std.fs.File,
+        file: std.Io.File,
         buffer: [@sizeOf(T)]u8 = undefined,
 
         const Self = @This();
 
-        pub fn init(file: std.fs.File) Self {
+        pub fn init(file: std.Io.File) Self {
             return .{ .file = file };
         }
 
-        pub fn next(self: *Self) !?T {
-            const bytes_read = try self.file.read(&self.buffer);
+        pub fn next(self: *Self, io: std.Io) !?T {
+            const bytes_read = try self.file.readPositionalAll(io, &self.buffer, 0);
 
             if (bytes_read == 0) return null;
             if (bytes_read < @sizeOf(T)) return error.PartialRecord;
@@ -6207,7 +6258,7 @@ pub fn RecordIterator(comptime T: type) type {
 /// Buffered record iterator for better performance
 pub fn BufferedRecordIterator(comptime T: type, comptime buffer_count: usize) type {
     return struct {
-        file: std.fs.File,
+        file: std.Io.File,
         buffer: [buffer_count * @sizeOf(T)]u8 = undefined,
         position: usize = 0,
         count: usize = 0,
@@ -6215,14 +6266,14 @@ pub fn BufferedRecordIterator(comptime T: type, comptime buffer_count: usize) ty
         const Self = @This();
         const record_size = @sizeOf(T);
 
-        pub fn init(file: std.fs.File) Self {
+        pub fn init(file: std.Io.File) Self {
             return .{ .file = file };
         }
 
-        pub fn next(self: *Self) !?T {
+        pub fn next(self: *Self, io: std.Io) !?T {
             // Refill buffer if empty
             if (self.position >= self.count) {
-                const bytes_read = try self.file.read(&self.buffer);
+                const bytes_read = try self.file.readPositionalAll(io, &self.buffer, 0);
                 if (bytes_read == 0) return null;
 
                 self.count = bytes_read / record_size;
@@ -6248,49 +6299,51 @@ pub fn BufferedRecordIterator(comptime T: type, comptime buffer_count: usize) ty
 /// Random-access record file
 pub fn RecordFile(comptime T: type) type {
     return struct {
-        file: std.fs.File,
+        file: std.Io.File,
+        /// Which record the next read starts at.
+        position: usize = 0,
 
         const Self = @This();
         const record_size = @sizeOf(T);
 
-        pub fn init(file: std.fs.File) Self {
+        pub fn init(file: std.Io.File) Self {
             return .{ .file = file };
         }
 
+        /// 0.16 reads positionally, so a seek only records where to read next.
         pub fn seekToRecord(self: *Self, index: usize) !void {
-            try self.file.seekTo(index * record_size);
+            self.position = index;
         }
 
-        pub fn readRecord(self: *Self) !T {
+        pub fn readRecord(self: *Self, io: std.Io) !T {
             var buffer: [record_size]u8 = undefined;
-            const bytes_read = try self.file.read(&buffer);
+            const bytes_read = try self.file.readPositionalAll(io, &buffer, self.position * record_size);
 
             if (bytes_read < record_size) return error.PartialRecord;
 
             return @bitCast(buffer);
         }
 
-        pub fn writeRecord(self: *Self, record: T) !void {
+        pub fn writeRecord(self: *Self, io: std.Io, record: T) !void {
             const bytes: [record_size]u8 = @bitCast(record);
-            try self.file.writeAll(&bytes);
+            try self.file.writeStreamingAll(io, &bytes);
         }
 
-        pub fn getRecordCount(self: *Self) !usize {
-            const size = (try self.file.stat()).size;
+        pub fn getRecordCount(self: *Self, io: std.Io) !usize {
+            const size = (try self.file.stat(io)).size;
             return size / record_size;
         }
     };
 }
 
 /// Read a record in reverse order
-pub fn readRecordReverse(comptime T: type, file: std.fs.File, index: usize) !T {
+pub fn readRecordReverse(io: std.Io, comptime T: type, file: std.Io.File, index: usize) !T {
     const record_size = @sizeOf(T);
     const offset = index * record_size;
 
-    try file.seekTo(offset);
 
     var buffer: [record_size]u8 = undefined;
-    const bytes_read = try file.read(&buffer);
+    const bytes_read = try file.readPositionalAll(io, &buffer, offset);
 
     if (bytes_read < record_size) return error.PartialRecord;
 
@@ -6300,19 +6353,17 @@ pub fn readRecordReverse(comptime T: type, file: std.fs.File, index: usize) !T {
 
 // ANCHOR: batch_processing
 /// Process records in batches
-pub fn processBatch(
-    comptime T: type,
-    file: std.fs.File,
+pub fn processBatch(io: std.Io, comptime T: type,
+    file: std.Io.File,
     allocator: std.mem.Allocator,
     batch_size: usize,
-    processor: *const fn ([]const T) anyerror!void,
-) !void {
+    processor: *const fn ([]const T) anyerror!void,) !void {
     const record_size = @sizeOf(T);
     const buffer = try allocator.alignedAlloc(u8, std.mem.Alignment.of(T), batch_size * record_size);
     defer allocator.free(buffer);
 
     while (true) {
-        const bytes_read = try file.read(buffer);
+        const bytes_read = try file.readPositionalAll(io, buffer, 0);
         if (bytes_read == 0) break;
 
         const record_count = bytes_read / record_size;
@@ -6345,13 +6396,14 @@ const PlayerRecord = extern struct {
 // Tests
 
 test "basic record iterator" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_records.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write test records
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         const records = [_]SimpleRecord{
             .{ .id = 1, .value = 1.5, .flags = 0 },
@@ -6361,37 +6413,38 @@ test "basic record iterator" {
 
         for (records) |record| {
             const bytes: [@sizeOf(SimpleRecord)]u8 = @bitCast(record);
-            try file.writeAll(&bytes);
+            try file.writeStreamingAll(io, &bytes);
         }
     }
 
     // Read and verify
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var iter = RecordIterator(SimpleRecord).init(file);
 
-    const r1 = (try iter.next()).?;
+    const r1 = (try iter.next(io)).?;
     try std.testing.expectEqual(@as(u32, 1), r1.id);
     try std.testing.expectEqual(@as(f32, 1.5), r1.value);
 
-    const r2 = (try iter.next()).?;
+    const r2 = (try iter.next(io)).?;
     try std.testing.expectEqual(@as(u32, 2), r2.id);
 
-    const r3 = (try iter.next()).?;
+    const r3 = (try iter.next(io)).?;
     try std.testing.expectEqual(@as(u32, 3), r3.id);
 
-    try std.testing.expectEqual(@as(?SimpleRecord, null), try iter.next());
+    try std.testing.expectEqual(@as(?SimpleRecord, null), try iter.next(io));
 }
 
 test "buffered record iterator" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_buffered_records.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write many records
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         var i: u32 = 0;
         while (i < 100) : (i += 1) {
@@ -6401,18 +6454,18 @@ test "buffered record iterator" {
                 .flags = @intCast(i % 256),
             };
             const bytes: [@sizeOf(SimpleRecord)]u8 = @bitCast(record);
-            try file.writeAll(&bytes);
+            try file.writeStreamingAll(io, &bytes);
         }
     }
 
     // Read with buffered iterator
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var iter = BufferedRecordIterator(SimpleRecord, 10).init(file);
     var count: u32 = 0;
 
-    while (try iter.next()) |record| {
+    while (try iter.next(io)) |record| {
         try std.testing.expectEqual(count, record.id);
         count += 1;
     }
@@ -6421,13 +6474,14 @@ test "buffered record iterator" {
 }
 
 test "record file random access" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_random_access.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write records
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         var record_file = RecordFile(PlayerRecord).init(file);
 
@@ -6439,40 +6493,41 @@ test "record file random access" {
                 .level = @intCast(i + 1),
                 .lives = 3,
             };
-            try record_file.writeRecord(record);
+            try record_file.writeRecord(io, record);
         }
     }
 
     // Read random access
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var record_file = RecordFile(PlayerRecord).init(file);
 
     // Get count
-    const count = try record_file.getRecordCount();
+    const count = try record_file.getRecordCount(io);
     try std.testing.expectEqual(@as(usize, 10), count);
 
     // Seek to record 5
     try record_file.seekToRecord(5);
-    const r5 = try record_file.readRecord();
+    const r5 = try record_file.readRecord(io);
     try std.testing.expectEqual(@as(u32, 5), r5.player_id);
     try std.testing.expectEqual(@as(u32, 500), r5.score);
 
     // Seek to record 0
     try record_file.seekToRecord(0);
-    const r0 = try record_file.readRecord();
+    const r0 = try record_file.readRecord(io);
     try std.testing.expectEqual(@as(u32, 0), r0.player_id);
 }
 
 test "read record in reverse" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_reverse.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write records
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         var i: u32 = 0;
         while (i < 5) : (i += 1) {
@@ -6482,30 +6537,31 @@ test "read record in reverse" {
                 .flags = @intCast(i),
             };
             const bytes: [@sizeOf(SimpleRecord)]u8 = @bitCast(record);
-            try file.writeAll(&bytes);
+            try file.writeStreamingAll(io, &bytes);
         }
     }
 
     // Read in reverse
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var index: usize = 5;
     while (index > 0) {
         index -= 1;
-        const record = try readRecordReverse(SimpleRecord, file, index);
+        const record = try readRecordReverse(io, SimpleRecord, file, index);
         try std.testing.expectEqual(@as(u32, @intCast(index)), record.id);
     }
 }
 
 test "batch processing" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_batch.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write records
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         var i: u32 = 0;
         while (i < 20) : (i += 1) {
@@ -6515,13 +6571,13 @@ test "batch processing" {
                 .flags = 0,
             };
             const bytes: [@sizeOf(SimpleRecord)]u8 = @bitCast(record);
-            try file.writeAll(&bytes);
+            try file.writeStreamingAll(io, &bytes);
         }
     }
 
     // Process in batches
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     const TestContext = struct {
         var total: u32 = 0;
@@ -6534,60 +6590,63 @@ test "batch processing" {
     };
 
     TestContext.total = 0;
-    try processBatch(SimpleRecord, file, std.testing.allocator, 5, TestContext.processor);
+    try processBatch(io, SimpleRecord, file, std.testing.allocator, 5, TestContext.processor);
 
     try std.testing.expectEqual(@as(u32, 20), TestContext.total);
 }
 
 test "empty file iteration" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_empty.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create empty file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
     }
 
     // Iterate
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var iter = RecordIterator(SimpleRecord).init(file);
-    try std.testing.expectEqual(@as(?SimpleRecord, null), try iter.next());
+    try std.testing.expectEqual(@as(?SimpleRecord, null), try iter.next(io));
 }
 
 test "partial record detection" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_partial.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write incomplete record
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         const partial_data = [_]u8{ 1, 2, 3, 4, 5 }; // Less than record size
-        try file.writeAll(&partial_data);
+        try file.writeStreamingAll(io, &partial_data);
     }
 
     // Try to read
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var iter = RecordIterator(SimpleRecord).init(file);
-    const result = iter.next();
+    const result = iter.next(io);
 
     try std.testing.expectError(error.PartialRecord, result);
 }
 
 test "record file update" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_update.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write initial records
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         var record_file = RecordFile(PlayerRecord).init(file);
 
@@ -6599,14 +6658,14 @@ test "record file update" {
                 .level = 1,
                 .lives = 3,
             };
-            try record_file.writeRecord(record);
+            try record_file.writeRecord(io, record);
         }
     }
 
     // Update record 2
     {
-        const file = try std.fs.cwd().openFile(test_path, .{ .mode = .read_write });
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, test_path, .{ .mode = .read_write });
+        defer file.close(io);
 
         var record_file = RecordFile(PlayerRecord).init(file);
 
@@ -6617,18 +6676,18 @@ test "record file update" {
             .level = 10,
             .lives = 1,
         };
-        try record_file.writeRecord(updated);
+        try record_file.writeRecord(io, updated);
     }
 
     // Verify update
     {
-        const file = try std.fs.cwd().openFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+        defer file.close(io);
 
         var record_file = RecordFile(PlayerRecord).init(file);
 
         try record_file.seekToRecord(2);
-        const record = try record_file.readRecord();
+        const record = try record_file.readRecord(io);
 
         try std.testing.expectEqual(@as(u32, 9999), record.score);
         try std.testing.expectEqual(@as(u16, 10), record.level);
@@ -6636,15 +6695,16 @@ test "record file update" {
 }
 
 test "large file iteration" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_large.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const record_count = 10000;
 
     // Write large file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         var i: u32 = 0;
         while (i < record_count) : (i += 1) {
@@ -6654,18 +6714,18 @@ test "large file iteration" {
                 .flags = @intCast(i % 256),
             };
             const bytes: [@sizeOf(SimpleRecord)]u8 = @bitCast(record);
-            try file.writeAll(&bytes);
+            try file.writeStreamingAll(io, &bytes);
         }
     }
 
     // Read and verify
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var iter = BufferedRecordIterator(SimpleRecord, 100).init(file);
     var count: u32 = 0;
 
-    while (try iter.next()) |record| {
+    while (try iter.next(io)) |record| {
         try std.testing.expectEqual(count, record.id);
         count += 1;
     }
@@ -6674,29 +6734,30 @@ test "large file iteration" {
 }
 
 test "mixed read and write" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mixed.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
-    const file = try std.fs.cwd().createFile(test_path, .{ .read = true });
-    defer file.close();
+    const file = try std.Io.Dir.cwd().createFile(io, test_path, .{ .read = true });
+    defer file.close(io);
 
     var record_file = RecordFile(SimpleRecord).init(file);
 
     // Write
-    try record_file.writeRecord(.{ .id = 1, .value = 1.0, .flags = 0 });
-    try record_file.writeRecord(.{ .id = 2, .value = 2.0, .flags = 0 });
+    try record_file.writeRecord(io, .{ .id = 1, .value = 1.0, .flags = 0 });
+    try record_file.writeRecord(io, .{ .id = 2, .value = 2.0, .flags = 0 });
 
     // Seek and read
     try record_file.seekToRecord(0);
-    const r1 = try record_file.readRecord();
+    const r1 = try record_file.readRecord(io);
     try std.testing.expectEqual(@as(u32, 1), r1.id);
 
     // Write another
     try record_file.seekToRecord(2);
-    try record_file.writeRecord(.{ .id = 3, .value = 3.0, .flags = 0 });
+    try record_file.writeRecord(io, .{ .id = 3, .value = 3.0, .flags = 0 });
 
     // Verify count
-    const count = try record_file.getRecordCount();
+    const count = try record_file.getRecordCount(io);
     try std.testing.expectEqual(@as(usize, 3), count);
 }
 ```
@@ -6719,30 +6780,28 @@ You need to read binary data from a file into a mutable buffer that you can modi
 
 ```zig
 /// Basic read into buffer
-pub fn readIntoBuffer(file: std.fs.File, buffer: []u8) !usize {
-    const bytes_read = try file.read(buffer);
+pub fn readIntoBuffer(io: std.Io, file: std.Io.File, buffer: []u8) !usize {
+    const bytes_read = try file.readPositionalAll(io, buffer, 0);
     return bytes_read;
 }
 
 /// Read exact amount, error if not enough data
-pub fn readExact(file: std.fs.File, buffer: []u8) !void {
+pub fn readExact(io: std.Io, file: std.Io.File, buffer: []u8) !void {
     var index: usize = 0;
     while (index < buffer.len) {
-        const bytes_read = try file.read(buffer[index..]);
+        const bytes_read = try file.readPositionalAll(io, buffer[index..], 0);
         if (bytes_read == 0) return error.UnexpectedEndOfFile;
         index += bytes_read;
     }
 }
 
 /// Process file in chunks with callback
-pub fn processFileInChunks(
-    file: std.fs.File,
-    processor: *const fn ([]const u8) anyerror!void,
-) !void {
+pub fn processFileInChunks(io: std.Io, file: std.Io.File,
+    processor: *const fn ([]const u8) anyerror!void,) !void {
     var buffer: [4096]u8 = undefined;
 
     while (true) {
-        const bytes_read = try file.read(&buffer);
+        const bytes_read = try file.readPositionalAll(io, &buffer, 0);
         if (bytes_read == 0) break;
 
         try processor(buffer[0..bytes_read]);
@@ -6750,9 +6809,9 @@ pub fn processFileInChunks(
 }
 
 /// Read structured binary data
-pub fn readStruct(comptime T: type, file: std.fs.File) !T {
+pub fn readStruct(io: std.Io, comptime T: type, file: std.Io.File) !T {
     var buffer: [@sizeOf(T)]u8 = undefined;
-    const bytes_read = try file.read(&buffer);
+    const bytes_read = try file.readPositionalAll(io, &buffer, 0);
 
     if (bytes_read < @sizeOf(T)) return error.PartialRead;
 
@@ -6764,11 +6823,11 @@ pub fn readStruct(comptime T: type, file: std.fs.File) !T {
 
 ```zig
 /// Scatter read into multiple buffers
-pub fn readScatter(file: std.fs.File, buffers: [][]u8) !usize {
+pub fn readScatter(io: std.Io, file: std.Io.File, buffers: [][]u8) !usize {
     var total: usize = 0;
 
     for (buffers) |buffer| {
-        const bytes_read = try file.read(buffer);
+        const bytes_read = try file.readPositionalAll(io, buffer, 0);
         total += bytes_read;
         if (bytes_read < buffer.len) break;
     }
@@ -6777,12 +6836,9 @@ pub fn readScatter(file: std.fs.File, buffers: [][]u8) !usize {
 }
 
 /// Read from specific position without changing file position
-pub fn readAtOffset(file: std.fs.File, buffer: []u8, offset: u64) !usize {
-    const original_pos = try file.getPos();
-    defer file.seekTo(original_pos) catch {};
+pub fn readAtOffset(io: std.Io, file: std.Io.File, buffer: []u8, offset: u64) !usize {
 
-    try file.seekTo(offset);
-    return try file.read(buffer);
+    return try file.readPositionalAll(io, buffer, offset);
 }
 
 /// Ring buffer for continuous reading
@@ -6796,7 +6852,7 @@ pub const RingBuffer = struct {
         return .{ .buffer = buffer };
     }
 
-    pub fn readFromFile(self: *RingBuffer, file: std.fs.File) !usize {
+    pub fn readFromFile(self: *RingBuffer, io: std.Io, file: std.Io.File) !usize {
         if (self.count == self.buffer.len) return 0; // Buffer full
 
         const write_idx = self.write_pos;
@@ -6805,7 +6861,7 @@ pub const RingBuffer = struct {
         const to_end = self.buffer.len - write_idx;
         const read_size = @min(available, to_end);
 
-        const bytes_read = try file.read(self.buffer[write_idx..][0..read_size]);
+        const bytes_read = try file.readPositionalAll(io, self.buffer[write_idx..][0..read_size], 0);
         if (bytes_read == 0) return 0;
 
         self.write_pos = (write_idx + bytes_read) % self.buffer.len;
@@ -6831,8 +6887,8 @@ pub const RingBuffer = struct {
 };
 
 /// Safe read with error handling
-pub fn safeRead(file: std.fs.File, buffer: []u8) !usize {
-    return file.read(buffer) catch |err| switch (err) {
+pub fn safeRead(io: std.Io, file: std.Io.File, buffer: []u8) !usize {
+    return file.readPositionalAll(io, buffer, 0) catch |err| switch (err) {
         error.InputOutput => {
             std.debug.print("I/O error reading file\n", .{});
             return error.ReadFailed;
@@ -6841,8 +6897,6 @@ pub fn safeRead(file: std.fs.File, buffer: []u8) !usize {
             std.debug.print("Access denied\n", .{});
             return error.PermissionDenied;
         },
-        error.BrokenPipe => return 0, // Treat as EOF
-        else => return err,
     };
 }
 ```
@@ -6855,7 +6909,7 @@ The most efficient approach uses stack-allocated fixed-size buffers:
 
 ```zig
 var buffer: [4096]u8 = undefined;
-const bytes_read = try file.read(&buffer);
+const bytes_read = try file.readPositionalAll(io, &buffer, 0);
 
 // Process buffer[0..bytes_read]
 ```
@@ -6871,33 +6925,34 @@ Advantages:
 File reads may return fewer bytes than the buffer size:
 
 ```zig
-pub fn readExact(file: std.fs.File, buffer: []u8) !void {
+pub fn readExact(io: std.Io, file: std.Io.File, buffer: []u8) !void {
     var index: usize = 0;
     while (index < buffer.len) {
-        const bytes_read = try file.read(buffer[index..]);
+        const bytes_read = try file.readPositionalAll(io, buffer[index..], 0);
         if (bytes_read == 0) return error.UnexpectedEndOfFile;
         index += bytes_read;
     }
 }
 
 test "read exact amount" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_exact.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write exactly 100 bytes
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
         const data = [_]u8{42} ** 100;
-        try file.writeAll(&data);
+        try file.writeStreamingAll(io, &data);
     }
 
     // Read exactly 100 bytes
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var buffer: [100]u8 = undefined;
-    try readExact(file, &buffer);
+    try readExact(io, file, &buffer);
 
     try std.testing.expect(std.mem.allEqual(u8, &buffer, 42));
 }
@@ -6911,10 +6966,10 @@ Read into slices of existing arrays:
 var data: [1024]u8 = undefined;
 
 // Read into first half
-const first_half = try file.read(data[0..512]);
+const first_half = try file.readPositionalAll(io, data[0..512], 0);
 
 // Read into second half
-const second_half = try file.read(data[512..]);
+const second_half = try file.readPositionalAll(io, data[512..], 0);
 
 // Total bytes read
 const total = first_half + second_half;
@@ -6925,14 +6980,12 @@ const total = first_half + second_half;
 Reuse the same buffer for multiple reads:
 
 ```zig
-pub fn processFileInChunks(
-    file: std.fs.File,
-    processor: fn ([]const u8) anyerror!void,
-) !void {
+pub fn processFileInChunks(io: std.Io, file: std.Io.File,
+    processor: fn ([]const u8) anyerror!void,) !void {
     var buffer: [4096]u8 = undefined;
 
     while (true) {
-        const bytes_read = try file.read(&buffer);
+        const bytes_read = try file.readPositionalAll(io, &buffer, 0);
         if (bytes_read == 0) break;
 
         try processor(buffer[0..bytes_read]);
@@ -6940,23 +6993,24 @@ pub fn processFileInChunks(
 }
 
 test "reuse buffer" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_reuse.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write large file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         var i: usize = 0;
         while (i < 10000) : (i += 1) {
-            try file.writeAll("X");
+            try file.writeStreamingAll(io, "X");
         }
     }
 
     // Count chunks
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     const Counter = struct {
         var count: usize = 0;
@@ -6967,7 +7021,7 @@ test "reuse buffer" {
     };
 
     Counter.count = 0;
-    try processFileInChunks(file, Counter.process);
+    try processFileInChunks(io, file, Counter.process);
 
     try std.testing.expect(Counter.count > 0);
 }
@@ -6980,18 +7034,18 @@ Read into different kinds of buffers:
 ```zig
 // Fixed array
 var array_buffer: [256]u8 = undefined;
-_ = try file.read(&array_buffer);
+_ = try file.readPositionalAll(io, &array_buffer, 0);
 
 // Slice from heap
 const slice_buffer = try allocator.alloc(u8, 1024);
 defer allocator.free(slice_buffer);
-_ = try file.read(slice_buffer);
+_ = try file.readPositionalAll(io, slice_buffer, 0);
 
 // ArrayList
-var list_buffer: std.ArrayList(u8) = .{};
+var list_buffer: std.ArrayList(u8) = .empty;
 defer list_buffer.deinit(allocator);
 try list_buffer.resize(allocator, 512);
-_ = try file.read(list_buffer.items);
+_ = try file.readPositionalAll(io, list_buffer.items, 0);
 ```
 
 ### Zero-Copy with Buffered Readers
@@ -6999,14 +7053,14 @@ _ = try file.read(list_buffer.items);
 Use buffered readers to minimize system calls:
 
 ```zig
-pub fn readWithBufferedReader(file: std.fs.File) !void {
+pub fn readWithBufferedReader(io: std.Io, file: std.Io.File) !void {
     var file_buffer: [8192]u8 = undefined;
-    var buffered = file.reader(&file_buffer);
+    var buffered = file.reader(io, &file_buffer);
 
     var process_buffer: [256]u8 = undefined;
 
     while (true) {
-        const bytes_read = try buffered.read(&process_buffer);
+        const bytes_read = try buffered.readPositionalAll(io, &process_buffer, 0);
         if (bytes_read == 0) break;
 
         // Process process_buffer[0..bytes_read]
@@ -7020,9 +7074,9 @@ pub fn readWithBufferedReader(file: std.fs.File) !void {
 Read binary data into typed structures:
 
 ```zig
-pub fn readStruct(comptime T: type, file: std.fs.File) !T {
+pub fn readStruct(io: std.Io, comptime T: type, file: std.Io.File) !T {
     var buffer: [@sizeOf(T)]u8 = undefined;
-    const bytes_read = try file.read(&buffer);
+    const bytes_read = try file.readPositionalAll(io, &buffer, 0);
 
     if (bytes_read < @sizeOf(T)) return error.PartialRead;
 
@@ -7036,13 +7090,14 @@ const Header = extern struct {
 };
 
 test "read struct" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_struct.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write header
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         const header = Header{
             .magic = 0xDEADBEEF,
@@ -7050,14 +7105,14 @@ test "read struct" {
             .flags = 0x0042,
         };
         const bytes: [@sizeOf(Header)]u8 = @bitCast(header);
-        try file.writeAll(&bytes);
+        try file.writeStreamingAll(io, &bytes);
     }
 
     // Read header
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const header = try readStruct(Header, file);
+    const header = try readStruct(io, Header, file);
 
     try std.testing.expectEqual(@as(u32, 0xDEADBEEF), header.magic);
     try std.testing.expectEqual(@as(u16, 1), header.version);
@@ -7069,11 +7124,11 @@ test "read struct" {
 Read into multiple buffers in one operation:
 
 ```zig
-pub fn readScatter(file: std.fs.File, buffers: [][]u8) !usize {
+pub fn readScatter(io: std.Io, file: std.Io.File, buffers: [][]u8) !usize {
     var total: usize = 0;
 
     for (buffers) |buffer| {
-        const bytes_read = try file.read(buffer);
+        const bytes_read = try file.readPositionalAll(io, buffer, 0);
         total += bytes_read;
         if (bytes_read < buffer.len) break;
     }
@@ -7082,26 +7137,27 @@ pub fn readScatter(file: std.fs.File, buffers: [][]u8) !usize {
 }
 
 test "scatter read" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_scatter.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write test data
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("AAAABBBBCCCC");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "AAAABBBBCCCC");
     }
 
     // Read into multiple buffers
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var buf1: [4]u8 = undefined;
     var buf2: [4]u8 = undefined;
     var buf3: [4]u8 = undefined;
 
     var buffers = [_][]u8{ &buf1, &buf2, &buf3 };
-    const total = try readScatter(file, &buffers);
+    const total = try readScatter(io, file, &buffers);
 
     try std.testing.expectEqual(@as(usize, 12), total);
     try std.testing.expectEqualStrings("AAAA", &buf1);
@@ -7115,37 +7171,35 @@ test "scatter read" {
 Read from a specific position without seeking:
 
 ```zig
-pub fn readAtOffset(file: std.fs.File, buffer: []u8, offset: u64) !usize {
-    const original_pos = try file.getPos();
-    defer file.seekTo(original_pos) catch {};
+pub fn readAtOffset(io: std.Io, file: std.Io.File, buffer: []u8, offset: u64) !usize {
 
-    try file.seekTo(offset);
-    return try file.read(buffer);
+    return try file.readPositionalAll(io, buffer, offset);
 }
 
 test "read at offset" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_offset.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write test data
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("0123456789");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "0123456789");
     }
 
     // Read from offset 5
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var buffer: [3]u8 = undefined;
-    const bytes_read = try readAtOffset(file, &buffer, 5);
+    const bytes_read = try readAtOffset(io, file, &buffer, 5);
 
     try std.testing.expectEqual(@as(usize, 3), bytes_read);
     try std.testing.expectEqualStrings("567", &buffer);
 
     // File position unchanged
-    try std.testing.expectEqual(@as(u64, 0), try file.getPos());
+    try std.testing.expectEqual(@as(u64, 0), try file.length(io));
 }
 ```
 
@@ -7164,7 +7218,7 @@ pub const RingBuffer = struct {
         return .{ .buffer = buffer };
     }
 
-    pub fn readFromFile(self: *RingBuffer, file: std.fs.File) !usize {
+    pub fn readFromFile(self: *RingBuffer, io: std.Io, file: std.Io.File) !usize {
         if (self.count == self.buffer.len) return 0; // Buffer full
 
         const write_idx = self.write_pos;
@@ -7173,7 +7227,7 @@ pub const RingBuffer = struct {
         const to_end = self.buffer.len - write_idx;
         const read_size = @min(available, to_end);
 
-        const bytes_read = try file.read(self.buffer[write_idx..][0..read_size]);
+        const bytes_read = try file.readPositionalAll(io, self.buffer[write_idx..][0..read_size], 0);
         if (bytes_read == 0) return 0;
 
         self.write_pos = (write_idx + bytes_read) % self.buffer.len;
@@ -7204,8 +7258,8 @@ pub const RingBuffer = struct {
 Handle common read errors:
 
 ```zig
-pub fn safeRead(file: std.fs.File, buffer: []u8) !usize {
-    return file.read(buffer) catch |err| switch (err) {
+pub fn safeRead(io: std.Io, file: std.Io.File, buffer: []u8) !usize {
+    return file.readPositionalAll(io, buffer, 0) catch |err| switch (err) {
         error.InputOutput => {
             std.debug.print("I/O error reading file\n", .{});
             return error.ReadFailed;
@@ -7214,8 +7268,6 @@ pub fn safeRead(file: std.fs.File, buffer: []u8) !usize {
             std.debug.print("Access denied\n", .{});
             return error.PermissionDenied;
         },
-        error.BrokenPipe => return 0, // Treat as EOF
-        else => return err,
     };
 }
 ```
@@ -7247,13 +7299,13 @@ defer allocator.free(large_buffer);
 // Bad: Reading one byte at a time
 for (0..file_size) |_| {
     var byte: [1]u8 = undefined;
-    _ = try file.read(&byte);
+    _ = try file.readPositionalAll(io, &byte, 0);
 }
 
 // Good: Read in chunks
 var buffer: [4096]u8 = undefined;
 while (true) {
-    const n = try file.read(&buffer);
+    const n = try file.readPositionalAll(io, &buffer, 0);
     if (n == 0) break;
     // Process buffer[0..n]
 }
@@ -7266,12 +7318,12 @@ Always initialize buffers before reading sensitive data:
 ```zig
 // Unsafe: Uninitialized buffer may leak data
 var buffer: [1024]u8 = undefined;
-const n = try file.read(&buffer);
+const n = try file.readPositionalAll(io, &buffer, 0);
 // buffer[n..] contains uninitialized data!
 
 // Safe: Zero-initialize
 var buffer = [_]u8{0} ** 1024;
-const n = try file.read(&buffer);
+const n = try file.readPositionalAll(io, &buffer, 0);
 // buffer[n..] is all zeros
 ```
 
@@ -7279,7 +7331,7 @@ Or only use the read portion:
 
 ```zig
 var buffer: [1024]u8 = undefined;
-const n = try file.read(&buffer);
+const n = try file.readPositionalAll(io, &buffer, 0);
 const valid_data = buffer[0..n]; // Only use what was read
 ```
 
@@ -7299,30 +7351,28 @@ const std = @import("std");
 
 // ANCHOR: basic_buffer_reads
 /// Basic read into buffer
-pub fn readIntoBuffer(file: std.fs.File, buffer: []u8) !usize {
-    const bytes_read = try file.read(buffer);
+pub fn readIntoBuffer(io: std.Io, file: std.Io.File, buffer: []u8) !usize {
+    const bytes_read = try file.readPositionalAll(io, buffer, 0);
     return bytes_read;
 }
 
 /// Read exact amount, error if not enough data
-pub fn readExact(file: std.fs.File, buffer: []u8) !void {
+pub fn readExact(io: std.Io, file: std.Io.File, buffer: []u8) !void {
     var index: usize = 0;
     while (index < buffer.len) {
-        const bytes_read = try file.read(buffer[index..]);
+        const bytes_read = try file.readPositionalAll(io, buffer[index..], 0);
         if (bytes_read == 0) return error.UnexpectedEndOfFile;
         index += bytes_read;
     }
 }
 
 /// Process file in chunks with callback
-pub fn processFileInChunks(
-    file: std.fs.File,
-    processor: *const fn ([]const u8) anyerror!void,
-) !void {
+pub fn processFileInChunks(io: std.Io, file: std.Io.File,
+    processor: *const fn ([]const u8) anyerror!void,) !void {
     var buffer: [4096]u8 = undefined;
 
     while (true) {
-        const bytes_read = try file.read(&buffer);
+        const bytes_read = try file.readPositionalAll(io, &buffer, 0);
         if (bytes_read == 0) break;
 
         try processor(buffer[0..bytes_read]);
@@ -7330,9 +7380,9 @@ pub fn processFileInChunks(
 }
 
 /// Read structured binary data
-pub fn readStruct(comptime T: type, file: std.fs.File) !T {
+pub fn readStruct(io: std.Io, comptime T: type, file: std.Io.File) !T {
     var buffer: [@sizeOf(T)]u8 = undefined;
-    const bytes_read = try file.read(&buffer);
+    const bytes_read = try file.readPositionalAll(io, &buffer, 0);
 
     if (bytes_read < @sizeOf(T)) return error.PartialRead;
 
@@ -7342,11 +7392,11 @@ pub fn readStruct(comptime T: type, file: std.fs.File) !T {
 
 // ANCHOR: advanced_buffer_ops
 /// Scatter read into multiple buffers
-pub fn readScatter(file: std.fs.File, buffers: [][]u8) !usize {
+pub fn readScatter(io: std.Io, file: std.Io.File, buffers: [][]u8) !usize {
     var total: usize = 0;
 
     for (buffers) |buffer| {
-        const bytes_read = try file.read(buffer);
+        const bytes_read = try file.readPositionalAll(io, buffer, 0);
         total += bytes_read;
         if (bytes_read < buffer.len) break;
     }
@@ -7355,12 +7405,9 @@ pub fn readScatter(file: std.fs.File, buffers: [][]u8) !usize {
 }
 
 /// Read from specific position without changing file position
-pub fn readAtOffset(file: std.fs.File, buffer: []u8, offset: u64) !usize {
-    const original_pos = try file.getPos();
-    defer file.seekTo(original_pos) catch {};
+pub fn readAtOffset(io: std.Io, file: std.Io.File, buffer: []u8, offset: u64) !usize {
 
-    try file.seekTo(offset);
-    return try file.read(buffer);
+    return try file.readPositionalAll(io, buffer, offset);
 }
 
 /// Ring buffer for continuous reading
@@ -7374,7 +7421,7 @@ pub const RingBuffer = struct {
         return .{ .buffer = buffer };
     }
 
-    pub fn readFromFile(self: *RingBuffer, file: std.fs.File) !usize {
+    pub fn readFromFile(self: *RingBuffer, io: std.Io, file: std.Io.File) !usize {
         if (self.count == self.buffer.len) return 0; // Buffer full
 
         const write_idx = self.write_pos;
@@ -7383,7 +7430,7 @@ pub const RingBuffer = struct {
         const to_end = self.buffer.len - write_idx;
         const read_size = @min(available, to_end);
 
-        const bytes_read = try file.read(self.buffer[write_idx..][0..read_size]);
+        const bytes_read = try file.readPositionalAll(io, self.buffer[write_idx..][0..read_size], 0);
         if (bytes_read == 0) return 0;
 
         self.write_pos = (write_idx + bytes_read) % self.buffer.len;
@@ -7409,8 +7456,8 @@ pub const RingBuffer = struct {
 };
 
 /// Safe read with error handling
-pub fn safeRead(file: std.fs.File, buffer: []u8) !usize {
-    return file.read(buffer) catch |err| switch (err) {
+pub fn safeRead(io: std.Io, file: std.Io.File, buffer: []u8) !usize {
+    return file.readPositionalAll(io, buffer, 0) catch |err| switch (err) {
         error.InputOutput => {
             std.debug.print("I/O error reading file\n", .{});
             return error.ReadFailed;
@@ -7419,7 +7466,6 @@ pub fn safeRead(file: std.fs.File, buffer: []u8) !usize {
             std.debug.print("Access denied\n", .{});
             return error.PermissionDenied;
         },
-        error.BrokenPipe => return 0, // Treat as EOF
         else => return err,
     };
 }
@@ -7436,93 +7482,97 @@ const Header = extern struct {
 // Tests
 
 test "read into buffer" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_buffer.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write test data
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("Hello, World!");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "Hello, World!");
     }
 
     // Read into buffer
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var buffer: [32]u8 = undefined;
-    const bytes_read = try readIntoBuffer(file, &buffer);
+    const bytes_read = try readIntoBuffer(io, file, &buffer);
 
     try std.testing.expectEqual(@as(usize, 13), bytes_read);
     try std.testing.expectEqualStrings("Hello, World!", buffer[0..bytes_read]);
 }
 
 test "read exact amount" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_exact.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write exactly 100 bytes
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
         const data = [_]u8{42} ** 100;
-        try file.writeAll(&data);
+        try file.writeStreamingAll(io, &data);
     }
 
     // Read exactly 100 bytes
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var buffer: [100]u8 = undefined;
-    try readExact(file, &buffer);
+    try readExact(io, file, &buffer);
 
     try std.testing.expect(std.mem.allEqual(u8, &buffer, 42));
 }
 
 test "read exact fails on short file" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_exact_short.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write 50 bytes
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
         const data = [_]u8{42} ** 50;
-        try file.writeAll(&data);
+        try file.writeStreamingAll(io, &data);
     }
 
     // Try to read 100 bytes
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var buffer: [100]u8 = undefined;
-    const result = readExact(file, &buffer);
+    const result = readExact(io, file, &buffer);
 
     try std.testing.expectError(error.UnexpectedEndOfFile, result);
 }
 
 test "read into slices" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_slices.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write test data
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("A" ** 512 ++ "B" ** 512);
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "A" ** 512 ++ "B" ** 512);
     }
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var data: [1024]u8 = undefined;
 
     // Read into first half
-    const first_half = try file.read(data[0..512]);
+    const first_half = try file.readPositionalAll(io, data[0..512], 0);
     try std.testing.expectEqual(@as(usize, 512), first_half);
 
     // Read into second half
-    const second_half = try file.read(data[512..]);
+    const second_half = try file.readPositionalAll(io, data[512..], 0);
     try std.testing.expectEqual(@as(usize, 512), second_half);
 
     // Verify
@@ -7531,23 +7581,24 @@ test "read into slices" {
 }
 
 test "reuse buffer" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_reuse.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write large file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         var i: usize = 0;
         while (i < 10000) : (i += 1) {
-            try file.writeAll("X");
+            try file.writeStreamingAll(io, "X");
         }
     }
 
     // Count chunks
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     const Counter = struct {
         var count: usize = 0;
@@ -7558,19 +7609,20 @@ test "reuse buffer" {
     };
 
     Counter.count = 0;
-    try processFileInChunks(file, Counter.process);
+    try processFileInChunks(io, file, Counter.process);
 
     try std.testing.expect(Counter.count > 0);
 }
 
 test "read struct" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_struct.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write header
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         const header = Header{
             .magic = 0xDEADBEEF,
@@ -7578,40 +7630,41 @@ test "read struct" {
             .flags = 0x0042,
         };
         const bytes: [@sizeOf(Header)]u8 = @bitCast(header);
-        try file.writeAll(&bytes);
+        try file.writeStreamingAll(io, &bytes);
     }
 
     // Read header
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const header = try readStruct(Header, file);
+    const header = try readStruct(io, Header, file);
 
     try std.testing.expectEqual(@as(u32, 0xDEADBEEF), header.magic);
     try std.testing.expectEqual(@as(u16, 1), header.version);
 }
 
 test "scatter read" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_scatter.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write test data
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("AAAABBBBCCCC");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "AAAABBBBCCCC");
     }
 
     // Read into multiple buffers
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var buf1: [4]u8 = undefined;
     var buf2: [4]u8 = undefined;
     var buf3: [4]u8 = undefined;
 
     var buffers = [_][]u8{ &buf1, &buf2, &buf3 };
-    const total = try readScatter(file, &buffers);
+    const total = try readScatter(io, file, &buffers);
 
     try std.testing.expectEqual(@as(usize, 12), total);
     try std.testing.expectEqualStrings("AAAA", &buf1);
@@ -7620,49 +7673,51 @@ test "scatter read" {
 }
 
 test "read at offset" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_offset.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write test data
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("0123456789");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "0123456789");
     }
 
     // Read from offset 5
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var buffer: [3]u8 = undefined;
-    const bytes_read = try readAtOffset(file, &buffer, 5);
+    const bytes_read = try readAtOffset(io, file, &buffer, 5);
 
     try std.testing.expectEqual(@as(usize, 3), bytes_read);
     try std.testing.expectEqualStrings("567", &buffer);
 
     // File position unchanged
-    try std.testing.expectEqual(@as(u64, 0), try file.getPos());
+    try std.testing.expectEqual(@as(u64, 0), try file.length(io));
 }
 
 test "ring buffer reading" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_ring.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write test data
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("ABCDEFGHIJKLMNOP");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "ABCDEFGHIJKLMNOP");
     }
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var backing_buffer: [8]u8 = undefined;
     var ring = RingBuffer.init(&backing_buffer);
 
     // Read first chunk
-    const read1 = try ring.readFromFile(file);
+    const read1 = try ring.readFromFile(io, file);
     try std.testing.expectEqual(@as(usize, 8), read1);
     try std.testing.expectEqual(@as(usize, 8), ring.count);
 
@@ -7672,7 +7727,7 @@ test "ring buffer reading" {
     try std.testing.expectEqual(@as(usize, 4), ring.count);
 
     // Read more (wraps around)
-    const read2 = try ring.readFromFile(file);
+    const read2 = try ring.readFromFile(io, file);
     try std.testing.expectEqual(@as(usize, 4), read2);
     try std.testing.expectEqual(@as(usize, 8), ring.count);
 
@@ -7687,107 +7742,112 @@ test "ring buffer reading" {
 }
 
 test "ring buffer full" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_ring_full.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write test data
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("ABCDEFGHIJKLMNOP");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "ABCDEFGHIJKLMNOP");
     }
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var backing_buffer: [8]u8 = undefined;
     var ring = RingBuffer.init(&backing_buffer);
 
     // Fill buffer
-    const read1 = try ring.readFromFile(file);
+    const read1 = try ring.readFromFile(io, file);
     try std.testing.expectEqual(@as(usize, 8), read1);
 
     // Try to read when full
-    const read2 = try ring.readFromFile(file);
+    const read2 = try ring.readFromFile(io, file);
     try std.testing.expectEqual(@as(usize, 0), read2);
 }
 
 test "safe read with error handling" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_safe.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write test data
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("Safe read test");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "Safe read test");
     }
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var buffer: [32]u8 = undefined;
-    const bytes_read = try safeRead(file, &buffer);
+    const bytes_read = try safeRead(io, file, &buffer);
 
     try std.testing.expectEqual(@as(usize, 14), bytes_read);
     try std.testing.expectEqualStrings("Safe read test", buffer[0..bytes_read]);
 }
 
 test "read empty file" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_empty.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create empty file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
     }
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var buffer: [32]u8 = undefined;
-    const bytes_read = try readIntoBuffer(file, &buffer);
+    const bytes_read = try readIntoBuffer(io, file, &buffer);
 
     try std.testing.expectEqual(@as(usize, 0), bytes_read);
 }
 
 test "partial struct read fails" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_partial_struct.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write partial header
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
         const partial_data = [_]u8{ 1, 2, 3, 4 }; // Less than Header size
-        try file.writeAll(&partial_data);
+        try file.writeStreamingAll(io, &partial_data);
     }
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
-    const result = readStruct(Header, file);
+    const result = readStruct(io, Header, file);
 
     try std.testing.expectError(error.PartialRead, result);
 }
 
 test "read with buffer smaller than file" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_small_buffer.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write large data
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("A" ** 1000);
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "A" ** 1000);
     }
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var buffer: [100]u8 = undefined;
-    const bytes_read = try readIntoBuffer(file, &buffer);
+    const bytes_read = try readIntoBuffer(io, file, &buffer);
 
     // Should read buffer size, not file size
     try std.testing.expectEqual(@as(usize, 100), bytes_read);
@@ -7795,26 +7855,27 @@ test "read with buffer smaller than file" {
 }
 
 test "multiple reads from same file" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_multiple.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write test data
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("AAAABBBBCCCC");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "AAAABBBBCCCC");
     }
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var buf1: [4]u8 = undefined;
     var buf2: [4]u8 = undefined;
     var buf3: [4]u8 = undefined;
 
-    const read1 = try readIntoBuffer(file, &buf1);
-    const read2 = try readIntoBuffer(file, &buf2);
-    const read3 = try readIntoBuffer(file, &buf3);
+    const read1 = try readIntoBuffer(io, file, &buf1);
+    const read2 = try readIntoBuffer(io, file, &buf2);
+    const read3 = try readIntoBuffer(io, file, &buf3);
 
     try std.testing.expectEqual(@as(usize, 4), read1);
     try std.testing.expectEqual(@as(usize, 4), read2);
@@ -7826,25 +7887,26 @@ test "multiple reads from same file" {
 }
 
 test "scatter read with partial last buffer" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_scatter_partial.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Write 10 bytes
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("AAAABBBBCC");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "AAAABBBBCC");
     }
 
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var buf1: [4]u8 = undefined;
     var buf2: [4]u8 = undefined;
     var buf3: [4]u8 = undefined;
 
     var buffers = [_][]u8{ &buf1, &buf2, &buf3 };
-    const total = try readScatter(file, &buffers);
+    const total = try readScatter(io, file, &buffers);
 
     // Should read 10 bytes total (4 + 4 + 2)
     try std.testing.expectEqual(@as(usize, 10), total);
@@ -7872,14 +7934,14 @@ You need to efficiently access large binary files, especially for random access 
 
 ```zig
 /// Map file for reading only
-pub fn mapFileReadOnly(path: []const u8) !struct {
+pub fn mapFileReadOnly(io: std.Io, path: []const u8) !struct {
     data: []align(page_size_min) const u8,
-    file: std.fs.File,
+    file: std.Io.File,
 } {
-    const file = try std.fs.cwd().openFile(path, .{});
-    errdefer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    errdefer file.close(io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(io)).size;
 
     // Can't map empty files
     if (file_size == 0) {
@@ -7889,7 +7951,7 @@ pub fn mapFileReadOnly(path: []const u8) !struct {
     const data = try std.posix.mmap(
         null,
         file_size,
-        std.posix.PROT.READ,
+        .{ .READ = true },
         .{ .TYPE = .SHARED },
         file.handle,
         0,
@@ -7899,19 +7961,19 @@ pub fn mapFileReadOnly(path: []const u8) !struct {
 }
 
 /// Map file for reading and writing
-pub fn mapFileReadWrite(path: []const u8) !struct {
+pub fn mapFileReadWrite(io: std.Io, path: []const u8) !struct {
     data: []align(page_size_min) u8,
-    file: std.fs.File,
+    file: std.Io.File,
 } {
-    const file = try std.fs.cwd().openFile(path, .{ .mode = .read_write });
-    errdefer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{ .mode = .read_write });
+    errdefer file.close(io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(io)).size;
 
     const data = try std.posix.mmap(
         null,
         file_size,
-        std.posix.PROT.READ | std.posix.PROT.WRITE,
+        .{ .READ = true, .WRITE = true },
         .{ .TYPE = .SHARED },
         file.handle,
         0,
@@ -7921,19 +7983,19 @@ pub fn mapFileReadWrite(path: []const u8) !struct {
 }
 
 /// Map file with private copy-on-write mapping
-pub fn mapFilePrivate(path: []const u8) !struct {
+pub fn mapFilePrivate(io: std.Io, path: []const u8) !struct {
     data: []align(page_size_min) u8,
-    file: std.fs.File,
+    file: std.Io.File,
 } {
-    const file = try std.fs.cwd().openFile(path, .{});
-    errdefer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    errdefer file.close(io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(io)).size;
 
     const data = try std.posix.mmap(
         null,
         file_size,
-        std.posix.PROT.READ | std.posix.PROT.WRITE,
+        .{ .READ = true, .WRITE = true },
         .{ .TYPE = .PRIVATE },
         file.handle,
         0,
@@ -7943,9 +8005,9 @@ pub fn mapFilePrivate(path: []const u8) !struct {
 }
 
 /// Unmap and close file
-pub fn unmapFile(mapping: anytype) void {
+pub fn unmapFile(io: std.Io, mapping: anytype) void {
     std.posix.munmap(mapping.data);
-    mapping.file.close();
+    mapping.file.close(io);
 }
 
 /// Sync changes to disk
@@ -7959,7 +8021,7 @@ pub fn createAnonymousMapping(size: usize) ![]align(page_size_min) u8 {
     const data = try std.posix.mmap(
         null,
         size,
-        std.posix.PROT.READ | std.posix.PROT.WRITE,
+        .{ .READ = true, .WRITE = true },
         .{ .TYPE = .PRIVATE, .ANONYMOUS = true },
         -1,
         0,
@@ -7976,21 +8038,21 @@ pub fn createAnonymousMapping(size: usize) ![]align(page_size_min) u8 {
 pub fn MappedStructFile(comptime T: type) type {
     return struct {
         data: []align(page_size_min) const u8,
-        file: std.fs.File,
+        file: std.Io.File,
 
         const Self = @This();
         const record_size = @sizeOf(T);
 
-        pub fn init(path: []const u8) !Self {
-            const file = try std.fs.cwd().openFile(path, .{});
-            errdefer file.close();
+        pub fn init(io: std.Io, path: []const u8) !Self {
+            const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+            errdefer file.close(io);
 
-            const file_size = (try file.stat()).size;
+            const file_size = (try file.stat(io)).size;
 
             const data = try std.posix.mmap(
                 null,
                 file_size,
-                std.posix.PROT.READ,
+                .{ .READ = true },
                 .{ .TYPE = .SHARED },
                 file.handle,
                 0,
@@ -7999,9 +8061,9 @@ pub fn MappedStructFile(comptime T: type) type {
             return .{ .data = data, .file = file };
         }
 
-        pub fn deinit(self: *Self) void {
+        pub fn deinit(self: *Self, io: std.Io) void {
             std.posix.munmap(self.data);
-            self.file.close();
+            self.file.close(io);
         }
 
         pub fn get(self: Self, index: usize) !T {
@@ -8084,16 +8146,16 @@ Memory mapping maps file contents into virtual memory, allowing you to access fi
 Map a file for reading:
 
 ```zig
-pub fn mapFileReadOnly(path: []const u8) ![]align(std.mem.page_size) const u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    errdefer file.close();
+pub fn mapFileReadOnly(io: std.Io, path: []const u8) ![]align(std.mem.page_size) const u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    errdefer file.close(io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(io)).size;
 
     const data = try std.posix.mmap(
         null,                      // Let OS choose address
         file_size,                 // Map entire file
-        std.posix.PROT.READ,      // Read-only access
+        .{ .READ = true },      // Read-only access
         .{ .TYPE = .SHARED },     // Share mapping with other processes
         file.handle,               // File descriptor
         0,                         // Start at beginning
@@ -8101,24 +8163,25 @@ pub fn mapFileReadOnly(path: []const u8) ![]align(std.mem.page_size) const u8 {
 
     // Note: file can be closed immediately after mmap
     // The mapping keeps file data accessible
-    file.close();
+    file.close(io);
 
     return data;
 }
 
 test "map read only" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mmap.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create test file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("Hello, Memory Map!");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "Hello, Memory Map!");
     }
 
     // Map and read
-    const data = try mapFileReadOnly(test_path);
+    const data = try mapFileReadOnly(io, test_path);
     defer std.posix.munmap(data);
 
     try std.testing.expectEqualStrings("Hello, Memory Map!", data);
@@ -8130,19 +8193,19 @@ test "map read only" {
 Map a file for both reading and writing:
 
 ```zig
-pub fn mapFileReadWrite(path: []const u8) !struct {
+pub fn mapFileReadWrite(io: std.Io, path: []const u8) !struct {
     data: []align(std.mem.page_size) u8,
-    file: std.fs.File,
+    file: std.Io.File,
 } {
-    const file = try std.fs.cwd().openFile(path, .{ .mode = .read_write });
-    errdefer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{ .mode = .read_write });
+    errdefer file.close(io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(io)).size;
 
     const data = try std.posix.mmap(
         null,
         file_size,
-        std.posix.PROT.READ | std.posix.PROT.WRITE,
+        .{ .READ = true, .WRITE = true },
         .{ .TYPE = .SHARED },  // Changes written back to file
         file.handle,
         0,
@@ -8151,26 +8214,27 @@ pub fn mapFileReadWrite(path: []const u8) !struct {
     return .{ .data = data, .file = file };
 }
 
-pub fn unmapFile(mapping: anytype) void {
+pub fn unmapFile(io: std.Io, mapping: anytype) void {
     std.posix.munmap(mapping.data);
-    mapping.file.close();
+    mapping.file.close(io);
 }
 
 test "map read write" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mmap_rw.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create test file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("AAAA");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "AAAA");
     }
 
     // Map, modify, and sync
     {
-        const mapping = try mapFileReadWrite(test_path);
-        defer unmapFile(mapping);
+        const mapping = try mapFileReadWrite(io, test_path);
+        defer unmapFile(io, mapping);
 
         // Modify in place
         mapping.data[0] = 'B';
@@ -8181,11 +8245,11 @@ test "map read write" {
     }
 
     // Verify changes persisted
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var buffer: [4]u8 = undefined;
-    _ = try file.read(&buffer);
+    _ = try file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("BBAA", &buffer);
 }
@@ -8204,16 +8268,16 @@ test "map read write" {
 - Use for: Templates, loading executables
 
 ```zig
-pub fn mapFilePrivate(path: []const u8) ![]align(std.mem.page_size) u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn mapFilePrivate(io: std.Io, path: []const u8) ![]align(std.mem.page_size) u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(io)).size;
 
     const data = try std.posix.mmap(
         null,
         file_size,
-        std.posix.PROT.READ | std.posix.PROT.WRITE,
+        .{ .READ = true, .WRITE = true },
         .{ .TYPE = .PRIVATE },  // Copy-on-write
         file.handle,
         0,
@@ -8228,13 +8292,11 @@ pub fn mapFilePrivate(path: []const u8) ![]align(std.mem.page_size) u8 {
 Map only part of a large file:
 
 ```zig
-pub fn mapFileRange(
-    path: []const u8,
+pub fn mapFileRange(io: std.Io, path: []const u8,
     offset: u64,
-    length: usize,
-) ![]align(std.mem.page_size) const u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+    length: usize,) ![]align(std.mem.page_size) const u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
     // Offset must be page-aligned
     const page_size = std.mem.page_size;
@@ -8245,7 +8307,7 @@ pub fn mapFileRange(
     const data = try std.posix.mmap(
         null,
         aligned_length,
-        std.posix.PROT.READ,
+        .{ .READ = true },
         .{ .TYPE = .SHARED },
         file.handle,
         aligned_offset,
@@ -8268,16 +8330,16 @@ pub fn MappedStructFile(comptime T: type) type {
         const Self = @This();
         const record_size = @sizeOf(T);
 
-        pub fn init(path: []const u8) !Self {
-            const file = try std.fs.cwd().openFile(path, .{});
-            defer file.close();
+        pub fn init(io: std.Io, path: []const u8) !Self {
+            const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+            defer file.close(io);
 
-            const file_size = (try file.stat()).size;
+            const file_size = (try file.stat(io)).size;
 
             const data = try std.posix.mmap(
                 null,
                 file_size,
-                std.posix.PROT.READ,
+                .{ .READ = true },
                 .{ .TYPE = .SHARED },
                 file.handle,
                 0,
@@ -8320,7 +8382,7 @@ pub fn createAnonymousMapping(size: usize) ![]align(std.mem.page_size) u8 {
     const data = try std.posix.mmap(
         null,
         size,
-        std.posix.PROT.READ | std.posix.PROT.WRITE,
+        .{ .READ = true, .WRITE = true },
         .{ .TYPE = .PRIVATE, .ANONYMOUS = true },
         -1,  // No file descriptor
         0,
@@ -8391,14 +8453,12 @@ pub fn syncMapping(data: []align(std.mem.page_size) u8, sync_type: enum {
 Work with files larger than address space (32-bit systems):
 
 ```zig
-pub fn processLargeFileMapped(
-    path: []const u8,
-    processor: *const fn ([]const u8) anyerror!void,
-) !void {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn processLargeFileMapped(io: std.Io, path: []const u8,
+    processor: *const fn ([]const u8) anyerror!void,) !void {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(io)).size;
     const chunk_size = 256 * 1024 * 1024; // 256MB windows
 
     var offset: usize = 0;
@@ -8409,7 +8469,7 @@ pub fn processLargeFileMapped(
         const data = try std.posix.mmap(
             null,
             map_size,
-            std.posix.PROT.READ,
+            .{ .READ = true },
             .{ .TYPE = .SHARED },
             file.handle,
             offset,
@@ -8459,17 +8519,17 @@ pub fn binarySearchMapped(
 Handle common mapping errors:
 
 ```zig
-pub fn safeMmap(path: []const u8) ![]align(std.mem.page_size) const u8 {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+pub fn safeMmap(io: std.Io, path: []const u8) ![]align(std.mem.page_size) const u8 {
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(io)).size;
     if (file_size == 0) return error.EmptyFile;
 
     return std.posix.mmap(
         null,
         file_size,
-        std.posix.PROT.READ,
+        .{ .READ = true },
         .{ .TYPE = .SHARED },
         file.handle,
         0,
@@ -8486,7 +8546,6 @@ pub fn safeMmap(path: []const u8) ![]align(std.mem.page_size) const u8 {
             std.debug.print("Out of address space\n", .{});
             return error.AddressSpaceExhausted;
         },
-        else => return err,
     };
 }
 ```
@@ -8555,14 +8614,14 @@ const page_size_min = std.heap.page_size_min;
 
 // ANCHOR: basic_mmap
 /// Map file for reading only
-pub fn mapFileReadOnly(path: []const u8) !struct {
+pub fn mapFileReadOnly(io: std.Io, path: []const u8) !struct {
     data: []align(page_size_min) const u8,
-    file: std.fs.File,
+    file: std.Io.File,
 } {
-    const file = try std.fs.cwd().openFile(path, .{});
-    errdefer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    errdefer file.close(io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(io)).size;
 
     // Can't map empty files
     if (file_size == 0) {
@@ -8572,7 +8631,7 @@ pub fn mapFileReadOnly(path: []const u8) !struct {
     const data = try std.posix.mmap(
         null,
         file_size,
-        std.posix.PROT.READ,
+        .{ .READ = true },
         .{ .TYPE = .SHARED },
         file.handle,
         0,
@@ -8582,19 +8641,19 @@ pub fn mapFileReadOnly(path: []const u8) !struct {
 }
 
 /// Map file for reading and writing
-pub fn mapFileReadWrite(path: []const u8) !struct {
+pub fn mapFileReadWrite(io: std.Io, path: []const u8) !struct {
     data: []align(page_size_min) u8,
-    file: std.fs.File,
+    file: std.Io.File,
 } {
-    const file = try std.fs.cwd().openFile(path, .{ .mode = .read_write });
-    errdefer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{ .mode = .read_write });
+    errdefer file.close(io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(io)).size;
 
     const data = try std.posix.mmap(
         null,
         file_size,
-        std.posix.PROT.READ | std.posix.PROT.WRITE,
+        .{ .READ = true, .WRITE = true },
         .{ .TYPE = .SHARED },
         file.handle,
         0,
@@ -8604,19 +8663,19 @@ pub fn mapFileReadWrite(path: []const u8) !struct {
 }
 
 /// Map file with private copy-on-write mapping
-pub fn mapFilePrivate(path: []const u8) !struct {
+pub fn mapFilePrivate(io: std.Io, path: []const u8) !struct {
     data: []align(page_size_min) u8,
-    file: std.fs.File,
+    file: std.Io.File,
 } {
-    const file = try std.fs.cwd().openFile(path, .{});
-    errdefer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    errdefer file.close(io);
 
-    const file_size = (try file.stat()).size;
+    const file_size = (try file.stat(io)).size;
 
     const data = try std.posix.mmap(
         null,
         file_size,
-        std.posix.PROT.READ | std.posix.PROT.WRITE,
+        .{ .READ = true, .WRITE = true },
         .{ .TYPE = .PRIVATE },
         file.handle,
         0,
@@ -8626,9 +8685,9 @@ pub fn mapFilePrivate(path: []const u8) !struct {
 }
 
 /// Unmap and close file
-pub fn unmapFile(mapping: anytype) void {
+pub fn unmapFile(io: std.Io, mapping: anytype) void {
     std.posix.munmap(mapping.data);
-    mapping.file.close();
+    mapping.file.close(io);
 }
 
 /// Sync changes to disk
@@ -8642,7 +8701,7 @@ pub fn createAnonymousMapping(size: usize) ![]align(page_size_min) u8 {
     const data = try std.posix.mmap(
         null,
         size,
-        std.posix.PROT.READ | std.posix.PROT.WRITE,
+        .{ .READ = true, .WRITE = true },
         .{ .TYPE = .PRIVATE, .ANONYMOUS = true },
         -1,
         0,
@@ -8657,21 +8716,21 @@ pub fn createAnonymousMapping(size: usize) ![]align(page_size_min) u8 {
 pub fn MappedStructFile(comptime T: type) type {
     return struct {
         data: []align(page_size_min) const u8,
-        file: std.fs.File,
+        file: std.Io.File,
 
         const Self = @This();
         const record_size = @sizeOf(T);
 
-        pub fn init(path: []const u8) !Self {
-            const file = try std.fs.cwd().openFile(path, .{});
-            errdefer file.close();
+        pub fn init(io: std.Io, path: []const u8) !Self {
+            const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+            errdefer file.close(io);
 
-            const file_size = (try file.stat()).size;
+            const file_size = (try file.stat(io)).size;
 
             const data = try std.posix.mmap(
                 null,
                 file_size,
-                std.posix.PROT.READ,
+                .{ .READ = true },
                 .{ .TYPE = .SHARED },
                 file.handle,
                 0,
@@ -8680,9 +8739,9 @@ pub fn MappedStructFile(comptime T: type) type {
             return .{ .data = data, .file = file };
         }
 
-        pub fn deinit(self: *Self) void {
+        pub fn deinit(self: *Self, io: std.Io) void {
             std.posix.munmap(self.data);
-            self.file.close();
+            self.file.close(io);
         }
 
         pub fn get(self: Self, index: usize) !T {
@@ -8748,38 +8807,40 @@ const Record = extern struct {
 // Tests
 
 test "map read only" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mmap_ro.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create test file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("Hello, Memory Map!");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "Hello, Memory Map!");
     }
 
     // Map and read
-    const mapping = try mapFileReadOnly(test_path);
-    defer unmapFile(mapping);
+    const mapping = try mapFileReadOnly(io, test_path);
+    defer unmapFile(io, mapping);
 
     try std.testing.expectEqualStrings("Hello, Memory Map!", mapping.data);
 }
 
 test "map read write" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mmap_rw.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create test file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("AAAA");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "AAAA");
     }
 
     // Map, modify, and sync
     {
-        const mapping = try mapFileReadWrite(test_path);
-        defer unmapFile(mapping);
+        const mapping = try mapFileReadWrite(io, test_path);
+        defer unmapFile(io, mapping);
 
         // Modify in place
         mapping.data[0] = 'B';
@@ -8790,30 +8851,31 @@ test "map read write" {
     }
 
     // Verify changes persisted
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var buffer: [4]u8 = undefined;
-    _ = try file.read(&buffer);
+    _ = try file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("BBAA", &buffer);
 }
 
 test "map private copy-on-write" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mmap_private.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create test file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("AAAA");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "AAAA");
     }
 
     // Map with private mapping
     {
-        const mapping = try mapFilePrivate(test_path);
-        defer unmapFile(mapping);
+        const mapping = try mapFilePrivate(io, test_path);
+        defer unmapFile(io, mapping);
 
         // Modify mapping (copy-on-write)
         mapping.data[0] = 'B';
@@ -8823,11 +8885,11 @@ test "map private copy-on-write" {
     }
 
     // Verify file unchanged
-    const file = try std.fs.cwd().openFile(test_path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, test_path, .{});
+    defer file.close(io);
 
     var buffer: [4]u8 = undefined;
-    _ = try file.read(&buffer);
+    _ = try file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("AAAA", &buffer);
 }
@@ -8845,13 +8907,14 @@ test "anonymous mapping" {
 }
 
 test "mapped struct file" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mmap_struct.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create file with records
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         var i: u32 = 0;
         while (i < 10) : (i += 1) {
@@ -8860,13 +8923,13 @@ test "mapped struct file" {
                 .value = @floatFromInt(i),
             };
             const bytes: [@sizeOf(Record)]u8 = @bitCast(record);
-            try file.writeAll(&bytes);
+            try file.writeStreamingAll(io, &bytes);
         }
     }
 
     // Map and access
-    var mapped = try MappedStructFile(Record).init(test_path);
-    defer mapped.deinit();
+    var mapped = try MappedStructFile(Record).init(io, test_path);
+    defer mapped.deinit(io);
 
     // Check count
     try std.testing.expectEqual(@as(usize, 10), mapped.count());
@@ -8882,21 +8945,22 @@ test "mapped struct file" {
 }
 
 test "mapped struct file out of bounds" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mmap_bounds.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create small file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         const record = Record{ .id = 1, .value = 1.0 };
         const bytes: [@sizeOf(Record)]u8 = @bitCast(record);
-        try file.writeAll(&bytes);
+        try file.writeStreamingAll(io, &bytes);
     }
 
-    var mapped = try MappedStructFile(Record).init(test_path);
-    defer mapped.deinit();
+    var mapped = try MappedStructFile(Record).init(io, test_path);
+    defer mapped.deinit(io);
 
     // Try to access out of bounds
     const result = mapped.get(10);
@@ -8904,13 +8968,14 @@ test "mapped struct file out of bounds" {
 }
 
 test "binary search in mapped file" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mmap_search.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create sorted records
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         var i: u32 = 0;
         while (i < 100) : (i += 1) {
@@ -8919,13 +8984,13 @@ test "binary search in mapped file" {
                 .value = @floatFromInt(i),
             };
             const bytes: [@sizeOf(Record)]u8 = @bitCast(record);
-            try file.writeAll(&bytes);
+            try file.writeStreamingAll(io, &bytes);
         }
     }
 
     // Map and search
-    const mapping = try mapFileReadOnly(test_path);
-    defer unmapFile(mapping);
+    const mapping = try mapFileReadOnly(io, test_path);
+    defer unmapFile(io, mapping);
 
     const lessThan = struct {
         fn lt(a: Record, b: Record) bool {
@@ -8944,65 +9009,68 @@ test "binary search in mapped file" {
 }
 
 test "map empty file" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mmap_empty.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create empty file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
     }
 
     // Try to map empty file - should fail
-    const result = mapFileReadOnly(test_path);
+    const result = mapFileReadOnly(io, test_path);
     try std.testing.expectError(error.EmptyFile, result);
 }
 
 test "map large file" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mmap_large.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     const size: usize = 1024 * 1024; // 1MB
 
     // Create large file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         const chunk = [_]u8{'X'} ** page_size_min;
         var remaining: usize = size;
         while (remaining > 0) {
             const to_write = @min(remaining, chunk.len);
-            try file.writeAll(chunk[0..to_write]);
+            try file.writeStreamingAll(io, chunk[0..to_write]);
             remaining -= to_write;
         }
     }
 
     // Map and verify
-    const mapping = try mapFileReadOnly(test_path);
-    defer unmapFile(mapping);
+    const mapping = try mapFileReadOnly(io, test_path);
+    defer unmapFile(io, mapping);
 
     try std.testing.expectEqual(size, mapping.data.len);
     try std.testing.expect(std.mem.allEqual(u8, mapping.data, 'X'));
 }
 
 test "multiple mappings of same file" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mmap_multiple.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create test file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("Shared Data");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "Shared Data");
     }
 
     // Create two mappings
-    const mapping1 = try mapFileReadOnly(test_path);
-    defer unmapFile(mapping1);
+    const mapping1 = try mapFileReadOnly(io, test_path);
+    defer unmapFile(io, mapping1);
 
-    const mapping2 = try mapFileReadOnly(test_path);
-    defer unmapFile(mapping2);
+    const mapping2 = try mapFileReadOnly(io, test_path);
+    defer unmapFile(io, mapping2);
 
     // Both should see same data
     try std.testing.expectEqualStrings("Shared Data", mapping1.data);
@@ -9010,22 +9078,23 @@ test "multiple mappings of same file" {
 }
 
 test "modify through one shared mapping visible in another" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mmap_shared.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create test file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("AAAA");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "AAAA");
     }
 
     // Create two read-write mappings
-    const mapping1 = try mapFileReadWrite(test_path);
-    defer unmapFile(mapping1);
+    const mapping1 = try mapFileReadWrite(io, test_path);
+    defer unmapFile(io, mapping1);
 
-    const mapping2 = try mapFileReadWrite(test_path);
-    defer unmapFile(mapping2);
+    const mapping2 = try mapFileReadWrite(io, test_path);
+    defer unmapFile(io, mapping2);
 
     // Modify through first mapping
     mapping1.data[0] = 'B';
@@ -9039,18 +9108,19 @@ test "modify through one shared mapping visible in another" {
 }
 
 test "page alignment" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mmap_align.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create test file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("Test");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "Test");
     }
 
-    const mapping = try mapFileReadOnly(test_path);
-    defer unmapFile(mapping);
+    const mapping = try mapFileReadOnly(io, test_path);
+    defer unmapFile(io, mapping);
 
     // Check that mapping is page-aligned
     const addr = @intFromPtr(mapping.data.ptr);
@@ -9058,18 +9128,19 @@ test "page alignment" {
 }
 
 test "sync async vs sync" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mmap_sync.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create test file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("AAAA");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "AAAA");
     }
 
-    const mapping = try mapFileReadWrite(test_path);
-    defer unmapFile(mapping);
+    const mapping = try mapFileReadWrite(io, test_path);
+    defer unmapFile(io, mapping);
 
     // Modify
     mapping.data[0] = 'X';
@@ -9082,24 +9153,25 @@ test "sync async vs sync" {
 }
 
 test "access after file close" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mmap_after_close.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create test file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
-        try file.writeAll("Data persists!");
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "Data persists!");
     }
 
     var data: []align(page_size_min) const u8 = undefined;
 
     // Map file and close immediately
     {
-        const mapping = try mapFileReadOnly(test_path);
+        const mapping = try mapFileReadOnly(io, test_path);
         data = mapping.data;
         // File closed here via defer, but mapping still valid
-        mapping.file.close();
+        mapping.file.close(io);
     }
 
     // Data still accessible through mapping
@@ -9110,22 +9182,23 @@ test "access after file close" {
 }
 
 test "random access pattern" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_mmap_random.dat";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create file with identifiable data
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
 
         var i: u8 = 0;
         while (i < 255) : (i += 1) {
-            try file.writeAll(&[_]u8{i});
+            try file.writeStreamingAll(io, &[_]u8{i});
         }
     }
 
-    const mapping = try mapFileReadOnly(test_path);
-    defer unmapFile(mapping);
+    const mapping = try mapFileReadOnly(io, test_path);
+    defer unmapFile(io, mapping);
 
     // Random access
     try std.testing.expectEqual(@as(u8, 0), mapping.data[0]);
@@ -9428,8 +9501,11 @@ test "is absolute" {
 Compute relative path from one to another:
 
 ```zig
-pub fn relativePath(allocator: std.mem.Allocator, from: []const u8, to: []const u8) ![]u8 {
-    return try std.fs.path.relative(allocator, from, to);
+pub fn relativePath(io: std.Io, allocator: std.mem.Allocator, from: []const u8, to: []const u8) ![]u8 {
+    // 0.16 resolves relative paths against an explicit cwd and environment.
+    var cwd_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const cwd_len = try std.process.currentPath(io, &cwd_buffer);
+    return try std.fs.path.relative(allocator, cwd_buffer[0..cwd_len], null, from, to);
 }
 
 test "relative path" {
@@ -9448,7 +9524,7 @@ Split path into components:
 
 ```zig
 pub fn splitPath(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
-    var components: std.ArrayList([]const u8) = .{};
+    var components: std.ArrayList([]const u8) = .empty;
     errdefer components.deinit(allocator);
 
     var iter = std.mem.splitScalar(u8, path, std.fs.path.sep);
@@ -9481,11 +9557,11 @@ Clean up redundant separators and resolve dots:
 ```zig
 pub fn normalizePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     // Remove redundant separators and resolve . and ..
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     var iter = std.mem.splitScalar(u8, path, std.fs.path.sep);
-    var components: std.ArrayList([]const u8) = .{};
+    var components: std.ArrayList([]const u8) = .empty;
     defer components.deinit(allocator);
 
     while (iter.next()) |component| {
@@ -9527,7 +9603,7 @@ Convert between path formats:
 
 ```zig
 pub fn convertToUnixPath(allocator: std.mem.Allocator, windows_path: []const u8) ![]u8 {
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     for (windows_path) |c| {
@@ -9542,7 +9618,7 @@ pub fn convertToUnixPath(allocator: std.mem.Allocator, windows_path: []const u8)
 }
 
 pub fn convertToWindowsPath(allocator: std.mem.Allocator, unix_path: []const u8) ![]u8 {
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     for (unix_path) |c| {
@@ -9616,7 +9692,7 @@ pub fn commonPrefix(allocator: std.mem.Allocator, paths: []const []const u8) ![]
     if (paths.len == 1) return try allocator.dupe(u8, paths[0]);
 
     // Split all paths into components
-    var all_components: std.ArrayList([][]const u8) = .{};
+    var all_components: std.ArrayList([][]const u8) = .empty;
     defer {
         for (all_components.items) |components| {
             allocator.free(components);
@@ -9775,13 +9851,16 @@ pub fn isAbsolutePath(path: []const u8) bool {
 }
 
 /// Compute relative path from one to another
-pub fn relativePath(allocator: std.mem.Allocator, from: []const u8, to: []const u8) ![]u8 {
-    return try std.fs.path.relative(allocator, from, to);
+pub fn relativePath(io: std.Io, allocator: std.mem.Allocator, from: []const u8, to: []const u8) ![]u8 {
+    // 0.16 resolves relative paths against an explicit cwd and environment.
+    var cwd_buffer: [std.fs.max_path_bytes]u8 = undefined;
+    const cwd_len = try std.process.currentPath(io, &cwd_buffer);
+    return try std.fs.path.relative(allocator, cwd_buffer[0..cwd_len], null, from, to);
 }
 
 /// Split path into components
 pub fn splitPath(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
-    var components: std.ArrayList([]const u8) = .{};
+    var components: std.ArrayList([]const u8) = .empty;
     errdefer components.deinit(allocator);
 
     var iter = std.mem.splitScalar(u8, path, std.fs.path.sep);
@@ -9796,11 +9875,11 @@ pub fn splitPath(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
 
 /// Normalize path by removing redundant separators and resolving dots
 pub fn normalizePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     var iter = std.mem.splitScalar(u8, path, std.fs.path.sep);
-    var components: std.ArrayList([]const u8) = .{};
+    var components: std.ArrayList([]const u8) = .empty;
     defer components.deinit(allocator);
 
     while (iter.next()) |component| {
@@ -9828,7 +9907,7 @@ pub fn normalizePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
 
 /// Convert Windows path to Unix format
 pub fn convertToUnixPath(allocator: std.mem.Allocator, windows_path: []const u8) ![]u8 {
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     for (windows_path) |c| {
@@ -9844,7 +9923,7 @@ pub fn convertToUnixPath(allocator: std.mem.Allocator, windows_path: []const u8)
 
 /// Convert Unix path to Windows format
 pub fn convertToWindowsPath(allocator: std.mem.Allocator, unix_path: []const u8) ![]u8 {
-    var result: std.ArrayList(u8) = .{};
+    var result: std.ArrayList(u8) = .empty;
     errdefer result.deinit(allocator);
 
     for (unix_path) |c| {
@@ -9899,7 +9978,7 @@ pub fn commonPrefix(allocator: std.mem.Allocator, paths: []const []const u8) ![]
     if (paths.len == 1) return try allocator.dupe(u8, paths[0]);
 
     // Split all paths into components
-    var all_components: std.ArrayList([][]const u8) = .{};
+    var all_components: std.ArrayList([][]const u8) = .empty;
     defer {
         for (all_components.items) |components| {
             allocator.free(components);
@@ -10030,18 +10109,20 @@ test "is absolute" {
 }
 
 test "relative path" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const rel = try relativePath(allocator, "/home/user", "/home/user/docs/file.txt");
+    const rel = try relativePath(io, allocator, "/home/user", "/home/user/docs/file.txt");
     defer allocator.free(rel);
 
     try std.testing.expectEqualStrings("docs/file.txt", rel);
 }
 
 test "relative path same directory" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const rel = try relativePath(allocator, "/home/user", "/home/user");
+    const rel = try relativePath(io, allocator, "/home/user", "/home/user");
     defer allocator.free(rel);
 
     // Same directory returns empty string, not "."
@@ -10281,16 +10362,17 @@ You need to check if a file or directory exists before performing operations on 
 
 ```zig
 test "file exists" {
+    const io = std.testing.io;
     const path = "/tmp/test_exists.txt";
-    defer std.fs.cwd().deleteFile(path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path) catch {};
 
     // File doesn't exist yet
     try std.testing.expect(!pathExists(path));
 
     // Create file
     {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+        defer file.close(io);
     }
 
     // File exists now
@@ -10302,12 +10384,13 @@ test "file does not exist" {
 }
 
 test "is file" {
+    const io = std.testing.io;
     const path = "/tmp/test_is_file.txt";
-    defer std.fs.cwd().deleteFile(path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path) catch {};
 
     {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+        defer file.close(io);
     }
 
     try std.testing.expect(isFile(path));
@@ -10315,9 +10398,10 @@ test "is file" {
 }
 
 test "is directory" {
+    const io = std.testing.io;
     const path = "/tmp/test_is_dir";
-    try std.fs.cwd().makeDir(path);
-    defer std.fs.cwd().deleteDir(path) catch {};
+    try std.Io.Dir.cwd().createDir(io, path, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(io, path) catch {};
 
     try std.testing.expect(isDirectory(path));
     try std.testing.expect(!isFile(path));
@@ -10328,25 +10412,26 @@ test "is directory" {
 
 ```zig
 test "file age comparison" {
+    const io = std.testing.io;
     const path1 = "/tmp/test_age1.txt";
     const path2 = "/tmp/test_age2.txt";
 
-    defer std.fs.cwd().deleteFile(path1) catch {};
-    defer std.fs.cwd().deleteFile(path2) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path1) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path2) catch {};
 
     // Create first file
     {
-        const file = try std.fs.cwd().createFile(path1, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path1, .{});
+        defer file.close(io);
     }
 
     // Wait a bit
-    std.Thread.sleep(10 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(10 * std.time.ns_per_ms), .awake);
 
     // Create second file
     {
-        const file = try std.fs.cwd().createFile(path2, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path2, .{});
+        defer file.close(io);
     }
 
     // path2 is newer than path1
@@ -10354,12 +10439,13 @@ test "file age comparison" {
 }
 
 test "is older than" {
+    const io = std.testing.io;
     const path = "/tmp/test_older.txt";
-    defer std.fs.cwd().deleteFile(path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path) catch {};
 
     {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+        defer file.close(io);
     }
 
     // File is not older than 1 second (just created)
@@ -10367,15 +10453,16 @@ test "is older than" {
 }
 
 test "wait for file creation" {
+    const io = std.testing.io;
     const path = "/tmp/test_wait.txt";
-    defer std.fs.cwd().deleteFile(path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path) catch {};
 
     // Start background thread to create file
     const thread = try std.Thread.spawn(.{}, struct {
-        fn create(file_path: []const u8) void {
-            std.Thread.sleep(200 * std.time.ns_per_ms);
-            const file = std.fs.cwd().createFile(file_path, .{}) catch return;
-            file.close();
+        fn create(io: std.Io, file_path: []const u8) void {
+            try io.sleep(.fromNanoseconds(200 * std.time.ns_per_ms), .awake);
+            const file = std.Io.Dir.cwd().createFile(io, file_path, .{}) catch return;
+            file.close(io);
         }
     }.create, .{path});
     thread.detach();
@@ -10398,16 +10485,17 @@ test "wait for file timeout" {
 
 ```zig
 test "all exist" {
+    const io = std.testing.io;
     const path1 = "/tmp/test_all1.txt";
     const path2 = "/tmp/test_all2.txt";
 
-    defer std.fs.cwd().deleteFile(path1) catch {};
-    defer std.fs.cwd().deleteFile(path2) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path1) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path2) catch {};
 
     // Create one file
     {
-        const file = try std.fs.cwd().createFile(path1, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path1, .{});
+        defer file.close(io);
     }
 
     const paths = [_][]const u8{ path1, path2 };
@@ -10417,8 +10505,8 @@ test "all exist" {
 
     // Create second file
     {
-        const file = try std.fs.cwd().createFile(path2, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path2, .{});
+        defer file.close(io);
     }
 
     // All exist now
@@ -10426,15 +10514,16 @@ test "all exist" {
 }
 
 test "any exists" {
+    const io = std.testing.io;
     const path1 = "/tmp/does_not_exist1.txt";
     const path2 = "/tmp/test_any.txt";
 
-    defer std.fs.cwd().deleteFile(path2) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path2) catch {};
 
     // Create one file
     {
-        const file = try std.fs.cwd().createFile(path2, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path2, .{});
+        defer file.close(io);
     }
 
     const paths = [_][]const u8{ path1, path2 };
@@ -10453,16 +10542,17 @@ test "any exists none" {
 }
 
 test "find first existing" {
+    const io = std.testing.io;
     const path1 = "/tmp/does_not_exist1.txt";
     const path2 = "/tmp/test_first.txt";
     const path3 = "/tmp/does_not_exist2.txt";
 
-    defer std.fs.cwd().deleteFile(path2) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path2) catch {};
 
     // Create middle file
     {
-        const file = try std.fs.cwd().createFile(path2, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path2, .{});
+        defer file.close(io);
     }
 
     const paths = [_][]const u8{ path1, path2, path3 };
@@ -10490,8 +10580,8 @@ test "find first existing none" {
 The simplest way to check if a path exists:
 
 ```zig
-pub fn pathExists(path: []const u8) bool {
-    std.fs.cwd().access(path, .{}) catch return false;
+pub fn pathExists(io: std.Io, path: []const u8) bool {
+    std.Io.Dir.cwd().access(io, path, .{}) catch return false;
     return true;
 }
 ```
@@ -10503,33 +10593,34 @@ This works for both files and directories. It only checks if the path exists, no
 Distinguish between files and directories:
 
 ```zig
-pub fn isFile(path: []const u8) bool {
-    const stat = std.fs.cwd().statFile(path) catch return false;
+pub fn isFile(io: std.Io, path: []const u8) bool {
+    const stat = std.Io.Dir.cwd().statFile(io, path, .{}) catch return false;
     return stat.kind == .file;
 }
 
-pub fn isDirectory(path: []const u8) bool {
-    const stat = std.fs.cwd().statFile(path) catch return false;
+pub fn isDirectory(io: std.Io, path: []const u8) bool {
+    const stat = std.Io.Dir.cwd().statFile(io, path, .{}) catch return false;
     return stat.kind == .directory;
 }
 
 test "file vs directory" {
+    const io = std.testing.io;
     // File check
     {
-        const file = try std.fs.cwd().createFile("/tmp/test_file.txt", .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_file.txt", .{});
+        defer file.close(io);
     }
-    defer std.fs.cwd().deleteFile("/tmp/test_file.txt") catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_file.txt") catch {};
 
-    try std.testing.expect(isFile("/tmp/test_file.txt"));
-    try std.testing.expect(!isDirectory("/tmp/test_file.txt"));
+    try std.testing.expect(isFile(io, "/tmp/test_file.txt"));
+    try std.testing.expect(!isDirectory(io, "/tmp/test_file.txt"));
 
     // Directory check
-    try std.fs.cwd().makeDir("/tmp/test_dir");
-    defer std.fs.cwd().deleteDir("/tmp/test_dir") catch {};
+    try std.Io.Dir.cwd().createDir(io, "/tmp/test_dir", .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(io, "/tmp/test_dir") catch {};
 
-    try std.testing.expect(isDirectory("/tmp/test_dir"));
-    try std.testing.expect(!isFile("/tmp/test_dir"));
+    try std.testing.expect(isDirectory(io, "/tmp/test_dir"));
+    try std.testing.expect(!isFile(io, "/tmp/test_dir"));
 }
 ```
 
@@ -10538,21 +10629,21 @@ test "file vs directory" {
 Verify you can actually access the file:
 
 ```zig
-pub fn canRead(path: []const u8) bool {
-    std.fs.cwd().access(path, .{ .mode = .read_only }) catch return false;
+pub fn canRead(io: std.Io, path: []const u8) bool {
+    std.Io.Dir.cwd().access(io, path, .{ .read = true }) catch return false;
     return true;
 }
 
-pub fn canWrite(path: []const u8) bool {
+pub fn canWrite(io: std.Io, path: []const u8) bool {
     // Try opening for writing
-    const file = std.fs.cwd().openFile(path, .{ .mode = .write_only }) catch return false;
-    file.close();
+    const file = std.Io.Dir.cwd().openFile(io, path, .{ .mode = .write_only }) catch return false;
+    file.close(io);
     return true;
 }
 
-pub fn canExecute(path: []const u8) bool {
+pub fn canExecute(io: std.Io, path: []const u8) bool {
     // Platform-specific executable check
-    const stat = std.fs.cwd().statFile(path) catch return false;
+    const stat = std.Io.Dir.cwd().statFile(io, path, .{}) catch return false;
 
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
@@ -10584,8 +10675,8 @@ pub const FileType = enum {
     unknown,
 };
 
-pub fn getFileType(path: []const u8) !FileType {
-    const stat = try std.fs.cwd().statFile(path);
+pub fn getFileType(io: std.Io, path: []const u8) !FileType {
+    const stat = try std.Io.Dir.cwd().statFile(io, path, .{});
 
     return switch (stat.kind) {
         .file => .file,
@@ -10605,45 +10696,46 @@ pub fn getFileType(path: []const u8) !FileType {
 Check when a file was last modified:
 
 ```zig
-pub fn isNewerThan(path1: []const u8, path2: []const u8) !bool {
-    const stat1 = try std.fs.cwd().statFile(path1);
-    const stat2 = try std.fs.cwd().statFile(path2);
+pub fn isNewerThan(io: std.Io, path1: []const u8, path2: []const u8) !bool {
+    const stat1 = try std.Io.Dir.cwd().statFile(io, path1, .{});
+    const stat2 = try std.Io.Dir.cwd().statFile(io, path2, .{});
 
-    return stat1.mtime > stat2.mtime;
+    return stat1.mtime.toNanoseconds() > stat2.mtime.toNanoseconds();
 }
 
-pub fn isOlderThan(path: []const u8, seconds: i128) !bool {
-    const stat = try std.fs.cwd().statFile(path);
-    const now = std.time.nanoTimestamp();
-    const age = now - stat.mtime;
+pub fn isOlderThan(io: std.Io, path: []const u8, seconds: i128) !bool {
+    const stat = try std.Io.Dir.cwd().statFile(io, path, .{});
+    const now = std.Io.Timestamp.now(io, .real).toNanoseconds();
+    const age = now - stat.mtime.toNanoseconds();
 
     return age > (seconds * std.time.ns_per_s);
 }
 
 test "file age" {
+    const io = std.testing.io;
     const path1 = "/tmp/test_age1.txt";
     const path2 = "/tmp/test_age2.txt";
 
-    defer std.fs.cwd().deleteFile(path1) catch {};
-    defer std.fs.cwd().deleteFile(path2) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path1) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path2) catch {};
 
     // Create first file
     {
-        const file = try std.fs.cwd().createFile(path1, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path1, .{});
+        defer file.close(io);
     }
 
     // Wait a bit
-    std.time.sleep(10 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(10 * std.time.ns_per_ms), .awake);
 
     // Create second file
     {
-        const file = try std.fs.cwd().createFile(path2, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path2, .{});
+        defer file.close(io);
     }
 
     // path2 is newer than path1
-    try std.testing.expect(try isNewerThan(path2, path1));
+    try std.testing.expect(try isNewerThan(io, path2, path1));
 }
 ```
 
@@ -10652,39 +10744,40 @@ test "file age" {
 Wait for a file to be created:
 
 ```zig
-pub fn waitForFile(path: []const u8, timeout_ms: u64) !void {
-    const start = std.time.milliTimestamp();
+pub fn waitForFile(io: std.Io, path: []const u8, timeout_ms: u64) !void {
+    const start = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms)));
 
     while (true) {
         if (pathExists(path)) {
             return;
         }
 
-        const elapsed = std.time.milliTimestamp() - start;
+        const elapsed = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms))) - start;
         if (elapsed > timeout_ms) {
             return error.Timeout;
         }
 
-        std.time.sleep(100 * std.time.ns_per_ms);
+        try io.sleep(.fromNanoseconds(100 * std.time.ns_per_ms), .awake);
     }
 }
 
 test "wait for file" {
+    const io = std.testing.io;
     const path = "/tmp/test_wait.txt";
-    defer std.fs.cwd().deleteFile(path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path) catch {};
 
     // Start a background task to create the file
     const thread = try std.Thread.spawn(.{}, struct {
-        fn create(file_path: []const u8) void {
-            std.time.sleep(200 * std.time.ns_per_ms);
-            const file = std.fs.cwd().createFile(file_path, .{}) catch return;
-            file.close();
+        fn create(io: std.Io, file_path: []const u8) void {
+            try io.sleep(.fromNanoseconds(200 * std.time.ns_per_ms), .awake);
+            const file = std.Io.Dir.cwd().createFile(io, file_path, .{}) catch return;
+            file.close(io);
         }
     }.create, .{path});
     thread.detach();
 
     // Wait for file creation
-    try waitForFile(path, 5000);
+    try waitForFile(io, path, 5000);
     try std.testing.expect(pathExists(path));
 }
 ```
@@ -10694,12 +10787,12 @@ test "wait for file" {
 Work with symbolic links:
 
 ```zig
-pub fn isSymlink(path: []const u8) bool {
+pub fn isSymlink(io: std.Io, path: []const u8) bool {
     // Use lstat to not follow symlinks
     var buffer: [std.fs.max_path_bytes]u8 = undefined;
-    const absolute = std.fs.cwd().realpath(path, &buffer) catch return false;
+    const absolute = std.Io.Dir.cwd().realpath(path, &buffer) catch return false;
 
-    const stat = std.fs.cwd().statFile(absolute) catch return false;
+    const stat = std.Io.Dir.cwd().statFile(io, absolute, .{}) catch return false;
     return stat.kind == .sym_link;
 }
 
@@ -10715,11 +10808,10 @@ pub fn symlinkTarget(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
 Handle all error cases explicitly:
 
 ```zig
-pub fn safeExists(path: []const u8) !bool {
-    std.fs.cwd().access(path, .{}) catch |err| switch (err) {
+pub fn safeExists(io: std.Io, path: []const u8) !bool {
+    std.Io.Dir.cwd().access(io, path, .{}) catch |err| switch (err) {
         error.FileNotFound => return false,
         error.AccessDenied => return error.PermissionDenied,
-        else => return err,
     };
     return true;
 }
@@ -10749,16 +10841,17 @@ pub fn anyExists(paths: []const []const u8) bool {
 }
 
 test "multiple files" {
+    const io = std.testing.io;
     const path1 = "/tmp/test_multi1.txt";
     const path2 = "/tmp/test_multi2.txt";
 
-    defer std.fs.cwd().deleteFile(path1) catch {};
-    defer std.fs.cwd().deleteFile(path2) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path1) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path2) catch {};
 
     // Create one file
     {
-        const file = try std.fs.cwd().createFile(path1, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path1, .{});
+        defer file.close(io);
     }
 
     const paths = [_][]const u8{ path1, path2 };
@@ -10783,16 +10876,17 @@ pub fn findFirstExisting(paths: []const []const u8) ?[]const u8 {
 }
 
 test "find first existing" {
+    const io = std.testing.io;
     const path1 = "/tmp/does_not_exist1.txt";
     const path2 = "/tmp/test_first.txt";
     const path3 = "/tmp/does_not_exist2.txt";
 
-    defer std.fs.cwd().deleteFile(path2) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path2) catch {};
 
     // Create middle file
     {
-        const file = try std.fs.cwd().createFile(path2, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path2, .{});
+        defer file.close(io);
     }
 
     const paths = [_][]const u8{ path1, path2, path3 };
@@ -10813,12 +10907,11 @@ pub fn parentDirExists(path: []const u8) bool {
     return isDirectory(dir);
 }
 
-pub fn ensureParentDir(path: []const u8) !void {
+pub fn ensureParentDir(io: std.Io, path: []const u8) !void {
     const dir = std.fs.path.dirname(path) orelse return;
 
-    std.fs.cwd().makePath(dir) catch |err| switch (err) {
+    std.Io.Dir.cwd().createDirPath(io, dir) catch |err| switch (err) {
         error.PathAlreadyExists => return,
-        else => return err,
     };
 }
 ```
@@ -10834,20 +10927,19 @@ pub fn ensureParentDir(path: []const u8) !void {
 ```zig
 // Good: Check then open
 if (fileExists(path)) {
-    const file = try std.fs.cwd().openFile(path, .{});
-    defer file.close();
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
     // ...
 }
 
 // Better: Just try to open (EAFP style)
-const file = std.fs.cwd().openFile(path, .{}) catch |err| switch (err) {
+const file = std.Io.Dir.cwd().openFile(io, path, .{}) catch |err| switch (err) {
     error.FileNotFound => {
         // Handle missing file
         return;
     },
-    else => return err,
 };
-defer file.close();
+defer file.close(io);
 // File definitely exists here
 ```
 
@@ -10899,33 +10991,33 @@ pub fn exists(path: []const u8) bool {
 const std = @import("std");
 
 /// Check if a path exists
-pub fn pathExists(path: []const u8) bool {
-    std.fs.cwd().access(path, .{}) catch return false;
+pub fn pathExists(io: std.Io, path: []const u8) bool {
+    std.Io.Dir.cwd().access(io, path, .{}) catch return false;
     return true;
 }
 
 /// Check if path is a file
-pub fn isFile(path: []const u8) bool {
-    const stat = std.fs.cwd().statFile(path) catch return false;
+pub fn isFile(io: std.Io, path: []const u8) bool {
+    const stat = std.Io.Dir.cwd().statFile(io, path, .{}) catch return false;
     return stat.kind == .file;
 }
 
 /// Check if path is a directory
-pub fn isDirectory(path: []const u8) bool {
-    const stat = std.fs.cwd().statFile(path) catch return false;
+pub fn isDirectory(io: std.Io, path: []const u8) bool {
+    const stat = std.Io.Dir.cwd().statFile(io, path, .{}) catch return false;
     return stat.kind == .directory;
 }
 
 /// Check if file can be read
-pub fn canRead(path: []const u8) bool {
-    std.fs.cwd().access(path, .{ .mode = .read_only }) catch return false;
+pub fn canRead(io: std.Io, path: []const u8) bool {
+    std.Io.Dir.cwd().access(io, path, .{ .read = true }) catch return false;
     return true;
 }
 
 /// Check if file can be written
-pub fn canWrite(path: []const u8) bool {
-    const file = std.fs.cwd().openFile(path, .{ .mode = .write_only }) catch return false;
-    file.close();
+pub fn canWrite(io: std.Io, path: []const u8) bool {
+    const file = std.Io.Dir.cwd().openFile(io, path, .{ .mode = .write_only }) catch return false;
+    file.close(io);
     return true;
 }
 
@@ -10942,8 +11034,8 @@ pub const FileType = enum {
 };
 
 /// Get the type of filesystem object
-pub fn getFileType(path: []const u8) !FileType {
-    const stat = try std.fs.cwd().statFile(path);
+pub fn getFileType(io: std.Io, path: []const u8) !FileType {
+    const stat = try std.Io.Dir.cwd().statFile(io, path, .{});
 
     return switch (stat.kind) {
         .file => .file,
@@ -10958,43 +11050,43 @@ pub fn getFileType(path: []const u8) !FileType {
 }
 
 /// Check if path1 is newer than path2
-pub fn isNewerThan(path1: []const u8, path2: []const u8) !bool {
-    const stat1 = try std.fs.cwd().statFile(path1);
-    const stat2 = try std.fs.cwd().statFile(path2);
+pub fn isNewerThan(io: std.Io, path1: []const u8, path2: []const u8) !bool {
+    const stat1 = try std.Io.Dir.cwd().statFile(io, path1, .{});
+    const stat2 = try std.Io.Dir.cwd().statFile(io, path2, .{});
 
-    return stat1.mtime > stat2.mtime;
+    return stat1.mtime.toNanoseconds() > stat2.mtime.toNanoseconds();
 }
 
 /// Check if file is older than specified seconds
-pub fn isOlderThan(path: []const u8, seconds: i128) !bool {
-    const stat = try std.fs.cwd().statFile(path);
-    const now = std.time.nanoTimestamp();
-    const age = now - stat.mtime;
+pub fn isOlderThan(io: std.Io, path: []const u8, seconds: i128) !bool {
+    const stat = try std.Io.Dir.cwd().statFile(io, path, .{});
+    const now = std.Io.Timestamp.now(io, .real).toNanoseconds();
+    const age = now - stat.mtime.toNanoseconds();
 
     return age > (seconds * std.time.ns_per_s);
 }
 
 /// Wait for a file to be created with timeout
-pub fn waitForFile(path: []const u8, timeout_ms: u64) !void {
-    const start = std.time.milliTimestamp();
+pub fn waitForFile(io: std.Io, path: []const u8, timeout_ms: u64) !void {
+    const start = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms)));
 
     while (true) {
-        if (pathExists(path)) {
+        if (pathExists(io, path)) {
             return;
         }
 
-        const elapsed = std.time.milliTimestamp() - start;
+        const elapsed = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms))) - start;
         if (elapsed > timeout_ms) {
             return error.Timeout;
         }
 
-        std.Thread.sleep(100 * std.time.ns_per_ms);
+        try io.sleep(.fromNanoseconds(100 * std.time.ns_per_ms), .awake);
     }
 }
 
 /// Safe existence check with explicit error handling
-pub fn safeExists(path: []const u8) !bool {
-    std.fs.cwd().access(path, .{}) catch |err| switch (err) {
+pub fn safeExists(io: std.Io, path: []const u8) !bool {
+    std.Io.Dir.cwd().access(io, path, .{}) catch |err| switch (err) {
         error.FileNotFound => return false,
         error.AccessDenied => return error.PermissionDenied,
         else => return err,
@@ -11003,9 +11095,9 @@ pub fn safeExists(path: []const u8) !bool {
 }
 
 /// Check if all paths exist
-pub fn allExist(paths: []const []const u8) bool {
+pub fn allExist(io: std.Io, paths: []const []const u8) bool {
     for (paths) |path| {
-        if (!pathExists(path)) {
+        if (!pathExists(io, path)) {
             return false;
         }
     }
@@ -11013,9 +11105,9 @@ pub fn allExist(paths: []const []const u8) bool {
 }
 
 /// Check if any path exists
-pub fn anyExists(paths: []const []const u8) bool {
+pub fn anyExists(io: std.Io, paths: []const []const u8) bool {
     for (paths) |path| {
-        if (pathExists(path)) {
+        if (pathExists(io, path)) {
             return true;
         }
     }
@@ -11023,9 +11115,9 @@ pub fn anyExists(paths: []const []const u8) bool {
 }
 
 /// Find first existing file from list
-pub fn findFirstExisting(paths: []const []const u8) ?[]const u8 {
+pub fn findFirstExisting(io: std.Io, paths: []const []const u8) ?[]const u8 {
     for (paths) |path| {
-        if (pathExists(path)) {
+        if (pathExists(io, path)) {
             return path;
         }
     }
@@ -11033,16 +11125,16 @@ pub fn findFirstExisting(paths: []const []const u8) ?[]const u8 {
 }
 
 /// Check if parent directory exists
-pub fn parentDirExists(path: []const u8) bool {
+pub fn parentDirExists(io: std.Io, path: []const u8) bool {
     const dir = std.fs.path.dirname(path) orelse return true;
-    return isDirectory(dir);
+    return isDirectory(io, dir);
 }
 
 /// Ensure parent directory exists, creating if necessary
-pub fn ensureParentDir(path: []const u8) !void {
+pub fn ensureParentDir(io: std.Io, path: []const u8) !void {
     const dir = std.fs.path.dirname(path) orelse return;
 
-    std.fs.cwd().makePath(dir) catch |err| switch (err) {
+    std.Io.Dir.cwd().createDirPath(io, dir) catch |err| switch (err) {
         error.PathAlreadyExists => return,
         else => return err,
     };
@@ -11052,309 +11144,331 @@ pub fn ensureParentDir(path: []const u8) !void {
 
 // ANCHOR: basic_existence
 test "file exists" {
+    const io = std.testing.io;
     const path = "/tmp/test_exists.txt";
-    defer std.fs.cwd().deleteFile(path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path) catch {};
 
     // File doesn't exist yet
-    try std.testing.expect(!pathExists(path));
+    try std.testing.expect(!pathExists(io, path));
 
     // Create file
     {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+        defer file.close(io);
     }
 
     // File exists now
-    try std.testing.expect(pathExists(path));
+    try std.testing.expect(pathExists(io, path));
 }
 
 test "file does not exist" {
-    try std.testing.expect(!pathExists("/tmp/does_not_exist_12345.txt"));
+    const io = std.testing.io;
+    try std.testing.expect(!pathExists(io, "/tmp/does_not_exist_12345.txt"));
 }
 
 test "is file" {
+    const io = std.testing.io;
     const path = "/tmp/test_is_file.txt";
-    defer std.fs.cwd().deleteFile(path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path) catch {};
 
     {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+        defer file.close(io);
     }
 
-    try std.testing.expect(isFile(path));
-    try std.testing.expect(!isDirectory(path));
+    try std.testing.expect(isFile(io, path));
+    try std.testing.expect(!isDirectory(io, path));
 }
 
 test "is directory" {
+    const io = std.testing.io;
     const path = "/tmp/test_is_dir";
-    try std.fs.cwd().makeDir(path);
-    defer std.fs.cwd().deleteDir(path) catch {};
+    try std.Io.Dir.cwd().createDir(io, path, .default_dir);
+    defer std.Io.Dir.cwd().deleteDir(io, path) catch {};
 
-    try std.testing.expect(isDirectory(path));
-    try std.testing.expect(!isFile(path));
+    try std.testing.expect(isDirectory(io, path));
+    try std.testing.expect(!isFile(io, path));
 }
 // ANCHOR_END: basic_existence
 
 test "can read" {
+    const io = std.testing.io;
     const path = "/tmp/test_can_read.txt";
-    defer std.fs.cwd().deleteFile(path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path) catch {};
 
     {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+        defer file.close(io);
     }
 
-    try std.testing.expect(canRead(path));
+    try std.testing.expect(canRead(io, path));
 }
 
 test "can write" {
+    const io = std.testing.io;
     const path = "/tmp/test_can_write.txt";
-    defer std.fs.cwd().deleteFile(path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path) catch {};
 
     {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+        defer file.close(io);
     }
 
-    try std.testing.expect(canWrite(path));
+    try std.testing.expect(canWrite(io, path));
 }
 
 test "get file type" {
+    const io = std.testing.io;
     const file_path = "/tmp/test_type_file.txt";
     const dir_path = "/tmp/test_type_dir";
 
-    defer std.fs.cwd().deleteFile(file_path) catch {};
-    defer std.fs.cwd().deleteDir(dir_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, file_path) catch {};
+    defer std.Io.Dir.cwd().deleteDir(io, dir_path) catch {};
 
     // Create file
     {
-        const file = try std.fs.cwd().createFile(file_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, file_path, .{});
+        defer file.close(io);
     }
 
     // Create directory
-    try std.fs.cwd().makeDir(dir_path);
+    try std.Io.Dir.cwd().createDir(io, dir_path, .default_dir);
 
     // Check types
-    try std.testing.expectEqual(FileType.file, try getFileType(file_path));
-    try std.testing.expectEqual(FileType.directory, try getFileType(dir_path));
+    try std.testing.expectEqual(FileType.file, try getFileType(io, file_path));
+    try std.testing.expectEqual(FileType.directory, try getFileType(io, dir_path));
 }
 
 // ANCHOR: file_metadata
 test "file age comparison" {
+    const io = std.testing.io;
     const path1 = "/tmp/test_age1.txt";
     const path2 = "/tmp/test_age2.txt";
 
-    defer std.fs.cwd().deleteFile(path1) catch {};
-    defer std.fs.cwd().deleteFile(path2) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path1) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path2) catch {};
 
     // Create first file
     {
-        const file = try std.fs.cwd().createFile(path1, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path1, .{});
+        defer file.close(io);
     }
 
     // Wait a bit
-    std.Thread.sleep(10 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(10 * std.time.ns_per_ms), .awake);
 
     // Create second file
     {
-        const file = try std.fs.cwd().createFile(path2, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path2, .{});
+        defer file.close(io);
     }
 
     // path2 is newer than path1
-    try std.testing.expect(try isNewerThan(path2, path1));
+    try std.testing.expect(try isNewerThan(io, path2, path1));
 }
 
 test "is older than" {
+    const io = std.testing.io;
     const path = "/tmp/test_older.txt";
-    defer std.fs.cwd().deleteFile(path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path) catch {};
 
     {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+        defer file.close(io);
     }
 
     // File is not older than 1 second (just created)
-    try std.testing.expect(!try isOlderThan(path, 1));
+    try std.testing.expect(!try isOlderThan(io, path, 1));
 }
 
 test "wait for file creation" {
+    const io = std.testing.io;
     const path = "/tmp/test_wait.txt";
-    defer std.fs.cwd().deleteFile(path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path) catch {};
 
     // Start background thread to create file
     const thread = try std.Thread.spawn(.{}, struct {
-        fn create(file_path: []const u8) void {
-            std.Thread.sleep(200 * std.time.ns_per_ms);
-            const file = std.fs.cwd().createFile(file_path, .{}) catch return;
-            file.close();
+        fn create(task_io: std.Io, file_path: []const u8) !void {
+            try task_io.sleep(.fromNanoseconds(200 * std.time.ns_per_ms), .awake);
+            const file = std.Io.Dir.cwd().createFile(task_io, file_path, .{}) catch return;
+            file.close(task_io);
         }
-    }.create, .{path});
+    }.create, .{ io, path });
     thread.detach();
 
     // Wait for file
-    try waitForFile(path, 5000);
-    try std.testing.expect(pathExists(path));
+    try waitForFile(io, path, 5000);
+    try std.testing.expect(pathExists(io, path));
 }
 
 test "wait for file timeout" {
+    const io = std.testing.io;
     const path = "/tmp/test_wait_timeout.txt";
 
     // File is never created, should timeout
-    const result = waitForFile(path, 100);
+    const result = waitForFile(io, path, 100);
     try std.testing.expectError(error.Timeout, result);
 }
 // ANCHOR_END: file_metadata
 
 test "safe exists" {
+    const io = std.testing.io;
     const path = "/tmp/test_safe_exists.txt";
-    defer std.fs.cwd().deleteFile(path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path) catch {};
 
     // Doesn't exist
-    try std.testing.expect(!try safeExists(path));
+    try std.testing.expect(!try safeExists(io, path));
 
     // Create file
     {
-        const file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+        defer file.close(io);
     }
 
     // Exists
-    try std.testing.expect(try safeExists(path));
+    try std.testing.expect(try safeExists(io, path));
 }
 
 // ANCHOR: multiple_paths
 test "all exist" {
+    const io = std.testing.io;
     const path1 = "/tmp/test_all1.txt";
     const path2 = "/tmp/test_all2.txt";
 
-    defer std.fs.cwd().deleteFile(path1) catch {};
-    defer std.fs.cwd().deleteFile(path2) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path1) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path2) catch {};
 
     // Create one file
     {
-        const file = try std.fs.cwd().createFile(path1, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path1, .{});
+        defer file.close(io);
     }
 
     const paths = [_][]const u8{ path1, path2 };
 
     // Not all exist
-    try std.testing.expect(!allExist(&paths));
+    try std.testing.expect(!allExist(io, &paths));
 
     // Create second file
     {
-        const file = try std.fs.cwd().createFile(path2, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path2, .{});
+        defer file.close(io);
     }
 
     // All exist now
-    try std.testing.expect(allExist(&paths));
+    try std.testing.expect(allExist(io, &paths));
 }
 
 test "any exists" {
+    const io = std.testing.io;
     const path1 = "/tmp/does_not_exist1.txt";
     const path2 = "/tmp/test_any.txt";
 
-    defer std.fs.cwd().deleteFile(path2) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path2) catch {};
 
     // Create one file
     {
-        const file = try std.fs.cwd().createFile(path2, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path2, .{});
+        defer file.close(io);
     }
 
     const paths = [_][]const u8{ path1, path2 };
 
     // At least one exists
-    try std.testing.expect(anyExists(&paths));
+    try std.testing.expect(anyExists(io, &paths));
 }
 
 test "any exists none" {
+    const io = std.testing.io;
     const paths = [_][]const u8{
         "/tmp/does_not_exist1.txt",
         "/tmp/does_not_exist2.txt",
     };
 
-    try std.testing.expect(!anyExists(&paths));
+    try std.testing.expect(!anyExists(io, &paths));
 }
 
 test "find first existing" {
+    const io = std.testing.io;
     const path1 = "/tmp/does_not_exist1.txt";
     const path2 = "/tmp/test_first.txt";
     const path3 = "/tmp/does_not_exist2.txt";
 
-    defer std.fs.cwd().deleteFile(path2) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, path2) catch {};
 
     // Create middle file
     {
-        const file = try std.fs.cwd().createFile(path2, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, path2, .{});
+        defer file.close(io);
     }
 
     const paths = [_][]const u8{ path1, path2, path3 };
-    const found = findFirstExisting(&paths);
+    const found = findFirstExisting(io, &paths);
 
     try std.testing.expect(found != null);
     try std.testing.expectEqualStrings(path2, found.?);
 }
 
 test "find first existing none" {
+    const io = std.testing.io;
     const paths = [_][]const u8{
         "/tmp/does_not_exist1.txt",
         "/tmp/does_not_exist2.txt",
     };
 
-    const found = findFirstExisting(&paths);
+    const found = findFirstExisting(io, &paths);
     try std.testing.expect(found == null);
 }
 // ANCHOR_END: multiple_paths
 
 test "parent dir exists" {
+    const io = std.testing.io;
     // /tmp exists, so parent dir check should pass
-    try std.testing.expect(parentDirExists("/tmp/some_file.txt"));
+    try std.testing.expect(parentDirExists(io, "/tmp/some_file.txt"));
 
     // Root has no parent but returns true
-    try std.testing.expect(parentDirExists("/"));
+    try std.testing.expect(parentDirExists(io, "/"));
 }
 
 test "ensure parent dir" {
+    const io = std.testing.io;
     const nested_path = "/tmp/test_parent/nested/file.txt";
     const dir_path = "/tmp/test_parent/nested";
 
-    defer std.fs.cwd().deleteTree("/tmp/test_parent") catch {};
+    defer std.Io.Dir.cwd().deleteTree(io, "/tmp/test_parent") catch {};
 
     // Create parent directories
-    try ensureParentDir(nested_path);
+    try ensureParentDir(io, nested_path);
 
     // Parent should exist
-    try std.testing.expect(isDirectory(dir_path));
+    try std.testing.expect(isDirectory(io, dir_path));
 }
 
 test "ensure parent dir idempotent" {
+    const io = std.testing.io;
     const path = "/tmp/test_idem/file.txt";
-    defer std.fs.cwd().deleteTree("/tmp/test_idem") catch {};
+    defer std.Io.Dir.cwd().deleteTree(io, "/tmp/test_idem") catch {};
 
     // Create once
-    try ensureParentDir(path);
+    try ensureParentDir(io, path);
 
     // Create again (should not error)
-    try ensureParentDir(path);
+    try ensureParentDir(io, path);
 
-    try std.testing.expect(isDirectory("/tmp/test_idem"));
+    try std.testing.expect(isDirectory(io, "/tmp/test_idem"));
 }
 
 test "empty path" {
+    const io = std.testing.io;
     // Empty path should not exist
-    try std.testing.expect(!pathExists(""));
+    try std.testing.expect(!pathExists(io, ""));
 }
 
 test "root directory exists" {
+    const io = std.testing.io;
     // Root should always exist
-    try std.testing.expect(pathExists("/"));
-    try std.testing.expect(isDirectory("/"));
+    try std.testing.expect(pathExists(io, "/"));
+    try std.testing.expect(isDirectory(io, "/"));
 }
 ```
 
@@ -11376,18 +11490,19 @@ You need to list files and directories, optionally filtering by type or pattern,
 
 ```zig
 test "list directory" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_list_dir";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create test files
     {
-        const file1 = try std.fs.cwd().createFile("/tmp/test_list_dir/file1.txt", .{});
-        defer file1.close();
-        const file2 = try std.fs.cwd().createFile("/tmp/test_list_dir/file2.txt", .{});
-        defer file2.close();
+        const file1 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_list_dir/file1.txt", .{});
+        defer file1.close(io);
+        const file2 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_list_dir/file2.txt", .{});
+        defer file2.close(io);
     }
 
     // List directory
@@ -11403,11 +11518,12 @@ test "list directory" {
 }
 
 test "list empty directory" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_empty_dir";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     const entries = try listDirectory(allocator, test_dir);
     defer allocator.free(entries);
@@ -11416,20 +11532,21 @@ test "list empty directory" {
 }
 
 test "list by type" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_by_type";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create files and subdirectory
     {
-        const file1 = try std.fs.cwd().createFile("/tmp/test_by_type/file1.txt", .{});
-        defer file1.close();
-        const file2 = try std.fs.cwd().createFile("/tmp/test_by_type/file2.txt", .{});
-        defer file2.close();
+        const file1 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_by_type/file1.txt", .{});
+        defer file1.close(io);
+        const file2 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_by_type/file2.txt", .{});
+        defer file2.close(io);
     }
-    try std.fs.cwd().makeDir("/tmp/test_by_type/subdir");
+    try std.Io.Dir.cwd().createDir(io, "/tmp/test_by_type/subdir", .default_dir);
 
     var contents = try listByType(allocator, test_dir);
     defer contents.deinit(allocator);
@@ -11443,21 +11560,22 @@ test "list by type" {
 
 ```zig
 test "list recursive" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_recursive";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create nested structure
     {
-        const file1 = try std.fs.cwd().createFile("/tmp/test_recursive/file1.txt", .{});
-        defer file1.close();
+        const file1 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_recursive/file1.txt", .{});
+        defer file1.close(io);
     }
-    try std.fs.cwd().makeDir("/tmp/test_recursive/subdir");
+    try std.Io.Dir.cwd().createDir(io, "/tmp/test_recursive/subdir", .default_dir);
     {
-        const file2 = try std.fs.cwd().createFile("/tmp/test_recursive/subdir/file2.txt", .{});
-        defer file2.close();
+        const file2 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_recursive/subdir/file2.txt", .{});
+        defer file2.close(io);
     }
 
     const entries = try listRecursive(allocator, test_dir);
@@ -11473,20 +11591,21 @@ test "list recursive" {
 }
 
 test "list sorted" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_sorted";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create files in non-alphabetical order
     {
-        const file_c = try std.fs.cwd().createFile("/tmp/test_sorted/c.txt", .{});
-        defer file_c.close();
-        const file_a = try std.fs.cwd().createFile("/tmp/test_sorted/a.txt", .{});
-        defer file_a.close();
-        const file_b = try std.fs.cwd().createFile("/tmp/test_sorted/b.txt", .{});
-        defer file_b.close();
+        const file_c = try std.Io.Dir.cwd().createFile(io, "/tmp/test_sorted/c.txt", .{});
+        defer file_c.close(io);
+        const file_a = try std.Io.Dir.cwd().createFile(io, "/tmp/test_sorted/a.txt", .{});
+        defer file_a.close(io);
+        const file_b = try std.Io.Dir.cwd().createFile(io, "/tmp/test_sorted/b.txt", .{});
+        defer file_b.close(io);
     }
 
     const entries = try listSorted(allocator, test_dir);
@@ -11506,17 +11625,18 @@ test "list sorted" {
 
 // ANCHOR: advanced_listing
 test "list with info" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_with_info";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create file with content
     {
-        const file = try std.fs.cwd().createFile("/tmp/test_with_info/file.txt", .{});
-        defer file.close();
-        try file.writeAll("Hello, World!");
+        const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_with_info/file.txt", .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "Hello, World!");
     }
 
     const entries = try listWithInfo(allocator, test_dir);
@@ -11541,20 +11661,21 @@ test "matches pattern" {
 }
 
 test "list by pattern" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_pattern";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create files
     {
-        const file1 = try std.fs.cwd().createFile("/tmp/test_pattern/test1.txt", .{});
-        defer file1.close();
-        const file2 = try std.fs.cwd().createFile("/tmp/test_pattern/test2.txt", .{});
-        defer file2.close();
-        const file3 = try std.fs.cwd().createFile("/tmp/test_pattern/readme.md", .{});
-        defer file3.close();
+        const file1 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_pattern/test1.txt", .{});
+        defer file1.close(io);
+        const file2 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_pattern/test2.txt", .{});
+        defer file2.close(io);
+        const file3 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_pattern/readme.md", .{});
+        defer file3.close(io);
     }
 
     const entries = try listByPattern(allocator, test_dir, "test*.txt");
@@ -11573,17 +11694,18 @@ test "list by pattern" {
 
 ```zig
 test "list with info" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_with_info";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create file with content
     {
-        const file = try std.fs.cwd().createFile("/tmp/test_with_info/file.txt", .{});
-        defer file.close();
-        try file.writeAll("Hello, World!");
+        const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_with_info/file.txt", .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "Hello, World!");
     }
 
     const entries = try listWithInfo(allocator, test_dir);
@@ -11608,20 +11730,21 @@ test "matches pattern" {
 }
 
 test "list by pattern" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_pattern";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create files
     {
-        const file1 = try std.fs.cwd().createFile("/tmp/test_pattern/test1.txt", .{});
-        defer file1.close();
-        const file2 = try std.fs.cwd().createFile("/tmp/test_pattern/test2.txt", .{});
-        defer file2.close();
-        const file3 = try std.fs.cwd().createFile("/tmp/test_pattern/readme.md", .{});
-        defer file3.close();
+        const file1 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_pattern/test1.txt", .{});
+        defer file1.close(io);
+        const file2 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_pattern/test2.txt", .{});
+        defer file2.close(io);
+        const file3 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_pattern/readme.md", .{});
+        defer file3.close(io);
     }
 
     const entries = try listByPattern(allocator, test_dir, "test*.txt");
@@ -11644,18 +11767,19 @@ test "is hidden" {
 }
 
 test "list visible" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_visible";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create visible and hidden files
     {
-        const file1 = try std.fs.cwd().createFile("/tmp/test_visible/visible.txt", .{});
-        defer file1.close();
-        const file2 = try std.fs.cwd().createFile("/tmp/test_visible/.hidden", .{});
-        defer file2.close();
+        const file1 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_visible/visible.txt", .{});
+        defer file1.close(io);
+        const file2 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_visible/.hidden", .{});
+        defer file2.close(io);
     }
 
     const entries = try listVisible(allocator, test_dir);
@@ -11671,20 +11795,21 @@ test "list visible" {
 }
 
 test "list N entries" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_list_n";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create multiple files
     {
-        const file1 = try std.fs.cwd().createFile("/tmp/test_list_n/file1.txt", .{});
-        defer file1.close();
-        const file2 = try std.fs.cwd().createFile("/tmp/test_list_n/file2.txt", .{});
-        defer file2.close();
-        const file3 = try std.fs.cwd().createFile("/tmp/test_list_n/file3.txt", .{});
-        defer file3.close();
+        const file1 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_list_n/file1.txt", .{});
+        defer file1.close(io);
+        const file2 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_list_n/file2.txt", .{});
+        defer file2.close(io);
+        const file3 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_list_n/file3.txt", .{});
+        defer file3.close(io);
     }
 
     const entries = try listN(allocator, test_dir, 2);
@@ -11706,15 +11831,16 @@ test "safe listing - not found" {
 }
 
 test "safe listing - success" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_safe_list";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     {
-        const file = try std.fs.cwd().createFile("/tmp/test_safe_list/file.txt", .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_safe_list/file.txt", .{});
+        defer file.close(io);
     }
 
     const entries = try safeListing(allocator, test_dir);
@@ -11743,11 +11869,11 @@ test "list nonexistent directory" {
 The simplest way to list directory contents:
 
 ```zig
-pub fn printDirectory(path: []const u8) !void {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+pub fn printDirectory(io: std.Io, path: []const u8) !void {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var iter = dir.iterate();
+    var iter = dir.iterate(io);
     while (try iter.next()) |entry| {
         std.debug.print("{s}\n", .{entry.name});
     }
@@ -11776,17 +11902,17 @@ pub const DirContents = struct {
     }
 };
 
-pub fn listByType(allocator: std.mem.Allocator, path: []const u8) !DirContents {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+pub fn listByType(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !DirContents {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var files = std.ArrayList([]const u8).init(allocator);
+    var files = std.ArrayList([]const u8).empty;
     errdefer files.deinit();
 
-    var directories = std.ArrayList([]const u8).init(allocator);
+    var directories = std.ArrayList([]const u8).empty;
     errdefer directories.deinit();
 
-    var iter = dir.iterate();
+    var iter = dir.iterate(io);
     while (try iter.next()) |entry| {
         const name = try allocator.dupe(u8, entry.name);
         errdefer allocator.free(name);
@@ -11810,18 +11936,16 @@ pub fn listByType(allocator: std.mem.Allocator, path: []const u8) !DirContents {
 List only files with specific extension:
 
 ```zig
-pub fn listByExtension(
-    allocator: std.mem.Allocator,
+pub fn listByExtension(io: std.Io, allocator: std.mem.Allocator,
     path: []const u8,
-    ext: []const u8,
-) ![][]const u8 {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+    ext: []const u8,) ![][]const u8 {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var entries = std.ArrayList([]const u8).init(allocator);
+    var entries = std.ArrayList([]const u8).empty;
     errdefer entries.deinit();
 
-    var iter = dir.iterate();
+    var iter = dir.iterate(io);
     while (try iter.next()) |entry| {
         if (entry.kind != .file) continue;
 
@@ -11841,15 +11965,13 @@ pub fn listByExtension(
 Walk entire directory tree:
 
 ```zig
-pub fn walkDirectory(
-    allocator: std.mem.Allocator,
+pub fn walkDirectory(io: std.Io, allocator: std.mem.Allocator,
     path: []const u8,
-    results: *std.ArrayList([]const u8),
-) !void {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+    results: *std.ArrayList([]const u8),) !void {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var iter = dir.iterate();
+    var iter = dir.iterate(io);
     while (try iter.next()) |entry| {
         const full_path = try std.fs.path.join(allocator, &[_][]const u8{ path, entry.name });
         errdefer allocator.free(full_path);
@@ -11857,16 +11979,16 @@ pub fn walkDirectory(
         try results.append(full_path);
 
         if (entry.kind == .directory) {
-            try walkDirectory(allocator, full_path, results);
+            try walkDirectory(io, allocator, full_path, results);
         }
     }
 }
 
-pub fn listRecursive(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
-    var results = std.ArrayList([]const u8).init(allocator);
+pub fn listRecursive(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
+    var results = std.ArrayList([]const u8).empty;
     errdefer results.deinit();
 
-    try walkDirectory(allocator, path, &results);
+    try walkDirectory(io, allocator, path, &results);
 
     return results.toOwnedSlice();
 }
@@ -11912,22 +12034,22 @@ pub const FileInfo = struct {
     }
 };
 
-pub fn listWithInfo(allocator: std.mem.Allocator, path: []const u8) ![]FileInfo {
-    var dir = try std.fs.cwd().openDir(path, .{});
-    defer dir.close();
+pub fn listWithInfo(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![]FileInfo {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{});
+    defer dir.close(io);
 
-    var entries = std.ArrayList(FileInfo).init(allocator);
+    var entries = std.ArrayList(FileInfo).empty;
     errdefer entries.deinit();
 
-    var iter = try dir.iterate();
+    var iter = try dir.iterate(io);
     while (try iter.next()) |entry| {
-        const stat = dir.statFile(entry.name) catch continue;
+        const stat = dir.statFile(io, entry.name, .{}) catch continue;
 
         try entries.append(.{
             .name = try allocator.dupe(u8, entry.name),
             .size = stat.size,
             .is_dir = entry.kind == .directory,
-            .mtime = stat.mtime,
+            .mtime = stat.mtime.toNanoseconds(),
         });
     }
 
@@ -11954,18 +12076,16 @@ pub fn matchesPattern(name: []const u8, pattern: []const u8) bool {
     return std.mem.eql(u8, name, pattern);
 }
 
-pub fn listByPattern(
-    allocator: std.mem.Allocator,
+pub fn listByPattern(io: std.Io, allocator: std.mem.Allocator,
     path: []const u8,
-    pattern: []const u8,
-) ![][]const u8 {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+    pattern: []const u8,) ![][]const u8 {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var entries = std.ArrayList([]const u8).init(allocator);
+    var entries = std.ArrayList([]const u8).empty;
     errdefer entries.deinit();
 
-    var iter = dir.iterate();
+    var iter = dir.iterate(io);
     while (try iter.next()) |entry| {
         if (matchesPattern(entry.name, pattern)) {
             const name = try allocator.dupe(u8, entry.name);
@@ -11986,14 +12106,14 @@ pub fn isHidden(name: []const u8) bool {
     return name.len > 0 and name[0] == '.';
 }
 
-pub fn listVisible(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+pub fn listVisible(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var entries = std.ArrayList([]const u8).init(allocator);
+    var entries = std.ArrayList([]const u8).empty;
     errdefer entries.deinit();
 
-    var iter = dir.iterate();
+    var iter = dir.iterate(io);
     while (try iter.next()) |entry| {
         if (!isHidden(entry.name)) {
             const name = try allocator.dupe(u8, entry.name);
@@ -12010,14 +12130,14 @@ pub fn listVisible(allocator: std.mem.Allocator, path: []const u8) ![][]const u8
 Limit number of entries returned:
 
 ```zig
-pub fn listN(allocator: std.mem.Allocator, path: []const u8, max_count: usize) ![][]const u8 {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+pub fn listN(io: std.Io, allocator: std.mem.Allocator, path: []const u8, max_count: usize) ![][]const u8 {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var entries = std.ArrayList([]const u8).init(allocator);
+    var entries = std.ArrayList([]const u8).empty;
     errdefer entries.deinit();
 
-    var iter = dir.iterate();
+    var iter = dir.iterate(io);
     var count: usize = 0;
     while (try iter.next()) |entry| {
         if (count >= max_count) break;
@@ -12036,19 +12156,18 @@ pub fn listN(allocator: std.mem.Allocator, path: []const u8, max_count: usize) !
 Handle common directory errors:
 
 ```zig
-pub fn safeListing(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
-    var dir = std.fs.cwd().openDir(path, .{ .iterate = true }) catch |err| switch (err) {
+pub fn safeListing(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
+    var dir = std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true }) catch |err| switch (err) {
         error.FileNotFound => return error.DirectoryNotFound,
         error.NotDir => return error.NotADirectory,
         error.AccessDenied => return error.PermissionDenied,
-        else => return err,
     };
-    defer dir.close();
+    defer dir.close(io);
 
-    var entries = std.ArrayList([]const u8).init(allocator);
+    var entries = std.ArrayList([]const u8).empty;
     errdefer entries.deinit();
 
-    var iter = dir.iterate();
+    var iter = dir.iterate(io);
     while (try iter.next()) |entry| {
         const name = try allocator.dupe(u8, entry.name);
         try entries.append(name);
@@ -12107,11 +12226,11 @@ pub fn getCachedListing(allocator: std.mem.Allocator, path: []const u8) ![][]con
 const std = @import("std");
 
 /// List all entries in a directory
-pub fn listDirectory(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+pub fn listDirectory(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var entries = std.ArrayList([]const u8){};
+    var entries = std.ArrayList([]const u8).empty;
     errdefer {
         for (entries.items) |item| {
             allocator.free(item);
@@ -12120,7 +12239,7 @@ pub fn listDirectory(allocator: std.mem.Allocator, path: []const u8) ![][]const 
     }
 
     var iter = dir.iterate();
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         const name = try allocator.dupe(u8, entry.name);
         try entries.append(allocator, name);
     }
@@ -12158,11 +12277,11 @@ pub const DirContents = struct {
 };
 
 /// List directory contents separated by type
-pub fn listByType(allocator: std.mem.Allocator, path: []const u8) !DirContents {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+pub fn listByType(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !DirContents {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var files = std.ArrayList([]const u8){};
+    var files = std.ArrayList([]const u8).empty;
     errdefer {
         for (files.items) |item| {
             allocator.free(item);
@@ -12170,7 +12289,7 @@ pub fn listByType(allocator: std.mem.Allocator, path: []const u8) !DirContents {
         files.deinit(allocator);
     }
 
-    var directories = std.ArrayList([]const u8){};
+    var directories = std.ArrayList([]const u8).empty;
     errdefer {
         for (directories.items) |item| {
             allocator.free(item);
@@ -12179,7 +12298,7 @@ pub fn listByType(allocator: std.mem.Allocator, path: []const u8) !DirContents {
     }
 
     var iter = dir.iterate();
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         const name = try allocator.dupe(u8, entry.name);
         errdefer allocator.free(name);
 
@@ -12197,15 +12316,13 @@ pub fn listByType(allocator: std.mem.Allocator, path: []const u8) !DirContents {
 }
 
 /// List files with specific extension
-pub fn listByExtension(
-    allocator: std.mem.Allocator,
+pub fn listByExtension(io: std.Io, allocator: std.mem.Allocator,
     path: []const u8,
-    ext: []const u8,
-) ![][]const u8 {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+    ext: []const u8,) ![][]const u8 {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var entries = std.ArrayList([]const u8){};
+    var entries = std.ArrayList([]const u8).empty;
     errdefer {
         for (entries.items) |item| {
             allocator.free(item);
@@ -12214,7 +12331,7 @@ pub fn listByExtension(
     }
 
     var iter = dir.iterate();
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         if (entry.kind != .file) continue;
 
         const file_ext = std.fs.path.extension(entry.name);
@@ -12228,30 +12345,28 @@ pub fn listByExtension(
 }
 
 /// Recursively walk directory tree
-pub fn walkDirectory(
-    allocator: std.mem.Allocator,
+pub fn walkDirectory(io: std.Io, allocator: std.mem.Allocator,
     path: []const u8,
-    results: *std.ArrayList([]const u8),
-) !void {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+    results: *std.ArrayList([]const u8),) !void {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
     var iter = dir.iterate();
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         const full_path = try std.fs.path.join(allocator, &[_][]const u8{ path, entry.name });
         errdefer allocator.free(full_path);
 
         try results.append(allocator, full_path);
 
         if (entry.kind == .directory) {
-            try walkDirectory(allocator, full_path, results);
+            try walkDirectory(io, allocator, full_path, results);
         }
     }
 }
 
 /// List directory recursively
-pub fn listRecursive(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
-    var results = std.ArrayList([]const u8){};
+pub fn listRecursive(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
+    var results = std.ArrayList([]const u8).empty;
     errdefer {
         for (results.items) |item| {
             allocator.free(item);
@@ -12259,14 +12374,14 @@ pub fn listRecursive(allocator: std.mem.Allocator, path: []const u8) ![][]const 
         results.deinit(allocator);
     }
 
-    try walkDirectory(allocator, path, &results);
+    try walkDirectory(io, allocator, path, &results);
 
     return results.toOwnedSlice(allocator);
 }
 
 /// List directory entries in sorted order
-pub fn listSorted(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
-    const entries = try listDirectory(allocator, path);
+pub fn listSorted(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
+    const entries = try listDirectory(io, allocator, path);
     errdefer {
         for (entries) |entry| {
             allocator.free(entry);
@@ -12297,11 +12412,11 @@ pub const FileInfo = struct {
 };
 
 /// List directory with file information
-pub fn listWithInfo(allocator: std.mem.Allocator, path: []const u8) ![]FileInfo {
-    var dir = try std.fs.cwd().openDir(path, .{});
-    defer dir.close();
+pub fn listWithInfo(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![]FileInfo {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{});
+    defer dir.close(io);
 
-    var entries = std.ArrayList(FileInfo){};
+    var entries = std.ArrayList(FileInfo).empty;
     errdefer {
         for (entries.items) |*item| {
             allocator.free(item.name);
@@ -12310,8 +12425,8 @@ pub fn listWithInfo(allocator: std.mem.Allocator, path: []const u8) ![]FileInfo 
     }
 
     var iter = dir.iterate();
-    while (try iter.next()) |entry| {
-        const stat = dir.statFile(entry.name) catch continue;
+    while (try iter.next(io)) |entry| {
+        const stat = dir.statFile(io, entry.name, .{}) catch continue;
 
         const name = try allocator.dupe(u8, entry.name);
         errdefer allocator.free(name);
@@ -12320,7 +12435,7 @@ pub fn listWithInfo(allocator: std.mem.Allocator, path: []const u8) ![]FileInfo 
             .name = name,
             .size = stat.size,
             .is_dir = entry.kind == .directory,
-            .mtime = stat.mtime,
+            .mtime = stat.mtime.toNanoseconds(),
         });
     }
 
@@ -12343,15 +12458,13 @@ pub fn matchesPattern(name: []const u8, pattern: []const u8) bool {
 }
 
 /// List files matching pattern
-pub fn listByPattern(
-    allocator: std.mem.Allocator,
+pub fn listByPattern(io: std.Io, allocator: std.mem.Allocator,
     path: []const u8,
-    pattern: []const u8,
-) ![][]const u8 {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+    pattern: []const u8,) ![][]const u8 {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var entries = std.ArrayList([]const u8){};
+    var entries = std.ArrayList([]const u8).empty;
     errdefer {
         for (entries.items) |item| {
             allocator.free(item);
@@ -12360,7 +12473,7 @@ pub fn listByPattern(
     }
 
     var iter = dir.iterate();
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         if (matchesPattern(entry.name, pattern)) {
             const name = try allocator.dupe(u8, entry.name);
             try entries.append(allocator, name);
@@ -12376,11 +12489,11 @@ pub fn isHidden(name: []const u8) bool {
 }
 
 /// List visible files (exclude hidden)
-pub fn listVisible(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+pub fn listVisible(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var entries = std.ArrayList([]const u8){};
+    var entries = std.ArrayList([]const u8).empty;
     errdefer {
         for (entries.items) |item| {
             allocator.free(item);
@@ -12389,7 +12502,7 @@ pub fn listVisible(allocator: std.mem.Allocator, path: []const u8) ![][]const u8
     }
 
     var iter = dir.iterate();
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         if (!isHidden(entry.name)) {
             const name = try allocator.dupe(u8, entry.name);
             try entries.append(allocator, name);
@@ -12400,11 +12513,11 @@ pub fn listVisible(allocator: std.mem.Allocator, path: []const u8) ![][]const u8
 }
 
 /// List limited number of entries
-pub fn listN(allocator: std.mem.Allocator, path: []const u8, max_count: usize) ![][]const u8 {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+pub fn listN(io: std.Io, allocator: std.mem.Allocator, path: []const u8, max_count: usize) ![][]const u8 {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var entries = std.ArrayList([]const u8){};
+    var entries = std.ArrayList([]const u8).empty;
     errdefer {
         for (entries.items) |item| {
             allocator.free(item);
@@ -12414,7 +12527,7 @@ pub fn listN(allocator: std.mem.Allocator, path: []const u8, max_count: usize) !
 
     var iter = dir.iterate();
     var count: usize = 0;
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         if (count >= max_count) break;
 
         const name = try allocator.dupe(u8, entry.name);
@@ -12426,16 +12539,16 @@ pub fn listN(allocator: std.mem.Allocator, path: []const u8, max_count: usize) !
 }
 
 /// List directory with safe error handling
-pub fn safeListing(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
-    var dir = std.fs.cwd().openDir(path, .{ .iterate = true }) catch |err| switch (err) {
+pub fn safeListing(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
+    var dir = std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true }) catch |err| switch (err) {
         error.FileNotFound => return error.DirectoryNotFound,
         error.NotDir => return error.NotADirectory,
         error.AccessDenied => return error.PermissionDenied,
         else => return err,
     };
-    defer dir.close();
+    defer dir.close(io);
 
-    var entries = std.ArrayList([]const u8){};
+    var entries = std.ArrayList([]const u8).empty;
     errdefer {
         for (entries.items) |item| {
             allocator.free(item);
@@ -12444,7 +12557,7 @@ pub fn safeListing(allocator: std.mem.Allocator, path: []const u8) ![][]const u8
     }
 
     var iter = dir.iterate();
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         const name = try allocator.dupe(u8, entry.name);
         try entries.append(allocator, name);
     }
@@ -12456,22 +12569,23 @@ pub fn safeListing(allocator: std.mem.Allocator, path: []const u8) ![][]const u8
 
 // ANCHOR: basic_listing
 test "list directory" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_list_dir";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create test files
     {
-        const file1 = try std.fs.cwd().createFile("/tmp/test_list_dir/file1.txt", .{});
-        defer file1.close();
-        const file2 = try std.fs.cwd().createFile("/tmp/test_list_dir/file2.txt", .{});
-        defer file2.close();
+        const file1 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_list_dir/file1.txt", .{});
+        defer file1.close(io);
+        const file2 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_list_dir/file2.txt", .{});
+        defer file2.close(io);
     }
 
     // List directory
-    const entries = try listDirectory(allocator, test_dir);
+    const entries = try listDirectory(io, allocator, test_dir);
     defer {
         for (entries) |entry| {
             allocator.free(entry);
@@ -12483,35 +12597,37 @@ test "list directory" {
 }
 
 test "list empty directory" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_empty_dir";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
-    const entries = try listDirectory(allocator, test_dir);
+    const entries = try listDirectory(io, allocator, test_dir);
     defer allocator.free(entries);
 
     try std.testing.expectEqual(@as(usize, 0), entries.len);
 }
 
 test "list by type" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_by_type";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create files and subdirectory
     {
-        const file1 = try std.fs.cwd().createFile("/tmp/test_by_type/file1.txt", .{});
-        defer file1.close();
-        const file2 = try std.fs.cwd().createFile("/tmp/test_by_type/file2.txt", .{});
-        defer file2.close();
+        const file1 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_by_type/file1.txt", .{});
+        defer file1.close(io);
+        const file2 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_by_type/file2.txt", .{});
+        defer file2.close(io);
     }
-    try std.fs.cwd().makeDir("/tmp/test_by_type/subdir");
+    try std.Io.Dir.cwd().createDir(io, "/tmp/test_by_type/subdir", .default_dir);
 
-    var contents = try listByType(allocator, test_dir);
+    var contents = try listByType(io, allocator, test_dir);
     defer contents.deinit(allocator);
 
     try std.testing.expectEqual(@as(usize, 2), contents.files.len);
@@ -12520,23 +12636,24 @@ test "list by type" {
 // ANCHOR_END: basic_listing
 
 test "list by extension" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_by_ext";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create files with different extensions
     {
-        const file1 = try std.fs.cwd().createFile("/tmp/test_by_ext/file1.txt", .{});
-        defer file1.close();
-        const file2 = try std.fs.cwd().createFile("/tmp/test_by_ext/file2.txt", .{});
-        defer file2.close();
-        const file3 = try std.fs.cwd().createFile("/tmp/test_by_ext/file3.md", .{});
-        defer file3.close();
+        const file1 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_by_ext/file1.txt", .{});
+        defer file1.close(io);
+        const file2 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_by_ext/file2.txt", .{});
+        defer file2.close(io);
+        const file3 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_by_ext/file3.md", .{});
+        defer file3.close(io);
     }
 
-    const entries = try listByExtension(allocator, test_dir, ".txt");
+    const entries = try listByExtension(io, allocator, test_dir, ".txt");
     defer {
         for (entries) |entry| {
             allocator.free(entry);
@@ -12549,24 +12666,25 @@ test "list by extension" {
 
 // ANCHOR: filtered_listing
 test "list recursive" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_recursive";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create nested structure
     {
-        const file1 = try std.fs.cwd().createFile("/tmp/test_recursive/file1.txt", .{});
-        defer file1.close();
+        const file1 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_recursive/file1.txt", .{});
+        defer file1.close(io);
     }
-    try std.fs.cwd().makeDir("/tmp/test_recursive/subdir");
+    try std.Io.Dir.cwd().createDir(io, "/tmp/test_recursive/subdir", .default_dir);
     {
-        const file2 = try std.fs.cwd().createFile("/tmp/test_recursive/subdir/file2.txt", .{});
-        defer file2.close();
+        const file2 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_recursive/subdir/file2.txt", .{});
+        defer file2.close(io);
     }
 
-    const entries = try listRecursive(allocator, test_dir);
+    const entries = try listRecursive(io, allocator, test_dir);
     defer {
         for (entries) |entry| {
             allocator.free(entry);
@@ -12579,23 +12697,24 @@ test "list recursive" {
 }
 
 test "list sorted" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_sorted";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create files in non-alphabetical order
     {
-        const file_c = try std.fs.cwd().createFile("/tmp/test_sorted/c.txt", .{});
-        defer file_c.close();
-        const file_a = try std.fs.cwd().createFile("/tmp/test_sorted/a.txt", .{});
-        defer file_a.close();
-        const file_b = try std.fs.cwd().createFile("/tmp/test_sorted/b.txt", .{});
-        defer file_b.close();
+        const file_c = try std.Io.Dir.cwd().createFile(io, "/tmp/test_sorted/c.txt", .{});
+        defer file_c.close(io);
+        const file_a = try std.Io.Dir.cwd().createFile(io, "/tmp/test_sorted/a.txt", .{});
+        defer file_a.close(io);
+        const file_b = try std.Io.Dir.cwd().createFile(io, "/tmp/test_sorted/b.txt", .{});
+        defer file_b.close(io);
     }
 
-    const entries = try listSorted(allocator, test_dir);
+    const entries = try listSorted(io, allocator, test_dir);
     defer {
         for (entries) |entry| {
             allocator.free(entry);
@@ -12612,20 +12731,21 @@ test "list sorted" {
 
 // ANCHOR: advanced_listing
 test "list with info" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_with_info";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create file with content
     {
-        const file = try std.fs.cwd().createFile("/tmp/test_with_info/file.txt", .{});
-        defer file.close();
-        try file.writeAll("Hello, World!");
+        const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_with_info/file.txt", .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "Hello, World!");
     }
 
-    const entries = try listWithInfo(allocator, test_dir);
+    const entries = try listWithInfo(io, allocator, test_dir);
     defer {
         for (entries) |*entry| {
             entry.deinit(allocator);
@@ -12647,23 +12767,24 @@ test "matches pattern" {
 }
 
 test "list by pattern" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_pattern";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create files
     {
-        const file1 = try std.fs.cwd().createFile("/tmp/test_pattern/test1.txt", .{});
-        defer file1.close();
-        const file2 = try std.fs.cwd().createFile("/tmp/test_pattern/test2.txt", .{});
-        defer file2.close();
-        const file3 = try std.fs.cwd().createFile("/tmp/test_pattern/readme.md", .{});
-        defer file3.close();
+        const file1 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_pattern/test1.txt", .{});
+        defer file1.close(io);
+        const file2 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_pattern/test2.txt", .{});
+        defer file2.close(io);
+        const file3 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_pattern/readme.md", .{});
+        defer file3.close(io);
     }
 
-    const entries = try listByPattern(allocator, test_dir, "test*.txt");
+    const entries = try listByPattern(io, allocator, test_dir, "test*.txt");
     defer {
         for (entries) |entry| {
             allocator.free(entry);
@@ -12683,21 +12804,22 @@ test "is hidden" {
 }
 
 test "list visible" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_visible";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create visible and hidden files
     {
-        const file1 = try std.fs.cwd().createFile("/tmp/test_visible/visible.txt", .{});
-        defer file1.close();
-        const file2 = try std.fs.cwd().createFile("/tmp/test_visible/.hidden", .{});
-        defer file2.close();
+        const file1 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_visible/visible.txt", .{});
+        defer file1.close(io);
+        const file2 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_visible/.hidden", .{});
+        defer file2.close(io);
     }
 
-    const entries = try listVisible(allocator, test_dir);
+    const entries = try listVisible(io, allocator, test_dir);
     defer {
         for (entries) |entry| {
             allocator.free(entry);
@@ -12710,23 +12832,24 @@ test "list visible" {
 }
 
 test "list N entries" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_list_n";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create multiple files
     {
-        const file1 = try std.fs.cwd().createFile("/tmp/test_list_n/file1.txt", .{});
-        defer file1.close();
-        const file2 = try std.fs.cwd().createFile("/tmp/test_list_n/file2.txt", .{});
-        defer file2.close();
-        const file3 = try std.fs.cwd().createFile("/tmp/test_list_n/file3.txt", .{});
-        defer file3.close();
+        const file1 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_list_n/file1.txt", .{});
+        defer file1.close(io);
+        const file2 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_list_n/file2.txt", .{});
+        defer file2.close(io);
+        const file3 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_list_n/file3.txt", .{});
+        defer file3.close(io);
     }
 
-    const entries = try listN(allocator, test_dir, 2);
+    const entries = try listN(io, allocator, test_dir, 2);
     defer {
         for (entries) |entry| {
             allocator.free(entry);
@@ -12738,25 +12861,27 @@ test "list N entries" {
 }
 
 test "safe listing - not found" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const result = safeListing(allocator, "/tmp/does_not_exist_dir_12345");
+    const result = safeListing(io, allocator, "/tmp/does_not_exist_dir_12345");
     try std.testing.expectError(error.DirectoryNotFound, result);
 }
 
 test "safe listing - success" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_safe_list";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     {
-        const file = try std.fs.cwd().createFile("/tmp/test_safe_list/file.txt", .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_safe_list/file.txt", .{});
+        defer file.close(io);
     }
 
-    const entries = try safeListing(allocator, test_dir);
+    const entries = try safeListing(io, allocator, test_dir);
     defer {
         for (entries) |entry| {
             allocator.free(entry);
@@ -12768,9 +12893,10 @@ test "safe listing - success" {
 }
 
 test "list nonexistent directory" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const result = listDirectory(allocator, "/tmp/does_not_exist_12345");
+    const result = listDirectory(io, allocator, "/tmp/does_not_exist_12345");
     try std.testing.expectError(error.FileNotFound, result);
 }
 // ANCHOR_END: advanced_listing
@@ -12794,15 +12920,16 @@ You need to work with filenames that may contain invalid UTF-8 sequences or oper
 
 ```zig
 test "list raw filenames" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_raw_list";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     {
-        const file = try std.fs.cwd().createFile("/tmp/test_raw_list/normal.txt", .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_raw_list/normal.txt", .{});
+        defer file.close(io);
     }
 
     const entries = try listRawFilenames(allocator, test_dir);
@@ -12817,20 +12944,21 @@ test "list raw filenames" {
 }
 
 test "open raw path" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_raw_open.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
     }
 
     // Open using raw path
     const file = try openRawPath(test_path);
-    defer file.close();
+    defer file.close(io);
 
-    const stat = try file.stat();
+    const stat = try file.stat(io);
     try std.testing.expect(stat.kind == .file);
 }
 
@@ -12875,18 +13003,19 @@ test "sanitize path" {
 }
 
 test "list with encoding" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_encoding";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create test files
     {
-        const file1 = try std.fs.cwd().createFile("/tmp/test_encoding/normal.txt", .{});
-        defer file1.close();
-        const file2 = try std.fs.cwd().createFile("/tmp/test_encoding/test2.txt", .{});
-        defer file2.close();
+        const file1 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_encoding/normal.txt", .{});
+        defer file1.close(io);
+        const file2 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_encoding/test2.txt", .{});
+        defer file2.close(io);
     }
 
     const entries = try listWithEncoding(allocator, test_dir);
@@ -12905,19 +13034,20 @@ test "list with encoding" {
 }
 
 test "create file raw" {
+    const io = std.testing.io;
     const dir_path = "/tmp/test_raw_create";
-    try std.fs.cwd().makeDir(dir_path);
-    defer std.fs.cwd().deleteTree(dir_path) catch {};
+    try std.Io.Dir.cwd().createDir(io, dir_path, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, dir_path) catch {};
 
     const filename = "test.txt";
     const file = try createFileRaw(dir_path, filename);
-    file.close();
+    file.close(io);
 
     // Verify file exists
-    var dir = try std.fs.cwd().openDir(dir_path, .{});
-    defer dir.close();
+    var dir = try std.Io.Dir.cwd().openDir(io, dir_path, .{});
+    defer dir.close(io);
 
-    const stat = try dir.statFile(filename);
+    const stat = try dir.statFile(io, filename, .{});
     try std.testing.expect(stat.kind == .file);
 }
 ```
@@ -12971,20 +13101,21 @@ test "safe open raw - not found" {
 }
 
 test "safe open raw - success" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_safe_open.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
     }
 
     // Open safely
     const file = try safeOpenRaw(test_path);
-    defer file.close();
+    defer file.close(io);
 
-    const stat = try file.stat();
+    const stat = try file.stat(io);
     try std.testing.expect(stat.kind == .file);
 }
 
@@ -13021,9 +13152,9 @@ Zig treats paths as byte slices without encoding assumptions:
 
 ```zig
 // Paths are just []const u8 - no UTF-8 requirement
-pub fn openRawPath(path: []const u8) !std.fs.File {
+pub fn openRawPath(io: std.Io, path: []const u8) !std.Io.File {
     // Direct byte-level access, no validation
-    return std.fs.cwd().openFile(path, .{});
+    return std.Io.Dir.cwd().openFile(io, path, .{});
 }
 ```
 
@@ -13089,7 +13220,7 @@ pub fn sanitizePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     }
 
     // Replace invalid sequences with replacement character
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;
@@ -13159,14 +13290,14 @@ pub const PathEntry = struct {
     }
 };
 
-pub fn listWithEncoding(allocator: std.mem.Allocator, path: []const u8) ![]PathEntry {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+pub fn listWithEncoding(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![]PathEntry {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var entries = std.ArrayList(PathEntry){};
+    var entries = std.ArrayList(PathEntry).empty;
     errdefer entries.deinit(allocator);
 
-    var iter = dir.iterate();
+    var iter = dir.iterate(io);
     while (try iter.next()) |entry| {
         const raw = try allocator.dupe(u8, entry.name);
         errdefer allocator.free(raw);
@@ -13193,28 +13324,29 @@ pub fn listWithEncoding(allocator: std.mem.Allocator, path: []const u8) ![]PathE
 Create files using raw byte sequences:
 
 ```zig
-pub fn createFileRaw(dir_path: []const u8, filename: []const u8) !std.fs.File {
-    var dir = try std.fs.cwd().openDir(dir_path, .{});
-    defer dir.close();
+pub fn createFileRaw(io: std.Io, dir_path: []const u8, filename: []const u8) !std.Io.File {
+    var dir = try std.Io.Dir.cwd().openDir(io, dir_path, .{});
+    defer dir.close(io);
 
     // No encoding validation - direct byte-level operation
-    return dir.createFile(filename, .{});
+    return dir.createFile(io, filename, .{});
 }
 
 test "create file raw" {
+    const io = std.testing.io;
     const dir_path = "/tmp/test_raw_create";
-    try std.fs.cwd().makeDir(dir_path);
-    defer std.fs.cwd().deleteTree(dir_path) catch {};
+    try std.Io.Dir.cwd().createDir(io, dir_path, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, dir_path) catch {};
 
     const filename = "test.txt";
-    const file = try createFileRaw(dir_path, filename);
-    file.close();
+    const file = try createFileRaw(io, dir_path, filename);
+    file.close(io);
 
     // Verify file exists using raw bytes
-    var dir = try std.fs.cwd().openDir(dir_path, .{});
-    defer dir.close();
+    var dir = try std.Io.Dir.cwd().openDir(io, dir_path, .{});
+    defer dir.close(io);
 
-    const stat = try dir.statFile(filename);
+    const stat = try dir.statFile(io, filename, .{});
     try std.testing.expect(stat.kind == .file);
 }
 ```
@@ -13226,7 +13358,7 @@ Normalize paths while preserving raw bytes:
 ```zig
 pub fn normalizePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
     // Resolve relative components without encoding assumptions
-    var components = std.ArrayList([]const u8){};
+    var components = std.ArrayList([]const u8).empty;
     defer components.deinit(allocator);
 
     var iter = std.mem.splitScalar(u8, path, '/');
@@ -13249,7 +13381,7 @@ pub fn normalizePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
         return allocator.dupe(u8, "/");
     }
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (components.items) |component| {
@@ -13279,7 +13411,7 @@ Display problematic filenames using hex escaping:
 
 ```zig
 pub fn escapePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (path) |byte| {
@@ -13325,15 +13457,15 @@ test "escape path" {
 
 **Cross-platform handling:**
 ```zig
-pub fn openFileAnyEncoding(path: []const u8) !std.fs.File {
+pub fn openFileAnyEncoding(io: std.Io, path: []const u8) !std.Io.File {
     const builtin = @import("builtin");
 
     if (builtin.os.tag == .windows) {
         // Windows path handling with UTF-16 conversion
-        return std.fs.cwd().openFile(path, .{});
+        return std.Io.Dir.cwd().openFile(io, path, .{});
     } else {
         // Unix direct byte access
-        return std.fs.cwd().openFile(path, .{});
+        return std.Io.Dir.cwd().openFile(io, path, .{});
     }
 }
 ```
@@ -13348,11 +13480,10 @@ pub fn openFileAnyEncoding(path: []const u8) !std.fs.File {
 
 **Error handling:**
 ```zig
-pub fn safeOpenRaw(path: []const u8) !std.fs.File {
-    return std.fs.cwd().openFile(path, .{}) catch |err| switch (err) {
+pub fn safeOpenRaw(io: std.Io, path: []const u8) !std.Io.File {
+    return std.Io.Dir.cwd().openFile(io, path, .{}) catch |err| switch (err) {
         error.FileNotFound => return error.PathNotFound,
         error.InvalidUtf8 => return error.EncodingError,
-        else => return err,
     };
 }
 ```
@@ -13372,15 +13503,15 @@ pub fn safeOpenRaw(path: []const u8) !std.fs.File {
 const std = @import("std");
 
 /// List filenames as raw bytes without encoding validation
-pub fn listRawFilenames(allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+pub fn listRawFilenames(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![][]const u8 {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var entries = std.ArrayList([]const u8){};
+    var entries = std.ArrayList([]const u8).empty;
     errdefer entries.deinit(allocator);
 
     var iter = dir.iterate();
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         const name = try allocator.dupe(u8, entry.name);
         try entries.append(allocator, name);
     }
@@ -13389,8 +13520,8 @@ pub fn listRawFilenames(allocator: std.mem.Allocator, path: []const u8) ![][]con
 }
 
 /// Open file using raw byte path
-pub fn openRawPath(path: []const u8) !std.fs.File {
-    return std.fs.cwd().openFile(path, .{});
+pub fn openRawPath(io: std.Io, path: []const u8) !std.Io.File {
+    return std.Io.Dir.cwd().openFile(io, path, .{});
 }
 
 /// Compare paths at byte level
@@ -13414,7 +13545,7 @@ pub fn sanitizePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
         return allocator.dupe(u8, path);
     }
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     var i: usize = 0;
@@ -13454,15 +13585,15 @@ pub const PathEntry = struct {
 };
 
 /// List directory entries with encoding information
-pub fn listWithEncoding(allocator: std.mem.Allocator, path: []const u8) ![]PathEntry {
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+pub fn listWithEncoding(io: std.Io, allocator: std.mem.Allocator, path: []const u8) ![]PathEntry {
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var entries = std.ArrayList(PathEntry){};
+    var entries = std.ArrayList(PathEntry).empty;
     errdefer entries.deinit(allocator);
 
     var iter = dir.iterate();
-    while (try iter.next()) |entry| {
+    while (try iter.next(io)) |entry| {
         const raw = try allocator.dupe(u8, entry.name);
         errdefer allocator.free(raw);
 
@@ -13483,16 +13614,16 @@ pub fn listWithEncoding(allocator: std.mem.Allocator, path: []const u8) ![]PathE
 }
 
 /// Create file using raw byte filename
-pub fn createFileRaw(dir_path: []const u8, filename: []const u8) !std.fs.File {
-    var dir = try std.fs.cwd().openDir(dir_path, .{});
-    defer dir.close();
+pub fn createFileRaw(io: std.Io, dir_path: []const u8, filename: []const u8) !std.Io.File {
+    var dir = try std.Io.Dir.cwd().openDir(io, dir_path, .{});
+    defer dir.close(io);
 
-    return dir.createFile(filename, .{});
+    return dir.createFile(io, filename, .{});
 }
 
 /// Normalize path without encoding assumptions
 pub fn normalizePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    var components = std.ArrayList([]const u8){};
+    var components = std.ArrayList([]const u8).empty;
     defer components.deinit(allocator);
 
     var iter = std.mem.splitScalar(u8, path, '/');
@@ -13514,7 +13645,7 @@ pub fn normalizePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
         return allocator.dupe(u8, "/");
     }
 
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (components.items) |component| {
@@ -13527,7 +13658,7 @@ pub fn normalizePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
 
 /// Escape path for display using hex escaping
 pub fn escapePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    var result = std.ArrayList(u8){};
+    var result = std.ArrayList(u8).empty;
     errdefer result.deinit(allocator);
 
     for (path) |byte| {
@@ -13544,8 +13675,8 @@ pub fn escapePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
 }
 
 /// Safe open with detailed error handling
-pub fn safeOpenRaw(path: []const u8) !std.fs.File {
-    return std.fs.cwd().openFile(path, .{}) catch |err| switch (err) {
+pub fn safeOpenRaw(io: std.Io, path: []const u8) !std.Io.File {
+    return std.Io.Dir.cwd().openFile(io, path, .{}) catch |err| switch (err) {
         error.FileNotFound => return error.PathNotFound,
         else => return err,
     };
@@ -13555,18 +13686,19 @@ pub fn safeOpenRaw(path: []const u8) !std.fs.File {
 
 // ANCHOR: raw_byte_handling
 test "list raw filenames" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_raw_list";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     {
-        const file = try std.fs.cwd().createFile("/tmp/test_raw_list/normal.txt", .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_raw_list/normal.txt", .{});
+        defer file.close(io);
     }
 
-    const entries = try listRawFilenames(allocator, test_dir);
+    const entries = try listRawFilenames(io, allocator, test_dir);
     defer {
         for (entries) |entry| {
             allocator.free(entry);
@@ -13578,20 +13710,21 @@ test "list raw filenames" {
 }
 
 test "open raw path" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_raw_open.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
     }
 
     // Open using raw path
-    const file = try openRawPath(test_path);
-    defer file.close();
+    const file = try openRawPath(io, test_path);
+    defer file.close(io);
 
-    const stat = try file.stat();
+    const stat = try file.stat(io);
     try std.testing.expect(stat.kind == .file);
 }
 
@@ -13634,21 +13767,22 @@ test "sanitize path" {
 }
 
 test "list with encoding" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const test_dir = "/tmp/test_encoding";
-    try std.fs.cwd().makeDir(test_dir);
-    defer std.fs.cwd().deleteTree(test_dir) catch {};
+    try std.Io.Dir.cwd().createDir(io, test_dir, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, test_dir) catch {};
 
     // Create test files
     {
-        const file1 = try std.fs.cwd().createFile("/tmp/test_encoding/normal.txt", .{});
-        defer file1.close();
-        const file2 = try std.fs.cwd().createFile("/tmp/test_encoding/test2.txt", .{});
-        defer file2.close();
+        const file1 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_encoding/normal.txt", .{});
+        defer file1.close(io);
+        const file2 = try std.Io.Dir.cwd().createFile(io, "/tmp/test_encoding/test2.txt", .{});
+        defer file2.close(io);
     }
 
-    const entries = try listWithEncoding(allocator, test_dir);
+    const entries = try listWithEncoding(io, allocator, test_dir);
     defer {
         for (entries) |*entry| {
             var mut_entry = entry;
@@ -13664,19 +13798,20 @@ test "list with encoding" {
 }
 
 test "create file raw" {
+    const io = std.testing.io;
     const dir_path = "/tmp/test_raw_create";
-    try std.fs.cwd().makeDir(dir_path);
-    defer std.fs.cwd().deleteTree(dir_path) catch {};
+    try std.Io.Dir.cwd().createDir(io, dir_path, .default_dir);
+    defer std.Io.Dir.cwd().deleteTree(io, dir_path) catch {};
 
     const filename = "test.txt";
-    const file = try createFileRaw(dir_path, filename);
-    file.close();
+    const file = try createFileRaw(io, dir_path, filename);
+    file.close(io);
 
     // Verify file exists
-    var dir = try std.fs.cwd().openDir(dir_path, .{});
-    defer dir.close();
+    var dir = try std.Io.Dir.cwd().openDir(io, dir_path, .{});
+    defer dir.close(io);
 
-    const stat = try dir.statFile(filename);
+    const stat = try dir.statFile(io, filename, .{});
     try std.testing.expect(stat.kind == .file);
 }
 // ANCHOR_END: sanitize_paths
@@ -13723,25 +13858,27 @@ test "escape path with special chars" {
 }
 
 test "safe open raw - not found" {
-    const result = safeOpenRaw("/tmp/does_not_exist_12345.txt");
+    const io = std.testing.io;
+    const result = safeOpenRaw(io, "/tmp/does_not_exist_12345.txt");
     try std.testing.expectError(error.PathNotFound, result);
 }
 
 test "safe open raw - success" {
+    const io = std.testing.io;
     const test_path = "/tmp/test_safe_open.txt";
-    defer std.fs.cwd().deleteFile(test_path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, test_path) catch {};
 
     // Create file
     {
-        const file = try std.fs.cwd().createFile(test_path, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, test_path, .{});
+        defer file.close(io);
     }
 
     // Open safely
-    const file = try safeOpenRaw(test_path);
-    defer file.close();
+    const file = try safeOpenRaw(io, test_path);
+    defer file.close(io);
 
-    const stat = try file.stat();
+    const stat = try file.stat(io);
     try std.testing.expect(stat.kind == .file);
 }
 
@@ -13790,10 +13927,11 @@ You need to print or display filenames that may contain invalid UTF-8, control c
 ```zig
 test "print safe filename - valid" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printSafeFilename(writer, "normal.txt");
     try std.testing.expectEqualStrings("normal.txt", buffer.items);
@@ -13801,10 +13939,11 @@ test "print safe filename - valid" {
 
 test "print safe filename - with null byte" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     const bad_name = [_]u8{ 'b', 'a', 'd', 0x00, 'n', 'a', 'm', 'e' };
     try printSafeFilename(writer, &bad_name);
@@ -13813,10 +13952,11 @@ test "print safe filename - with null byte" {
 
 test "print to terminal" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printToTerminal(writer, "test.txt");
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "test.txt") != null);
@@ -13829,10 +13969,11 @@ test "print to terminal" {
 
 test "print with replacement" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printWithReplacement(writer, "test.txt");
     try std.testing.expectEqualStrings("test.txt", buffer.items);
@@ -13850,10 +13991,11 @@ test "print with replacement" {
 ```zig
 test "print truncated - long name" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printTruncated(writer, "very_long_filename_that_should_be_truncated.txt", 20);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "...") != null);
@@ -13869,10 +14011,11 @@ test "color codes" {
 
 test "print colored" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printColored(writer, "test.txt", .green);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "\x1b[32m") != null);
@@ -13882,10 +14025,11 @@ test "print colored" {
 
 test "print verbose without bytes" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printVerbose(writer, "test.txt", false);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "test.txt") != null);
@@ -13894,10 +14038,11 @@ test "print verbose without bytes" {
 
 test "print verbose with bytes" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printVerbose(writer, "test.txt", true);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "test.txt") != null);
@@ -13906,10 +14051,11 @@ test "print verbose with bytes" {
 
 test "print verbose with invalid UTF-8" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     const invalid = [_]u8{ 't', 'e', 's', 't', 0xFF };
     try printVerbose(writer, &invalid, false);
@@ -13918,10 +14064,11 @@ test "print verbose with invalid UTF-8" {
 
 test "print comparison - identical" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printComparison(writer, "test.txt", "test.txt");
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "Identical") != null);
@@ -13929,10 +14076,11 @@ test "print comparison - identical" {
 
 test "print comparison - different" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printComparison(writer, "test.txt", "other.txt");
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "Different") != null);
@@ -13944,10 +14092,11 @@ test "print comparison - different" {
 ```zig
 test "print JSON safe - normal" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printJsonSafe(writer, "test.txt");
     try std.testing.expectEqualStrings("\"test.txt\"", buffer.items);
@@ -13955,10 +14104,11 @@ test "print JSON safe - normal" {
 
 test "print JSON safe - with newline" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printJsonSafe(writer, "test\nfile.txt");
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "\\n") != null);
@@ -13966,10 +14116,11 @@ test "print JSON safe - with newline" {
 
 test "print JSON safe - with tab" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printJsonSafe(writer, "test\tfile.txt");
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "\\t") != null);
@@ -13977,10 +14128,11 @@ test "print JSON safe - with tab" {
 
 test "print JSON safe - with backspace" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printJsonSafe(writer, "test\x08file.txt");
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "\\b") != null);
@@ -13994,8 +14146,10 @@ test "print JSON safe - with backspace" {
 Display filenames without breaking terminal:
 
 ```zig
-pub fn printToTerminal(filename: []const u8) !void {
-    const stdout = std.io.getStdOut().writer();
+pub fn printToTerminal(io: std.Io, filename: []const u8) !void {
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
 
     // Escape control characters that could affect terminal
     for (filename) |byte| {
@@ -14008,10 +14162,11 @@ pub fn printToTerminal(filename: []const u8) !void {
         } else if (byte == '\t') {
             try stdout.writeAll("\\t");
         } else {
-            try std.fmt.format(stdout, "\\x{X:0>2}", .{byte});
+            try stdout.print("\\x{X:0>2}", .{byte});
         }
     }
     try stdout.writeByte('\n');
+    try stdout.flush();
 }
 ```
 
@@ -14046,7 +14201,7 @@ pub fn printWithReplacement(
 
         // Check if it's a control character
         if (filename[i] < 32) {
-            try std.fmt.format(writer, "\\x{X:0>2}", .{filename[i]});
+            try writer.print("\\x{X:0>2}", .{filename[i]});
             i += 1;
         } else {
             try writer.writeAll(filename[i .. i + len]);
@@ -14057,10 +14212,11 @@ pub fn printWithReplacement(
 
 test "print with replacement" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     // Valid UTF-8
     try printWithReplacement(writer, "test.txt");
@@ -14090,7 +14246,7 @@ pub fn printQuoted(writer: anytype, filename: []const u8) !void {
             '\n' => try writer.writeAll("\\n"),
             '\r' => try writer.writeAll("\\r"),
             '\t' => try writer.writeAll("\\t"),
-            0...31, 127...255 => try std.fmt.format(writer, "\\x{X:0>2}", .{byte}),
+            0...31, 127...255 => try writer.print("\\x{X:0>2}", .{byte}),
             else => try writer.writeByte(byte),
         }
     }
@@ -14100,10 +14256,11 @@ pub fn printQuoted(writer: anytype, filename: []const u8) !void {
 
 test "print quoted" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printQuoted(writer, "test.txt");
     try std.testing.expectEqualStrings("\"test.txt\"", buffer.items);
@@ -14120,18 +14277,21 @@ test "print quoted" {
 List directory contents with safe filename display:
 
 ```zig
-pub fn listDirectorySafe(allocator: std.mem.Allocator, path: []const u8) !void {
-    const stdout = std.io.getStdOut().writer();
+pub fn listDirectorySafe(io: std.Io, allocator: std.mem.Allocator, path: []const u8) !void {
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
 
-    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
-    defer dir.close();
+    var dir = try std.Io.Dir.cwd().openDir(io, path, .{ .iterate = true });
+    defer dir.close(io);
 
-    var iter = dir.iterate();
+    var iter = dir.iterate(io);
     while (try iter.next()) |entry| {
         try stdout.writeAll("  ");
         try printSafeFilename(stdout, entry.name);
         try stdout.writeByte('\n');
     }
+    try stdout.flush();
 }
 ```
 
@@ -14158,10 +14318,11 @@ pub fn printTruncated(
 
 test "print truncated" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     // Short name
     try printTruncated(writer, "short.txt", 20);
@@ -14180,20 +14341,18 @@ test "print truncated" {
 Format filenames in columns:
 
 ```zig
-pub fn printInColumns(
-    writer: anytype,
+pub fn printInColumns(io: std.Io, writer: anytype,
     filenames: []const []const u8,
     columns: usize,
-    width: usize,
-) !void {
+    width: usize,) !void {
     var col: usize = 0;
 
     for (filenames) |filename| {
         var buffer: [256]u8 = undefined;
-        var fbs = std.io.fixedBufferStream(&buffer);
-        try printSafeFilename(fbs.writer(), filename);
+        var fbs = std.Io.Writer.fixed(&buffer);
+        try printSafeFilename(&fbs, filename);
 
-        const display = fbs.getWritten();
+        const display = fbs.buffered();
 
         try writer.writeAll(display);
 
@@ -14253,10 +14412,11 @@ pub fn printColored(
 
 test "print colored" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printColored(writer, "test.txt", .green);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "\x1b[32m") != null);
@@ -14280,7 +14440,7 @@ pub fn printVerbose(
         try writer.writeAll(" [bytes: ");
         for (filename, 0..) |byte, i| {
             if (i > 0) try writer.writeByte(' ');
-            try std.fmt.format(writer, "{X:0>2}", .{byte});
+            try writer.print("{X:0>2}", .{byte});
         }
         try writer.writeByte(']');
     }
@@ -14326,17 +14486,17 @@ pub fn printComparison(
 Log filenames safely:
 
 ```zig
-pub fn logFilename(filename: []const u8, level: std.log.Level) !void {
+pub fn logFilename(io: std.Io, filename: []const u8, level: std.log.Level) !void {
     var buffer: [1024]u8 = undefined;
-    var fbs = std.io.fixedBufferStream(&buffer);
-    const writer = fbs.writer();
+    var fbs = std.Io.Writer.fixed(&buffer);
+    const writer = &fbs;
 
     try printSafeFilename(writer, filename);
 
     switch (level) {
-        .info => std.log.info("{s}", .{fbs.getWritten()}),
-        .warn => std.log.warn("{s}", .{fbs.getWritten()}),
-        .err => std.log.err("{s}", .{fbs.getWritten()}),
+        .info => std.log.info("{s}", .{fbs.buffered()}),
+        .warn => std.log.warn("{s}", .{fbs.buffered()}),
+        .err => std.log.err("{s}", .{fbs.buffered()}),
         else => {},
     }
 }
@@ -14359,7 +14519,7 @@ pub fn printJsonSafe(writer: anytype, filename: []const u8) !void {
             '\t' => try writer.writeAll("\\t"),
             '\x08' => try writer.writeAll("\\b"),
             '\x0C' => try writer.writeAll("\\f"),
-            0...31, 127 => try std.fmt.format(writer, "\\u{0:0>4X}", .{byte}),
+            0...31, 127 => try writer.print("\\u{0:0>4X}", .{byte}),
             else => try writer.writeByte(byte),
         }
     }
@@ -14369,10 +14529,11 @@ pub fn printJsonSafe(writer: anytype, filename: []const u8) !void {
 
 test "print JSON safe" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printJsonSafe(writer, "test.txt");
     try std.testing.expectEqualStrings("\"test.txt\"", buffer.items);
@@ -14394,15 +14555,18 @@ test "print JSON safe" {
 
 **Error handling:**
 ```zig
-pub fn safePrint(filename: []const u8) void {
-    const stdout = std.io.getStdOut().writer();
+pub fn safePrint(io: std.Io, filename: []const u8) void {
+    var stdout_buffer: [1024]u8 = undefined;
+    var stdout_writer = std.Io.File.stdout().writer(io, &stdout_buffer);
+    const stdout = &stdout_writer.interface;
     printSafeFilename(stdout, filename) catch {
         // Fallback to hex dump
         for (filename) |byte| {
-            std.fmt.format(stdout, "{X:0>2}", .{byte}) catch {};
+            stdout.print("{X:0>2}", .{byte}) catch {};
         }
     };
     stdout.writeByte('\n') catch {};
+    try stdout.flush();
 }
 ```
 
@@ -14431,7 +14595,7 @@ pub fn printSafeFilename(writer: anytype, filename: []const u8) !void {
         if (byte >= 32 and byte < 127) {
             try writer.writeByte(byte);
         } else {
-            try std.fmt.format(writer, "\\x{X:0>2}", .{byte});
+            try writer.print("\\x{X:0>2}", .{byte});
         }
     }
 }
@@ -14448,7 +14612,7 @@ pub fn printToTerminal(writer: anytype, filename: []const u8) !void {
         } else if (byte == '\t') {
             try writer.writeAll("\\t");
         } else {
-            try std.fmt.format(writer, "\\x{X:0>2}", .{byte});
+            try writer.print("\\x{X:0>2}", .{byte});
         }
     }
     try writer.writeByte('\n');
@@ -14475,7 +14639,7 @@ pub fn printWithReplacement(writer: anytype, filename: []const u8) !void {
         }
 
         if (filename[i] < 32) {
-            try std.fmt.format(writer, "\\x{X:0>2}", .{filename[i]});
+            try writer.print("\\x{X:0>2}", .{filename[i]});
             i += 1;
         } else {
             try writer.writeAll(filename[i .. i + len]);
@@ -14495,7 +14659,7 @@ pub fn printQuoted(writer: anytype, filename: []const u8) !void {
             '\n' => try writer.writeAll("\\n"),
             '\r' => try writer.writeAll("\\r"),
             '\t' => try writer.writeAll("\\t"),
-            0...8, 11, 12, 14...31, 127...255 => try std.fmt.format(writer, "\\x{X:0>2}", .{byte}),
+            0...8, 11, 12, 14...31, 127...255 => try writer.print("\\x{X:0>2}", .{byte}),
             else => try writer.writeByte(byte),
         }
     }
@@ -14562,7 +14726,7 @@ pub fn printVerbose(
         try writer.writeAll(" [bytes: ");
         for (filename, 0..) |byte, i| {
             if (i > 0) try writer.writeByte(' ');
-            try std.fmt.format(writer, "{X:0>2}", .{byte});
+            try writer.print("{X:0>2}", .{byte});
         }
         try writer.writeByte(']');
     }
@@ -14608,7 +14772,7 @@ pub fn printJsonSafe(writer: anytype, filename: []const u8) !void {
             '\t' => try writer.writeAll("\\t"),
             '\x08' => try writer.writeAll("\\b"),
             '\x0C' => try writer.writeAll("\\f"),
-            0...7, 11, 14...31, 127 => try std.fmt.format(writer, "\\u{X:0>4}", .{byte}),
+            0...7, 11, 14...31, 127 => try writer.print("\\u{X:0>4}", .{byte}),
             else => try writer.writeByte(byte),
         }
     }
@@ -14621,10 +14785,11 @@ pub fn printJsonSafe(writer: anytype, filename: []const u8) !void {
 // ANCHOR: safe_printing
 test "print safe filename - valid" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printSafeFilename(writer, "normal.txt");
     try std.testing.expectEqualStrings("normal.txt", buffer.items);
@@ -14632,10 +14797,11 @@ test "print safe filename - valid" {
 
 test "print safe filename - with null byte" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     const bad_name = [_]u8{ 'b', 'a', 'd', 0x00, 'n', 'a', 'm', 'e' };
     try printSafeFilename(writer, &bad_name);
@@ -14644,10 +14810,11 @@ test "print safe filename - with null byte" {
 
 test "print to terminal" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printToTerminal(writer, "test.txt");
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "test.txt") != null);
@@ -14660,10 +14827,11 @@ test "print to terminal" {
 
 test "print with replacement" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printWithReplacement(writer, "test.txt");
     try std.testing.expectEqualStrings("test.txt", buffer.items);
@@ -14678,10 +14846,11 @@ test "print with replacement" {
 
 test "print quoted" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printQuoted(writer, "test.txt");
     try std.testing.expectEqualStrings("\"test.txt\"", buffer.items);
@@ -14694,10 +14863,11 @@ test "print quoted" {
 
 test "print quoted with quote" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printQuoted(writer, "test\"file.txt");
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "\\\"") != null);
@@ -14705,10 +14875,11 @@ test "print quoted with quote" {
 
 test "print truncated - short name" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printTruncated(writer, "short.txt", 20);
     try std.testing.expectEqualStrings("short.txt", buffer.items);
@@ -14717,10 +14888,11 @@ test "print truncated - short name" {
 // ANCHOR: special_formatting
 test "print truncated - long name" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printTruncated(writer, "very_long_filename_that_should_be_truncated.txt", 20);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "...") != null);
@@ -14736,10 +14908,11 @@ test "color codes" {
 
 test "print colored" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printColored(writer, "test.txt", .green);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "\x1b[32m") != null);
@@ -14749,10 +14922,11 @@ test "print colored" {
 
 test "print verbose without bytes" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printVerbose(writer, "test.txt", false);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "test.txt") != null);
@@ -14761,10 +14935,11 @@ test "print verbose without bytes" {
 
 test "print verbose with bytes" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printVerbose(writer, "test.txt", true);
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "test.txt") != null);
@@ -14773,10 +14948,11 @@ test "print verbose with bytes" {
 
 test "print verbose with invalid UTF-8" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     const invalid = [_]u8{ 't', 'e', 's', 't', 0xFF };
     try printVerbose(writer, &invalid, false);
@@ -14785,10 +14961,11 @@ test "print verbose with invalid UTF-8" {
 
 test "print comparison - identical" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printComparison(writer, "test.txt", "test.txt");
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "Identical") != null);
@@ -14796,10 +14973,11 @@ test "print comparison - identical" {
 
 test "print comparison - different" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printComparison(writer, "test.txt", "other.txt");
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "Different") != null);
@@ -14809,10 +14987,11 @@ test "print comparison - different" {
 // ANCHOR: json_escaping
 test "print JSON safe - normal" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printJsonSafe(writer, "test.txt");
     try std.testing.expectEqualStrings("\"test.txt\"", buffer.items);
@@ -14820,10 +14999,11 @@ test "print JSON safe - normal" {
 
 test "print JSON safe - with newline" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printJsonSafe(writer, "test\nfile.txt");
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "\\n") != null);
@@ -14831,10 +15011,11 @@ test "print JSON safe - with newline" {
 
 test "print JSON safe - with tab" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printJsonSafe(writer, "test\tfile.txt");
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "\\t") != null);
@@ -14842,10 +15023,11 @@ test "print JSON safe - with tab" {
 
 test "print JSON safe - with backspace" {
     const allocator = std.testing.allocator;
-    var buffer = std.ArrayList(u8){};
+    var buffer = std.ArrayList(u8).empty;
     defer buffer.deinit(allocator);
 
-    const writer = buffer.writer(allocator);
+    var buffer_writer: std.Io.Writer.Allocating = .fromArrayList(allocator, &buffer);
+    const writer = &buffer_writer.writer;
 
     try printJsonSafe(writer, "test\x08file.txt");
     try std.testing.expect(std.mem.indexOf(u8, buffer.items, "\\b") != null);
@@ -14871,9 +15053,10 @@ You have a raw file descriptor from C code, a network socket, or system call, an
 
 ```zig
 test "wrap file descriptor" {
-    const file = try std.fs.cwd().createFile("/tmp/test_wrap.txt", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_wrap.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_wrap.txt", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_wrap.txt") catch {};
 
     const fd = file.handle;
 
@@ -14881,26 +15064,27 @@ test "wrap file descriptor" {
 
     try wrapped.writeAll("Hello from wrapped FD");
 
-    try wrapped.seekTo(0);
     var buffer: [100]u8 = undefined;
-    const n = try wrapped.read(&buffer);
+    const n = try wrapped.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("Hello from wrapped FD", buffer[0..n]);
 }
 
 test "get file descriptor" {
-    const file = try std.fs.cwd().createFile("/tmp/test_getfd.txt", .{});
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_getfd.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_getfd.txt", .{});
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_getfd.txt") catch {};
 
     const fd = getFd(file);
     try std.testing.expect(isValidFd(fd));
 }
 
 test "check file descriptor validity" {
-    const file = try std.fs.cwd().createFile("/tmp/test_fd_valid.txt", .{});
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_fd_valid.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_fd_valid.txt", .{});
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_fd_valid.txt") catch {};
 
     const fd = getFd(file);
     try std.testing.expect(isValidFd(fd));
@@ -14948,12 +15132,13 @@ test "wrap std fd invalid" {
 
 ```zig
 test "socket pair" {
+    const io = std.testing.io;
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     const pair = try createSocketPair();
-    defer pair[0].close();
-    defer pair[1].close();
+    defer pair[0].close(io);
+    defer pair[1].close(io);
 
     // Just verify we got valid sockets
     try std.testing.expect(isValidFd(pair[0].handle));
@@ -14961,31 +15146,32 @@ test "socket pair" {
 }
 
 test "pipe communication" {
+    const io = std.testing.io;
     const pipe = try createPipe();
-    defer pipe[0].close();
-    defer pipe[1].close();
+    defer pipe[0].close(io);
+    defer pipe[1].close(io);
 
     try pipe[1].writeAll("Pipe data");
 
     var buffer: [20]u8 = undefined;
-    const n = try pipe[0].read(&buffer);
+    const n = try pipe[0].readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("Pipe data", buffer[0..n]);
 }
 
 test "from C int" {
-    const file = try std.fs.cwd().createFile("/tmp/test_cint.txt", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_cint.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_cint.txt", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_cint.txt") catch {};
 
     const c_fd = toCInt(file);
     const back = fromCInt(c_fd);
 
     try back.writeAll("C interop");
 
-    try file.seekTo(0);
     var buffer: [20]u8 = undefined;
-    const n = try file.read(&buffer);
+    const n = try file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("C interop", buffer[0..n]);
 }
@@ -14995,9 +15181,10 @@ test "from C int" {
 
 ```zig
 test "owned file - not owned" {
-    const file = try std.fs.cwd().createFile("/tmp/test_not_owned.txt", .{});
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_not_owned.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_not_owned.txt", .{});
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_not_owned.txt") catch {};
 
     const fd = file.handle;
 
@@ -15008,14 +15195,14 @@ test "owned file - not owned" {
 }
 
 test "anonymous file" {
+    const io = std.testing.io;
     const file = try createAnonymousFile();
-    defer file.close();
+    defer file.close(io);
 
-    try file.writeAll("Anonymous data");
+    try file.writeStreamingAll(io, "Anonymous data");
 
-    try file.seekTo(0);
     var buffer: [20]u8 = undefined;
-    const n = try file.read(&buffer);
+    const n = try file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("Anonymous data", buffer[0..n]);
 }
@@ -15026,18 +15213,20 @@ test "safe wrap - invalid fd" {
 }
 
 test "safe wrap - valid fd" {
-    const file = try std.fs.cwd().createFile("/tmp/test_safe_wrap.txt", .{});
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_safe_wrap.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_safe_wrap.txt", .{});
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_safe_wrap.txt") catch {};
 
     const wrapped = try safeWrapFd(file.handle);
     try wrapped.writeAll("Safe wrap");
 }
 
 test "cross platform wrap" {
-    const file = try std.fs.cwd().createFile("/tmp/test_xplat.txt", .{});
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_xplat.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_xplat.txt", .{});
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_xplat.txt") catch {};
 
     const wrapped = try wrapFdCrossPlatform(file.handle);
     try wrapped.writeAll("Cross-platform");
@@ -15049,12 +15238,13 @@ test "cross platform wrap - invalid" {
 }
 
 test "set close on exec" {
+    const io = std.testing.io;
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
-    const file = try std.fs.cwd().createFile("/tmp/test_cloexec.txt", .{});
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_cloexec.txt") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_cloexec.txt", .{});
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_cloexec.txt") catch {};
 
     try setCloseOnExec(file);
 
@@ -15071,7 +15261,7 @@ test "set close on exec" {
 File descriptors are small integers representing open files:
 
 ```zig
-pub fn getFd(file: std.fs.File) std.posix.fd_t {
+pub fn getFd(file: std.Io.File) std.posix.fd_t {
     return file.handle;
 }
 
@@ -15085,9 +15275,10 @@ pub fn isValidFd(fd: std.posix.fd_t) bool {
 }
 
 test "check file descriptor validity" {
-    const file = try std.fs.cwd().createFile("/tmp/test_fd.txt", .{});
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_fd.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_fd.txt", .{});
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_fd.txt") catch {};
 
     const fd = getFd(file);
     try std.testing.expect(isValidFd(fd));
@@ -15099,19 +15290,19 @@ test "check file descriptor validity" {
 Wrap stdin, stdout, stderr:
 
 ```zig
-pub fn getStdin() std.fs.File {
-    return std.io.getStdIn();
+pub fn getStdin() std.Io.File {
+    return std.Io.File.stdin();
 }
 
-pub fn getStdout() std.fs.File {
-    return std.io.getStdOut();
+pub fn getStdout() std.Io.File {
+    return std.Io.File.stdout();
 }
 
-pub fn getStderr() std.fs.File {
-    return std.io.getStdErr();
+pub fn getStderr() std.Io.File {
+    return std.Io.File.stderr();
 }
 
-pub fn wrapStdFd(fd_num: u8) !std.fs.File {
+pub fn wrapStdFd(fd_num: u8) !std.Io.File {
     return switch (fd_num) {
         0 => getStdin(),
         1 => getStdout(),
@@ -15137,30 +15328,30 @@ test "wrap standard file descriptors" {
 Create independent copies:
 
 ```zig
-pub fn duplicateFd(file: std.fs.File) !std.fs.File {
+pub fn duplicateFd(file: std.Io.File) !std.Io.File {
     const new_fd = try std.posix.dup(file.handle);
-    return std.fs.File{ .handle = new_fd };
+    return std.Io.File{ .handle = new_fd, .flags = .{ .nonblocking = false } };
 }
 
 test "duplicate file descriptor" {
-    const file = try std.fs.cwd().createFile("/tmp/test_dup.txt", .{});
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_dup.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_dup.txt", .{});
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_dup.txt") catch {};
 
     // Write to original
-    try file.writeAll("Original");
+    try file.writeStreamingAll(io, "Original");
 
     // Duplicate
     const dup = try duplicateFd(file);
-    defer dup.close();
+    defer dup.close(io);
 
     // Write to duplicate
     try dup.writeAll(" Duplicate");
 
     // Both refer to same file
-    try file.seekTo(0);
     var buffer: [100]u8 = undefined;
-    const n = try file.read(&buffer);
+    const n = try file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expect(std.mem.indexOf(u8, buffer[0..n], "Original Duplicate") != null);
 }
@@ -15171,7 +15362,7 @@ test "duplicate file descriptor" {
 Control FD behavior:
 
 ```zig
-pub fn setNonBlocking(file: std.fs.File) !void {
+pub fn setNonBlocking(file: std.Io.File) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         // Windows non-blocking I/O is different
@@ -15182,7 +15373,7 @@ pub fn setNonBlocking(file: std.fs.File) !void {
     _ = try std.posix.fcntl(file.handle, std.posix.F.SETFL, flags | @as(u32, std.posix.O.NONBLOCK));
 }
 
-pub fn setCloseOnExec(file: std.fs.File) !void {
+pub fn setCloseOnExec(file: std.Io.File) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -15198,11 +15389,11 @@ pub fn setCloseOnExec(file: std.fs.File) !void {
 Wrap socket as file:
 
 ```zig
-pub fn wrapSocket(socket: std.posix.socket_t) std.fs.File {
-    return std.fs.File{ .handle = socket };
+pub fn wrapSocket(socket: std.posix.socket_t) std.Io.File {
+    return std.Io.File{ .handle = socket, .flags = .{ .nonblocking = false } };
 }
 
-pub fn createSocketPair() ![2]std.fs.File {
+pub fn createSocketPair() ![2]std.Io.File {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -15216,26 +15407,27 @@ pub fn createSocketPair() ![2]std.fs.File {
         &fds,
     );
 
-    return [2]std.fs.File{
-        std.fs.File{ .handle = fds[0] },
-        std.fs.File{ .handle = fds[1] },
+    return [2]std.Io.File{
+        std.Io.File{ .handle = fds[0], .flags = .{ .nonblocking = false } },
+        std.Io.File{ .handle = fds[1], .flags = .{ .nonblocking = false } },
     };
 }
 
 test "socket pair" {
+    const io = std.testing.io;
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     const pair = try createSocketPair();
-    defer pair[0].close();
-    defer pair[1].close();
+    defer pair[0].close(io);
+    defer pair[1].close(io);
 
     // Write to one end
     try pair[0].writeAll("Hello");
 
     // Read from other end
     var buffer: [10]u8 = undefined;
-    const n = try pair[1].read(&buffer);
+    const n = try pair[1].readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("Hello", buffer[0..n]);
 }
@@ -15246,27 +15438,28 @@ test "socket pair" {
 Wrap pipe file descriptors:
 
 ```zig
-pub fn createPipe() ![2]std.fs.File {
+pub fn createPipe() ![2]std.Io.File {
     var fds: [2]std.posix.fd_t = undefined;
     try std.posix.pipe(&fds);
 
-    return [2]std.fs.File{
-        std.fs.File{ .handle = fds[0] }, // Read end
-        std.fs.File{ .handle = fds[1] }, // Write end
+    return [2]std.Io.File{
+        std.Io.File{ .handle = fds[0], .flags = .{ .nonblocking = false } }, // Read end
+        std.Io.File{ .handle = fds[1], .flags = .{ .nonblocking = false } }, // Write end
     };
 }
 
 test "pipe communication" {
+    const io = std.testing.io;
     const pipe = try createPipe();
-    defer pipe[0].close();
-    defer pipe[1].close();
+    defer pipe[0].close(io);
+    defer pipe[1].close(io);
 
     // Write to pipe
     try pipe[1].writeAll("Pipe data");
 
     // Read from pipe
     var buffer: [20]u8 = undefined;
-    const n = try pipe[0].read(&buffer);
+    const n = try pipe[0].readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("Pipe data", buffer[0..n]);
 }
@@ -15277,17 +15470,17 @@ test "pipe communication" {
 Interop with C file descriptors:
 
 ```zig
-pub fn fromCInt(c_fd: c_int) std.fs.File {
+pub fn fromCInt(c_fd: c_int) std.Io.File {
     const builtin = @import("builtin");
     const fd: std.posix.fd_t = if (builtin.os.tag == .windows)
         @ptrFromInt(@as(usize, @intCast(c_fd)))
     else
         c_fd;
 
-    return std.fs.File{ .handle = fd };
+    return std.Io.File{ .handle = fd, .flags = .{ .nonblocking = false } };
 }
 
-pub fn toCInt(file: std.fs.File) c_int {
+pub fn toCInt(file: std.Io.File) c_int {
     const builtin = @import("builtin");
     return if (builtin.os.tag == .windows)
         @intCast(@intFromPtr(file.handle))
@@ -15302,34 +15495,35 @@ Control when FD is closed:
 
 ```zig
 pub const OwnedFile = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     owned: bool,
 
     pub fn init(fd: std.posix.fd_t, owned: bool) OwnedFile {
         return .{
-            .file = std.fs.File{ .handle = fd },
+            .file = std.Io.File{ .handle = fd, .flags = .{ .nonblocking = false } },
             .owned = owned,
         };
     }
 
-    pub fn deinit(self: *OwnedFile) void {
+    pub fn deinit(self: *OwnedFile, io: std.Io) void {
         if (self.owned) {
-            self.file.close();
+            self.file.close(io);
         }
     }
 
-    pub fn writer(self: *OwnedFile) std.fs.File.Writer {
-        return self.file.writer();
+    pub fn writer(self: *OwnedFile, io: std.Io) std.Io.File.Writer {
+        return self.file.writer(io);
     }
 
-    pub fn reader(self: *OwnedFile) std.fs.File.Reader {
-        return self.file.reader();
+    pub fn reader(self: *OwnedFile, io: std.Io) std.Io.File.Reader {
+        return self.file.reader(io);
     }
 };
 
 test "owned file" {
-    const file = try std.fs.cwd().createFile("/tmp/test_owned.txt", .{});
-    defer std.fs.cwd().deleteFile("/tmp/test_owned.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_owned.txt", .{});
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_owned.txt") catch {};
 
     const fd = file.handle;
 
@@ -15337,7 +15531,7 @@ test "owned file" {
     var owned = OwnedFile.init(fd, true);
     defer owned.deinit(); // This will close the fd
 
-    try owned.writer().writeAll("Owned file");
+    try owned.writer(io).writeAll("Owned file");
 
     // Original file is closed by owned.deinit()
 }
@@ -15348,37 +15542,37 @@ test "owned file" {
 Create temp file from descriptor:
 
 ```zig
-pub fn makeTempFromFd(fd: std.posix.fd_t) std.fs.File {
-    return std.fs.File{ .handle = fd };
+pub fn makeTempFromFd(fd: std.posix.fd_t) std.Io.File {
+    return std.Io.File{ .handle = fd, .flags = .{ .nonblocking = false } };
 }
 
-pub fn createAnonymousFile() !std.fs.File {
+pub fn createAnonymousFile(io: std.Io) !std.Io.File {
     const builtin = @import("builtin");
     if (builtin.os.tag == .linux) {
         // Use memfd_create on Linux
         const name = "anonymous";
         const fd = try std.posix.memfd_create(name, 0);
-        return std.fs.File{ .handle = fd };
+        return std.Io.File{ .handle = fd, .flags = .{ .nonblocking = false } };
     } else {
         // Fall back to regular temp file
-        const file = try std.fs.cwd().createFile("/tmp/anon_temp", .{
+        const file = try std.Io.Dir.cwd().createFile(io, "/tmp/anon_temp", .{
             .read = true,
             .truncate = true,
         });
-        try std.fs.cwd().deleteFile("/tmp/anon_temp");
+        try std.Io.Dir.cwd().deleteFile(io, "/tmp/anon_temp");
         return file;
     }
 }
 
 test "anonymous file" {
-    const file = try createAnonymousFile();
-    defer file.close();
+    const io = std.testing.io;
+    const file = try createAnonymousFile(io);
+    defer file.close(io);
 
-    try file.writeAll("Anonymous data");
+    try file.writeStreamingAll(io, "Anonymous data");
 
-    try file.seekTo(0);
     var buffer: [20]u8 = undefined;
-    const n = try file.read(&buffer);
+    const n = try file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("Anonymous data", buffer[0..n]);
 }
@@ -15389,7 +15583,7 @@ test "anonymous file" {
 Safe wrapping with validation:
 
 ```zig
-pub fn safeWrapFd(fd: std.posix.fd_t) !std.fs.File {
+pub fn safeWrapFd(fd: std.posix.fd_t) !std.Io.File {
     if (!isValidFd(fd)) {
         return error.InvalidFileDescriptor;
     }
@@ -15399,7 +15593,7 @@ pub fn safeWrapFd(fd: std.posix.fd_t) !std.fs.File {
         return error.ClosedFileDescriptor;
     };
 
-    return std.fs.File{ .handle = fd };
+    return std.Io.File{ .handle = fd, .flags = .{ .nonblocking = false } };
 }
 
 test "safe wrap - invalid fd" {
@@ -15413,7 +15607,7 @@ test "safe wrap - invalid fd" {
 Replace stdin/stdout/stderr:
 
 ```zig
-pub fn redirectStdout(target_file: std.fs.File) !void {
+pub fn redirectStdout(target_file: std.Io.File) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -15422,7 +15616,7 @@ pub fn redirectStdout(target_file: std.fs.File) !void {
     try std.posix.dup2(target_file.handle, std.posix.STDOUT_FILENO);
 }
 
-pub fn redirectStderr(target_file: std.fs.File) !void {
+pub fn redirectStderr(target_file: std.Io.File) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -15437,9 +15631,9 @@ pub fn redirectStderr(target_file: std.fs.File) !void {
 Wrap with buffering:
 
 ```zig
-pub fn createBufferedFile(fd: std.posix.fd_t, allocator: std.mem.Allocator) !std.io.BufferedWriter(4096, std.fs.File.Writer) {
-    const file = std.fs.File{ .handle = fd };
-    return std.io.bufferedWriter(file.writer());
+pub fn createBufferedFile(io: std.Io, fd: std.posix.fd_t, allocator: std.mem.Allocator) !std.io.BufferedWriter(4096, std.Io.File.Writer) {
+    const file = std.Io.File{ .handle = fd, .flags = .{ .nonblocking = false } };
+    return std.Io.Writer.fixed(file.writer(io));
 }
 ```
 
@@ -15458,7 +15652,7 @@ pub fn createBufferedFile(fd: std.posix.fd_t, allocator: std.mem.Allocator) !std
 
 **Cross-platform wrapper:**
 ```zig
-pub fn wrapFdCrossPlatform(fd: std.posix.fd_t) !std.fs.File {
+pub fn wrapFdCrossPlatform(fd: std.posix.fd_t) !std.Io.File {
     const builtin = @import("builtin");
 
     if (builtin.os.tag == .windows) {
@@ -15473,7 +15667,7 @@ pub fn wrapFdCrossPlatform(fd: std.posix.fd_t) !std.fs.File {
         }
     }
 
-    return std.fs.File{ .handle = fd };
+    return std.Io.File{ .handle = fd, .flags = .{ .nonblocking = false } };
 }
 ```
 
@@ -15486,11 +15680,11 @@ pub fn wrapFdCrossPlatform(fd: std.posix.fd_t) !std.fs.File {
 
 **Error handling:**
 ```zig
-pub fn wrapAndUse(fd: std.posix.fd_t) !void {
+pub fn wrapAndUse(io: std.Io, fd: std.posix.fd_t) !void {
     const file = try safeWrapFd(fd);
     // Don't close - we don't own it
 
-    try file.writeAll("Data");
+    try file.writeStreamingAll(io, "Data");
 }
 ```
 
@@ -15507,8 +15701,8 @@ pub fn wrapAndUse(fd: std.posix.fd_t) !void {
 - `std.posix.fcntl()` - File control operations
 - `std.posix.pipe()` - Create pipe
 - `std.posix.socketpair()` - Create socket pair
-- `std.io.getStdIn()` - Get stdin file
-- `std.io.getStdOut()` - Get stdout file
+- `std.Io.File.stdin()` - Get stdin file
+- `std.Io.File.stdout()` - Get stdout file
 - `std.io.getStdErr()` - Get stderr file
 
 ### Full Tested Code
@@ -15517,12 +15711,12 @@ pub fn wrapAndUse(fd: std.posix.fd_t) !void {
 const std = @import("std");
 
 /// Wrap a raw file descriptor as a File object
-pub fn wrapFileDescriptor(fd: std.posix.fd_t) std.fs.File {
-    return std.fs.File{ .handle = fd };
+pub fn wrapFileDescriptor(fd: std.posix.fd_t) std.Io.File {
+    return std.Io.File{ .handle = fd, .flags = .{ .nonblocking = false } };
 }
 
 /// Get file descriptor from File
-pub fn getFd(file: std.fs.File) std.posix.fd_t {
+pub fn getFd(file: std.Io.File) std.posix.fd_t {
     return file.handle;
 }
 
@@ -15537,28 +15731,28 @@ pub fn isValidFd(fd: std.posix.fd_t) bool {
 }
 
 /// Wrap standard file descriptor by number (0=stdin, 1=stdout, 2=stderr)
-pub fn wrapStdFd(fd_num: u8) !std.fs.File {
+pub fn wrapStdFd(fd_num: u8) !std.Io.File {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
     }
 
     return switch (fd_num) {
-        0 => std.fs.File{ .handle = std.posix.STDIN_FILENO },
-        1 => std.fs.File{ .handle = std.posix.STDOUT_FILENO },
-        2 => std.fs.File{ .handle = std.posix.STDERR_FILENO },
+        0 => std.Io.File{ .handle = std.posix.STDIN_FILENO, .flags = .{ .nonblocking = false } },
+        1 => std.Io.File{ .handle = std.posix.STDOUT_FILENO, .flags = .{ .nonblocking = false } },
+        2 => std.Io.File{ .handle = std.posix.STDERR_FILENO, .flags = .{ .nonblocking = false } },
         else => error.InvalidStdFd,
     };
 }
 
 /// Duplicate a file descriptor
-pub fn duplicateFd(file: std.fs.File) !std.fs.File {
+pub fn duplicateFd(file: std.Io.File) !std.Io.File {
     const new_fd = try std.posix.dup(file.handle);
-    return std.fs.File{ .handle = new_fd };
+    return std.Io.File{ .handle = new_fd, .flags = .{ .nonblocking = false } };
 }
 
 /// Set file descriptor to non-blocking mode
-pub fn setNonBlocking(file: std.fs.File) !void {
+pub fn setNonBlocking(file: std.Io.File) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -15569,7 +15763,7 @@ pub fn setNonBlocking(file: std.fs.File) !void {
 }
 
 /// Set close-on-exec flag
-pub fn setCloseOnExec(file: std.fs.File) !void {
+pub fn setCloseOnExec(file: std.Io.File) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -15580,12 +15774,12 @@ pub fn setCloseOnExec(file: std.fs.File) !void {
 }
 
 /// Wrap a socket as a File
-pub fn wrapSocket(socket: std.posix.socket_t) std.fs.File {
-    return std.fs.File{ .handle = socket };
+pub fn wrapSocket(socket: std.posix.socket_t) std.Io.File {
+    return std.Io.File{ .handle = socket, .flags = .{ .nonblocking = false } };
 }
 
 /// Create a pair of connected sockets (Unix domain sockets)
-pub fn createSocketPair() ![2]std.fs.File {
+pub fn createSocketPair() ![2]std.Io.File {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -15600,35 +15794,35 @@ pub fn createSocketPair() ![2]std.fs.File {
 
     // For testing, we'll just return two separate sockets
     // In real use, you'd need to bind/connect them
-    return [2]std.fs.File{
-        std.fs.File{ .handle = sock1 },
-        std.fs.File{ .handle = sock2 },
+    return [2]std.Io.File{
+        std.Io.File{ .handle = sock1, .flags = .{ .nonblocking = false } },
+        std.Io.File{ .handle = sock2, .flags = .{ .nonblocking = false } },
     };
 }
 
 /// Create a pipe pair
-pub fn createPipe() ![2]std.fs.File {
+pub fn createPipe() ![2]std.Io.File {
     const fds = try std.posix.pipe();
 
-    return [2]std.fs.File{
-        std.fs.File{ .handle = fds[0] }, // Read end
-        std.fs.File{ .handle = fds[1] }, // Write end
+    return [2]std.Io.File{
+        std.Io.File{ .handle = fds[0], .flags = .{ .nonblocking = false } }, // Read end
+        std.Io.File{ .handle = fds[1], .flags = .{ .nonblocking = false } }, // Write end
     };
 }
 
 /// Convert C int file descriptor to Zig File
-pub fn fromCInt(c_fd: c_int) std.fs.File {
+pub fn fromCInt(c_fd: c_int) std.Io.File {
     const builtin = @import("builtin");
     const fd: std.posix.fd_t = if (builtin.os.tag == .windows)
         @ptrFromInt(@as(usize, @intCast(c_fd)))
     else
         c_fd;
 
-    return std.fs.File{ .handle = fd };
+    return std.Io.File{ .handle = fd, .flags = .{ .nonblocking = false } };
 }
 
 /// Convert Zig File to C int file descriptor
-pub fn toCInt(file: std.fs.File) c_int {
+pub fn toCInt(file: std.Io.File) c_int {
     const builtin = @import("builtin");
     return if (builtin.os.tag == .windows)
         @intCast(@intFromPtr(file.handle))
@@ -15638,50 +15832,50 @@ pub fn toCInt(file: std.fs.File) c_int {
 
 /// File wrapper with ownership tracking
 pub const OwnedFile = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     owned: bool,
 
     pub fn init(fd: std.posix.fd_t, owned: bool) OwnedFile {
         return .{
-            .file = std.fs.File{ .handle = fd },
+            .file = std.Io.File{ .handle = fd, .flags = .{ .nonblocking = false } },
             .owned = owned,
         };
     }
 
-    pub fn deinit(self: *OwnedFile) void {
+    pub fn deinit(self: *OwnedFile, io: std.Io) void {
         if (self.owned) {
-            self.file.close();
+            self.file.close(io);
         }
     }
 
-    pub fn writeAll(self: *OwnedFile, bytes: []const u8) !void {
-        return self.file.writeAll(bytes);
+    pub fn writeAll(self: *OwnedFile, io: std.Io, bytes: []const u8) !void {
+        return self.file.writeStreamingAll(io, bytes);
     }
 
-    pub fn readAll(self: *OwnedFile, buffer: []u8) !usize {
-        return self.file.readAll(buffer);
+    pub fn readAll(self: *OwnedFile, io: std.Io, buffer: []u8) !usize {
+        return self.file.readPositionalAll(io, buffer, 0);
     }
 };
 
 /// Create anonymous/temporary file
-pub fn createAnonymousFile() !std.fs.File {
+pub fn createAnonymousFile(io: std.Io) !std.Io.File {
     const builtin = @import("builtin");
     if (builtin.os.tag == .linux) {
         const name = "anonymous";
         const fd = try std.posix.memfd_create(name, 0);
-        return std.fs.File{ .handle = fd };
+        return std.Io.File{ .handle = fd, .flags = .{ .nonblocking = false } };
     } else {
-        const file = try std.fs.cwd().createFile("/tmp/anon_temp", .{
+        const file = try std.Io.Dir.cwd().createFile(io, "/tmp/anon_temp", .{
             .read = true,
             .truncate = true,
         });
-        try std.fs.cwd().deleteFile("/tmp/anon_temp");
+        try std.Io.Dir.cwd().deleteFile(io, "/tmp/anon_temp");
         return file;
     }
 }
 
 /// Safely wrap file descriptor with validation
-pub fn safeWrapFd(fd: std.posix.fd_t) !std.fs.File {
+pub fn safeWrapFd(fd: std.posix.fd_t) !std.Io.File {
     if (!isValidFd(fd)) {
         return error.InvalidFileDescriptor;
     }
@@ -15694,11 +15888,11 @@ pub fn safeWrapFd(fd: std.posix.fd_t) !std.fs.File {
         };
     }
 
-    return std.fs.File{ .handle = fd };
+    return std.Io.File{ .handle = fd, .flags = .{ .nonblocking = false } };
 }
 
 /// Wrap file descriptor with cross-platform handling
-pub fn wrapFdCrossPlatform(fd: std.posix.fd_t) !std.fs.File {
+pub fn wrapFdCrossPlatform(fd: std.posix.fd_t) !std.Io.File {
     const builtin = @import("builtin");
 
     if (builtin.os.tag == .windows) {
@@ -15711,16 +15905,17 @@ pub fn wrapFdCrossPlatform(fd: std.posix.fd_t) !std.fs.File {
         }
     }
 
-    return std.fs.File{ .handle = fd };
+    return std.Io.File{ .handle = fd, .flags = .{ .nonblocking = false } };
 }
 
 // Tests
 
 // ANCHOR: wrap_fd
 test "wrap file descriptor" {
-    const file = try std.fs.cwd().createFile("/tmp/test_wrap.txt", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_wrap.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_wrap.txt", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_wrap.txt") catch {};
 
     const fd = file.handle;
 
@@ -15728,26 +15923,27 @@ test "wrap file descriptor" {
 
     try wrapped.writeAll("Hello from wrapped FD");
 
-    try wrapped.seekTo(0);
     var buffer: [100]u8 = undefined;
-    const n = try wrapped.read(&buffer);
+    const n = try wrapped.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("Hello from wrapped FD", buffer[0..n]);
 }
 
 test "get file descriptor" {
-    const file = try std.fs.cwd().createFile("/tmp/test_getfd.txt", .{});
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_getfd.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_getfd.txt", .{});
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_getfd.txt") catch {};
 
     const fd = getFd(file);
     try std.testing.expect(isValidFd(fd));
 }
 
 test "check file descriptor validity" {
-    const file = try std.fs.cwd().createFile("/tmp/test_fd_valid.txt", .{});
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_fd_valid.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_fd_valid.txt", .{});
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_fd_valid.txt") catch {};
 
     const fd = getFd(file);
     try std.testing.expect(isValidFd(fd));
@@ -15792,32 +15988,33 @@ test "wrap std fd invalid" {
 // ANCHOR_END: wrap_fd
 
 test "duplicate file descriptor" {
-    const file = try std.fs.cwd().createFile("/tmp/test_dup.txt", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_dup.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_dup.txt", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_dup.txt") catch {};
 
-    try file.writeAll("Original");
+    try file.writeStreamingAll(io, "Original");
 
     const dup = try duplicateFd(file);
-    defer dup.close();
+    defer dup.close(io);
 
     try dup.writeAll(" Duplicate");
 
-    try file.seekTo(0);
     var buffer: [100]u8 = undefined;
-    const n = try file.read(&buffer);
+    const n = try file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expect(std.mem.indexOf(u8, buffer[0..n], "Original Duplicate") != null);
 }
 
 // ANCHOR: ipc_descriptors
 test "socket pair" {
+    const io = std.testing.io;
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     const pair = try createSocketPair();
-    defer pair[0].close();
-    defer pair[1].close();
+    defer pair[0].close(io);
+    defer pair[1].close(io);
 
     // Just verify we got valid sockets
     try std.testing.expect(isValidFd(pair[0].handle));
@@ -15825,71 +16022,74 @@ test "socket pair" {
 }
 
 test "pipe communication" {
+    const io = std.testing.io;
     const pipe = try createPipe();
-    defer pipe[0].close();
-    defer pipe[1].close();
+    defer pipe[0].close(io);
+    defer pipe[1].close(io);
 
     try pipe[1].writeAll("Pipe data");
 
     var buffer: [20]u8 = undefined;
-    const n = try pipe[0].read(&buffer);
+    const n = try pipe[0].readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("Pipe data", buffer[0..n]);
 }
 
 test "from C int" {
-    const file = try std.fs.cwd().createFile("/tmp/test_cint.txt", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_cint.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_cint.txt", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_cint.txt") catch {};
 
     const c_fd = toCInt(file);
     const back = fromCInt(c_fd);
 
     try back.writeAll("C interop");
 
-    try file.seekTo(0);
     var buffer: [20]u8 = undefined;
-    const n = try file.read(&buffer);
+    const n = try file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("C interop", buffer[0..n]);
 }
 // ANCHOR_END: ipc_descriptors
 
 test "owned file" {
-    const file = try std.fs.cwd().createFile("/tmp/test_owned.txt", .{});
-    defer std.fs.cwd().deleteFile("/tmp/test_owned.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_owned.txt", .{});
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_owned.txt") catch {};
 
     const fd = file.handle;
 
     var owned = OwnedFile.init(fd, true);
-    defer owned.deinit();
+    defer owned.deinit(io);
 
-    try owned.writeAll("Owned file");
+    try owned.writeStreamingAll("Owned file");
 }
 
 // ANCHOR: ownership_tracking
 test "owned file - not owned" {
-    const file = try std.fs.cwd().createFile("/tmp/test_not_owned.txt", .{});
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_not_owned.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_not_owned.txt", .{});
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_not_owned.txt") catch {};
 
     const fd = file.handle;
 
     var owned = OwnedFile.init(fd, false);
-    defer owned.deinit(); // Won't close
+    defer owned.deinit(io); // Won't close
 
-    try owned.writeAll("Not owned");
+    try owned.writeStreamingAll("Not owned");
 }
 
 test "anonymous file" {
-    const file = try createAnonymousFile();
-    defer file.close();
+    const io = std.testing.io;
+    const file = try createAnonymousFile(io);
+    defer file.close(io);
 
-    try file.writeAll("Anonymous data");
+    try file.writeStreamingAll(io, "Anonymous data");
 
-    try file.seekTo(0);
     var buffer: [20]u8 = undefined;
-    const n = try file.read(&buffer);
+    const n = try file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("Anonymous data", buffer[0..n]);
 }
@@ -15900,18 +16100,20 @@ test "safe wrap - invalid fd" {
 }
 
 test "safe wrap - valid fd" {
-    const file = try std.fs.cwd().createFile("/tmp/test_safe_wrap.txt", .{});
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_safe_wrap.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_safe_wrap.txt", .{});
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_safe_wrap.txt") catch {};
 
     const wrapped = try safeWrapFd(file.handle);
     try wrapped.writeAll("Safe wrap");
 }
 
 test "cross platform wrap" {
-    const file = try std.fs.cwd().createFile("/tmp/test_xplat.txt", .{});
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_xplat.txt") catch {};
+    const io = std.testing.io;
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_xplat.txt", .{});
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_xplat.txt") catch {};
 
     const wrapped = try wrapFdCrossPlatform(file.handle);
     try wrapped.writeAll("Cross-platform");
@@ -15923,12 +16125,13 @@ test "cross platform wrap - invalid" {
 }
 
 test "set close on exec" {
+    const io = std.testing.io;
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
-    const file = try std.fs.cwd().createFile("/tmp/test_cloexec.txt", .{});
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/test_cloexec.txt") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/test_cloexec.txt", .{});
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/test_cloexec.txt") catch {};
 
     try setCloseOnExec(file);
 
@@ -15957,32 +16160,33 @@ You need to create temporary files or directories for testing or temporary stora
 
 ```zig
 test "create temp file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const temp = try createTempFile(allocator, "test");
-    defer temp.file.close();
+    const temp = try createTempFile(io, allocator, "test");
+    defer temp.file.close(io);
     defer allocator.free(temp.path);
-    defer std.fs.cwd().deleteFile(temp.path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, temp.path) catch {};
 
-    try temp.file.writeAll("Temporary data");
+    try temp.file.writeStreamingAll(io, "Temporary data");
 
-    try temp.file.seekTo(0);
     var buffer: [20]u8 = undefined;
-    const n = try temp.file.read(&buffer);
+    const n = try temp.file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("Temporary data", buffer[0..n]);
 }
 
 test "temp dir for testing" {
+    const io = std.testing.io;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const file = try tmp.dir.createFile("test.txt", .{});
-    defer file.close();
+    const file = try tmp.dir.createFile(io, "test.txt", .{});
+    defer file.close(io);
 
-    try file.writeAll("Test data");
+    try file.writeStreamingAll(io, "Test data");
 
-    const content = try tmp.dir.readFileAlloc(std.testing.allocator, "test.txt", 1024);
+    const content = try tmp.dir.readFileAlloc(io, "test.txt", std.testing.allocator, .limited(1024));
     defer std.testing.allocator.free(content);
 
     try std.testing.expectEqualStrings("Test data", content);
@@ -15993,38 +16197,41 @@ test "temp dir for testing" {
 
 ```zig
 test "self-deleting file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    var temp = try SelfDeletingFile.create(allocator, "self_delete");
+    var temp = try SelfDeletingFile.create(io, allocator, "self_delete");
     defer temp.deinit();
 
     try temp.writeAll("Auto-deleted");
 
-    const stat = try std.fs.cwd().statFile(temp.path);
+    const stat = try std.Io.Dir.cwd().statFile(io, temp.path, .{});
     try std.testing.expect(stat.kind == .file);
 }
 
 test "temp file with content" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const temp = try createTempFileWithContent(allocator, "content", "Initial content");
-    defer temp.file.close();
+    const temp = try createTempFileWithContent(io, allocator, "content", "Initial content");
+    defer temp.file.close(io);
     defer allocator.free(temp.path);
-    defer std.fs.cwd().deleteFile(temp.path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, temp.path) catch {};
 
     var buffer: [20]u8 = undefined;
-    const n = try temp.file.read(&buffer);
+    const n = try temp.file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("Initial content", buffer[0..n]);
 }
 
 test "named temp file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const temp = try createNamedTempFile(allocator, "myfile", "txt");
-    defer temp.file.close();
+    const temp = try createNamedTempFile(io, allocator, "myfile", "txt");
+    defer temp.file.close(io);
     defer allocator.free(temp.path);
-    defer std.fs.cwd().deleteFile(temp.path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, temp.path) catch {};
 
     try std.testing.expect(std.mem.endsWith(u8, temp.path, ".txt"));
 }
@@ -16034,20 +16241,21 @@ test "named temp file" {
 
 ```zig
 test "iterate temp dir" {
+    const io = std.testing.io;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
     // Create some files
     {
-        const file1 = try tmp.dir.createFile("file1.txt", .{});
-        defer file1.close();
-        const file2 = try tmp.dir.createFile("file2.txt", .{});
-        defer file2.close();
+        const file1 = try tmp.dir.createFile(io, "file1.txt", .{});
+        defer file1.close(io);
+        const file2 = try tmp.dir.createFile(io, "file2.txt", .{});
+        defer file2.close(io);
     }
 
     var count: usize = 0;
-    var iter = tmp.dir.iterate();
-    while (try iter.next()) |_| {
+    var iter = tmp.dir.iterate(io);
+    while (try iter.next(io)) |_| {
         count += 1;
     }
 
@@ -16056,39 +16264,42 @@ test "iterate temp dir" {
 
 test "get temp dir" {
     const allocator = std.testing.allocator;
+    var environ_map: std.process.Environ.Map = .init(allocator);
+    defer environ_map.deinit();
 
-    const temp_dir = try getTempDir(allocator);
+    const temp_dir = try getTempDir(allocator, &environ_map);
     defer allocator.free(temp_dir);
 
     try std.testing.expect(temp_dir.len > 0);
 }
 
 test "memory temp file" {
+    const io = std.testing.io;
     const builtin = @import("builtin");
     if (builtin.os.tag != .linux) return error.SkipZigTest;
 
     const file = try createMemoryTempFile();
-    defer file.close();
+    defer file.close(io);
 
-    try file.writeAll("In memory");
+    try file.writeStreamingAll(io, "In memory");
 
-    try file.seekTo(0);
     var buffer: [20]u8 = undefined;
-    const n = try file.read(&buffer);
+    const n = try file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("In memory", buffer[0..n]);
 }
 
 test "cleanup helpers" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     // Create temp file
-    const temp = try createTempFile(allocator, "cleanup");
-    try temp.file.writeAll("test");
-    temp.file.close();
+    const temp = try createTempFile(io, allocator, "cleanup");
+    try temp.file.writeStreamingAll(io, "test");
+    temp.file.close(io);
 
     // Verify exists
-    const stat = try std.fs.cwd().statFile(temp.path);
+    const stat = try std.Io.Dir.cwd().statFile(io, temp.path, .{});
     try std.testing.expect(stat.kind == .file);
 
     // Make a copy of path for later check
@@ -16099,23 +16310,24 @@ test "cleanup helpers" {
     cleanupTempFile(temp.path, allocator);
 
     // Should not exist (use path_copy)
-    const result = std.fs.cwd().statFile(path_copy);
+    const result = std.Io.Dir.cwd().statFile(io, path_copy, .{});
     try std.testing.expectError(error.FileNotFound, result);
 }
 
 test "temp dir cleanup" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const dir_path = try createTempDir(allocator, "cleanup_dir");
 
     // Create file in it
-    var dir = try std.fs.cwd().openDir(dir_path, .{});
-    const file = try dir.createFile("file.txt", .{});
-    file.close();
-    dir.close();
+    var dir = try std.Io.Dir.cwd().openDir(io, dir_path, .{});
+    const file = try dir.createFile(io, "file.txt", .{});
+    file.close(io);
+    dir.close(io);
 
     // Verify exists
-    const stat = try std.fs.cwd().statFile(dir_path);
+    const stat = try std.Io.Dir.cwd().statFile(io, dir_path, .{});
     try std.testing.expect(stat.kind == .directory);
 
     // Make a copy of path for later check
@@ -16126,24 +16338,25 @@ test "temp dir cleanup" {
     cleanupTempDir(dir_path, allocator);
 
     // Should not exist (use path_copy)
-    const result = std.fs.cwd().statFile(path_copy);
+    const result = std.Io.Dir.cwd().statFile(io, path_copy, .{});
     try std.testing.expectError(error.FileNotFound, result);
 }
 
 test "multiple temp files" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const temp1 = try createTempFile(allocator, "multi");
-    defer temp1.file.close();
+    const temp1 = try createTempFile(io, allocator, "multi");
+    defer temp1.file.close(io);
     defer allocator.free(temp1.path);
-    defer std.fs.cwd().deleteFile(temp1.path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, temp1.path) catch {};
 
-    std.Thread.sleep(2 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(2 * std.time.ns_per_ms), .awake);
 
-    const temp2 = try createTempFile(allocator, "multi");
-    defer temp2.file.close();
+    const temp2 = try createTempFile(io, allocator, "multi");
+    defer temp2.file.close(io);
     defer allocator.free(temp2.path);
-    defer std.fs.cwd().deleteFile(temp2.path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, temp2.path) catch {};
 
     // Paths should be different
     try std.testing.expect(!std.mem.eql(u8, temp1.path, temp2.path));
@@ -16162,17 +16375,18 @@ pub fn createTestTempDir() !std.testing.TmpDir {
 }
 
 test "temp dir for testing" {
+    const io = std.testing.io;
     var tmp = try std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
     // Create file in temp dir
-    const file = try tmp.dir.createFile("test.txt", .{});
-    defer file.close();
+    const file = try tmp.dir.createFile(io, "test.txt", .{});
+    defer file.close(io);
 
-    try file.writeAll("Test data");
+    try file.writeStreamingAll(io, "Test data");
 
     // Read it back
-    const content = try tmp.dir.readFileAlloc(std.testing.allocator, "test.txt", 1024);
+    const content = try tmp.dir.readFileAlloc(io, "test.txt", std.testing.allocator, .limited(1024));
     defer std.testing.allocator.free(content);
 
     try std.testing.expectEqualStrings("Test data", content);
@@ -16184,8 +16398,8 @@ test "temp dir for testing" {
 Generate unique filenames:
 
 ```zig
-pub fn makeTempPath(allocator: std.mem.Allocator, dir: []const u8, prefix: []const u8) ![]u8 {
-    var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
+pub fn makeTempPath(io: std.Io, allocator: std.mem.Allocator, dir: []const u8, prefix: []const u8) ![]u8 {
+    var prng = std.Random.DefaultPrng.init(@intCast(@as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms)))));
     const random = prng.random();
 
     var buf: [32]u8 = undefined;
@@ -16195,12 +16409,13 @@ pub fn makeTempPath(allocator: std.mem.Allocator, dir: []const u8, prefix: []con
 }
 
 test "unique temp paths" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const path1 = try makeTempPath(allocator, "/tmp", "test");
+    const path1 = try makeTempPath(io, allocator, "/tmp", "test");
     defer allocator.free(path1);
 
-    const path2 = try makeTempPath(allocator, "/tmp", "test");
+    const path2 = try makeTempPath(io, allocator, "/tmp", "test");
     defer allocator.free(path2);
 
     // Paths should be different
@@ -16213,34 +16428,35 @@ test "unique temp paths" {
 Create temp directories:
 
 ```zig
-pub fn createTempDir(allocator: std.mem.Allocator, prefix: []const u8) ![]u8 {
+pub fn createTempDir(io: std.Io, allocator: std.mem.Allocator, prefix: []const u8) ![]u8 {
     const path = try makeTempPath(allocator, "/tmp", prefix);
     errdefer allocator.free(path);
 
-    try std.fs.cwd().makeDir(path);
+    try std.Io.Dir.cwd().createDir(io, path, .default_dir);
 
     return path;
 }
 
-pub fn removeTempDir(path: []const u8) !void {
-    try std.fs.cwd().deleteTree(path);
+pub fn removeTempDir(io: std.Io, path: []const u8) !void {
+    try std.Io.Dir.cwd().deleteTree(io, path);
 }
 
 test "temp directory" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const dir_path = try createTempDir(allocator, "testdir");
+    const dir_path = try createTempDir(io, allocator, "testdir");
     defer allocator.free(dir_path);
-    defer removeTempDir(dir_path) catch {};
+    defer removeTempDir(io, dir_path) catch {};
 
     // Create file in temp dir
-    var dir = try std.fs.cwd().openDir(dir_path, .{});
-    defer dir.close();
+    var dir = try std.Io.Dir.cwd().openDir(io, dir_path, .{});
+    defer dir.close(io);
 
-    const file = try dir.createFile("test.txt", .{});
-    defer file.close();
+    const file = try dir.createFile(io, "test.txt", .{});
+    defer file.close(io);
 
-    try file.writeAll("In temp dir");
+    try file.writeStreamingAll(io, "In temp dir");
 }
 ```
 
@@ -16250,12 +16466,12 @@ File that deletes itself on close:
 
 ```zig
 pub const SelfDeletingFile = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     path: []const u8,
     allocator: std.mem.Allocator,
 
-    pub fn create(allocator: std.mem.Allocator, prefix: []const u8) !SelfDeletingFile {
-        const temp = try createTempFile(allocator, prefix);
+    pub fn create(io: std.Io, allocator: std.mem.Allocator, prefix: []const u8) !SelfDeletingFile {
+        const temp = try createTempFile(io, allocator, prefix);
         return .{
             .file = temp.file,
             .path = temp.path,
@@ -16263,28 +16479,29 @@ pub const SelfDeletingFile = struct {
         };
     }
 
-    pub fn deinit(self: *SelfDeletingFile) void {
-        self.file.close();
-        std.fs.cwd().deleteFile(self.path) catch {};
+    pub fn deinit(self: *SelfDeletingFile, io: std.Io) void {
+        self.file.close(io);
+        std.Io.Dir.cwd().deleteFile(io, self.path) catch {};
         self.allocator.free(self.path);
     }
 
-    pub fn writer(self: *SelfDeletingFile) std.fs.File.Writer {
+    pub fn writer(self: *SelfDeletingFile, io: std.Io) std.Io.File.Writer {
         var buf: [4096]u8 = undefined;
-        return self.file.writer(&buf);
+        return self.file.writer(io, &buf);
     }
 };
 
 test "self-deleting file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    var temp = try SelfDeletingFile.create(allocator, "self_delete");
+    var temp = try SelfDeletingFile.create(io, allocator, "self_delete");
     defer temp.deinit();
 
-    try temp.file.writeAll("Auto-deleted");
+    try temp.file.writeStreamingAll(io, "Auto-deleted");
 
     // File exists now
-    const stat = try std.fs.cwd().statFile(temp.path);
+    const stat = try std.Io.Dir.cwd().statFile(io, temp.path, .{});
     try std.testing.expect(stat.kind == .file);
 }
 ```
@@ -16294,37 +16511,37 @@ test "self-deleting file" {
 Create temp file with initial content:
 
 ```zig
-pub fn createTempFileWithContent(
+pub fn createTempFileWithContent(io: std.Io, 
     allocator: std.mem.Allocator,
     prefix: []const u8,
     content: []const u8,
 ) !struct {
-    file: std.fs.File,
+    file: std.Io.File,
     path: []const u8,
 } {
-    const temp = try createTempFile(allocator, prefix);
+    const temp = try createTempFile(io, allocator, prefix);
     errdefer {
-        temp.file.close();
+        temp.file.close(io);
         allocator.free(temp.path);
-        std.fs.cwd().deleteFile(temp.path) catch {};
+        std.Io.Dir.cwd().deleteFile(io, temp.path) catch {};
     }
 
-    try temp.file.writeAll(content);
-    try temp.file.seekTo(0);
+    try temp.file.writeStreamingAll(io, content);
 
     return temp;
 }
 
 test "temp file with content" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const temp = try createTempFileWithContent(allocator, "content", "Initial content");
-    defer temp.file.close();
+    const temp = try createTempFileWithContent(io, allocator, "content", "Initial content");
+    defer temp.file.close(io);
     defer allocator.free(temp.path);
-    defer std.fs.cwd().deleteFile(temp.path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, temp.path) catch {};
 
     var buffer: [20]u8 = undefined;
-    const n = try temp.file.read(&buffer);
+    const n = try temp.file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("Initial content", buffer[0..n]);
 }
@@ -16335,15 +16552,15 @@ test "temp file with content" {
 Create temp file that preserves extension:
 
 ```zig
-pub fn createNamedTempFile(
+pub fn createNamedTempFile(io: std.Io, 
     allocator: std.mem.Allocator,
     name: []const u8,
     extension: []const u8,
 ) !struct {
-    file: std.fs.File,
+    file: std.Io.File,
     path: []const u8,
 } {
-    var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
+    var prng = std.Random.DefaultPrng.init(@intCast(@as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms)))));
     const random = prng.random();
 
     const path = try std.fmt.allocPrint(
@@ -16353,18 +16570,19 @@ pub fn createNamedTempFile(
     );
     errdefer allocator.free(path);
 
-    const file = try std.fs.cwd().createFile(path, .{ .read = true });
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{ .read = true });
 
     return .{ .file = file, .path = path };
 }
 
 test "named temp file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const temp = try createNamedTempFile(allocator, "myfile", "txt");
-    defer temp.file.close();
+    const temp = try createNamedTempFile(io, allocator, "myfile", "txt");
+    defer temp.file.close(io);
     defer allocator.free(temp.path);
-    defer std.fs.cwd().deleteFile(temp.path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, temp.path) catch {};
 
     try std.testing.expect(std.mem.endsWith(u8, temp.path, ".txt"));
 }
@@ -16375,12 +16593,12 @@ test "named temp file" {
 Safely create temp file that doesn't already exist:
 
 ```zig
-pub fn createUniqueTempFile(
+pub fn createUniqueTempFile(io: std.Io, 
     allocator: std.mem.Allocator,
     prefix: []const u8,
     max_attempts: usize,
 ) !struct {
-    file: std.fs.File,
+    file: std.Io.File,
     path: []const u8,
 } {
     var attempts: usize = 0;
@@ -16388,7 +16606,7 @@ pub fn createUniqueTempFile(
         const path = try makeTempPath(allocator, "/tmp", prefix);
         errdefer allocator.free(path);
 
-        const file = std.fs.cwd().createFile(path, .{
+        const file = std.Io.Dir.cwd().createFile(io, path, .{
             .read = true,
             .exclusive = true,
         }) catch |err| switch (err) {
@@ -16396,7 +16614,6 @@ pub fn createUniqueTempFile(
                 allocator.free(path);
                 continue;
             },
-            else => return err,
         };
 
         return .{ .file = file, .path = path };
@@ -16406,14 +16623,15 @@ pub fn createUniqueTempFile(
 }
 
 test "unique temp file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const temp = try createUniqueTempFile(allocator, "unique", 10);
-    defer temp.file.close();
+    const temp = try createUniqueTempFile(io, allocator, "unique", 10);
+    defer temp.file.close(io);
     defer allocator.free(temp.path);
-    defer std.fs.cwd().deleteFile(temp.path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, temp.path) catch {};
 
-    try temp.file.writeAll("Unique file");
+    try temp.file.writeStreamingAll(io, "Unique file");
 }
 ```
 
@@ -16422,28 +16640,29 @@ test "unique temp file" {
 Iterate over temp dir contents:
 
 ```zig
-pub fn iterateTempDir(tmp: *std.testing.TmpDir) !void {
-    var iter = tmp.dir.iterate();
+pub fn iterateTempDir(io: std.Io, tmp: *std.testing.TmpDir) !void {
+    var iter = tmp.dir.iterate(io);
     while (try iter.next()) |entry| {
         std.debug.print("Entry: {s}\n", .{entry.name});
     }
 }
 
 test "iterate temp dir" {
+    const io = std.testing.io;
     var tmp = try std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
     // Create some files
     {
-        const file1 = try tmp.dir.createFile("file1.txt", .{});
-        defer file1.close();
-        const file2 = try tmp.dir.createFile("file2.txt", .{});
-        defer file2.close();
+        const file1 = try tmp.dir.createFile(io, "file1.txt", .{});
+        defer file1.close(io);
+        const file2 = try tmp.dir.createFile(io, "file2.txt", .{});
+        defer file2.close(io);
     }
 
     var count: usize = 0;
-    var iter = tmp.dir.iterate();
-    while (try iter.next()) |_| {
+    var iter = tmp.dir.iterate(io);
+    while (try iter.next(io)) |_| {
         count += 1;
     }
 
@@ -16456,13 +16675,13 @@ test "iterate temp dir" {
 Safe cleanup of temp resources:
 
 ```zig
-pub fn cleanupTempFile(path: []const u8, allocator: std.mem.Allocator) void {
-    std.fs.cwd().deleteFile(path) catch {};
+pub fn cleanupTempFile(io: std.Io, path: []const u8, allocator: std.mem.Allocator) void {
+    std.Io.Dir.cwd().deleteFile(io, path) catch {};
     allocator.free(path);
 }
 
-pub fn cleanupTempDir(path: []const u8, allocator: std.mem.Allocator) void {
-    std.fs.cwd().deleteTree(path) catch {};
+pub fn cleanupTempDir(io: std.Io, path: []const u8, allocator: std.mem.Allocator) void {
+    std.Io.Dir.cwd().deleteTree(io, path) catch {};
     allocator.free(path);
 }
 ```
@@ -16477,23 +16696,23 @@ pub fn getTempDir(allocator: std.mem.Allocator) ![]u8 {
 
     if (builtin.os.tag == .windows) {
         // Windows temp dir
-        return std.process.getEnvVarOwned(allocator, "TEMP") catch |err| switch (err) {
+        return try init.environ_map.get("TEMP") orelse error.EnvironmentVariableNotFound catch |err| switch (err) {
             error.EnvironmentVariableNotFound => try allocator.dupe(u8, "C:\\Temp"),
-            else => return err,
         };
     } else {
         // Unix temp dir
-        return std.process.getEnvVarOwned(allocator, "TMPDIR") catch |err| switch (err) {
+        return try init.environ_map.get("TMPDIR") orelse error.EnvironmentVariableNotFound catch |err| switch (err) {
             error.EnvironmentVariableNotFound => try allocator.dupe(u8, "/tmp"),
-            else => return err,
         };
     }
 }
 
 test "get temp dir" {
     const allocator = std.testing.allocator;
+    var environ_map: std.process.Environ.Map = .init(allocator);
+    defer environ_map.deinit();
 
-    const temp_dir = try getTempDir(allocator);
+    const temp_dir = try getTempDir(allocator, &environ_map);
     defer allocator.free(temp_dir);
 
     try std.testing.expect(temp_dir.len > 0);
@@ -16505,28 +16724,28 @@ test "get temp dir" {
 Use memory instead of disk (Linux):
 
 ```zig
-pub fn createMemoryTempFile() !std.fs.File {
+pub fn createMemoryTempFile() !std.Io.File {
     const builtin = @import("builtin");
     if (builtin.os.tag == .linux) {
         const fd = try std.posix.memfd_create("memtemp", 0);
-        return std.fs.File{ .handle = fd };
+        return std.Io.File{ .handle = fd, .flags = .{ .nonblocking = false } };
     } else {
         return error.NotSupported;
     }
 }
 
 test "memory temp file" {
+    const io = std.testing.io;
     const builtin = @import("builtin");
     if (builtin.os.tag != .linux) return error.SkipZigTest;
 
     const file = try createMemoryTempFile();
-    defer file.close();
+    defer file.close(io);
 
-    try file.writeAll("In memory");
+    try file.writeStreamingAll(io, "In memory");
 
-    try file.seekTo(0);
     var buffer: [20]u8 = undefined;
-    const n = try file.read(&buffer);
+    const n = try file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("In memory", buffer[0..n]);
 }
@@ -16547,10 +16766,10 @@ var tmp = try std.testing.tmpDir(.{});
 defer tmp.cleanup(); // Automatically removes directory and contents
 
 // For manual temp files
-const temp = try createTempFile(allocator, "prefix");
-defer temp.file.close();
+const temp = try createTempFile(io, allocator, "prefix");
+defer temp.file.close(io);
 defer allocator.free(temp.path);
-defer std.fs.cwd().deleteFile(temp.path) catch {}; // Ignore errors
+defer std.Io.Dir.cwd().deleteFile(io, temp.path) catch {}; // Ignore errors
 ```
 
 **Security:**
@@ -16568,14 +16787,14 @@ defer std.fs.cwd().deleteFile(temp.path) catch {}; // Ignore errors
 
 - `std.testing.tmpDir()` - Create temporary test directory
 - `std.testing.TmpDir.cleanup()` - Clean up temp directory
-- `std.fs.cwd().createFile()` - Create file
-- `std.fs.cwd().makeDir()` - Create directory
-- `std.fs.cwd().deleteFile()` - Delete file
-- `std.fs.cwd().deleteTree()` - Delete directory recursively
+- `std.Io.Dir.cwd().createFile()` - Create file
+- `std.Io.Dir.cwd().makeDir()` - Create directory
+- `std.Io.Dir.cwd().deleteFile()` - Delete file
+- `std.Io.Dir.cwd().deleteTree()` - Delete directory recursively
 - `std.posix.memfd_create()` - Create memory-backed file (Linux)
 - `std.process.getEnvVarOwned()` - Get environment variable
 - `std.Random` - Generate random values
-- `std.time.milliTimestamp()` - Get current timestamp
+- `std.Io.Timestamp.now(io, .real)` - Get current timestamp (`std.time` keeps only unit constants in 0.16)
 
 ### Full Tested Code
 
@@ -16583,24 +16802,24 @@ defer std.fs.cwd().deleteFile(temp.path) catch {}; // Ignore errors
 const std = @import("std");
 
 /// Create a temporary file with unique name
-pub fn createTempFile(allocator: std.mem.Allocator, prefix: []const u8) !struct {
-    file: std.fs.File,
+pub fn createTempFile(io: std.Io, allocator: std.mem.Allocator, prefix: []const u8) !struct {
+    file: std.Io.File,
     path: []const u8,
 } {
     var buf: [64]u8 = undefined;
-    const name = try std.fmt.bufPrint(&buf, "{s}_{d}", .{ prefix, std.time.milliTimestamp() });
+    const name = try std.fmt.bufPrint(&buf, "{s}_{d}", .{ prefix, @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms))) });
 
     const path = try std.fs.path.join(allocator, &[_][]const u8{ "/tmp", name });
     errdefer allocator.free(path);
 
-    const file = try std.fs.cwd().createFile(path, .{ .read = true });
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{ .read = true });
 
     return .{ .file = file, .path = path };
 }
 
 /// Generate unique temporary path
-pub fn makeTempPath(allocator: std.mem.Allocator, dir: []const u8, prefix: []const u8) ![]u8 {
-    var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
+pub fn makeTempPath(io: std.Io, allocator: std.mem.Allocator, dir: []const u8, prefix: []const u8) ![]u8 {
+    var prng = std.Random.DefaultPrng.init(@intCast(@as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms)))));
     const random = prng.random();
 
     var buf: [32]u8 = undefined;
@@ -16610,28 +16829,28 @@ pub fn makeTempPath(allocator: std.mem.Allocator, dir: []const u8, prefix: []con
 }
 
 /// Create temporary directory
-pub fn createTempDir(allocator: std.mem.Allocator, prefix: []const u8) ![]u8 {
-    const path = try makeTempPath(allocator, "/tmp", prefix);
+pub fn createTempDir(io: std.Io, allocator: std.mem.Allocator, prefix: []const u8) ![]u8 {
+    const path = try makeTempPath(io, allocator, "/tmp", prefix);
     errdefer allocator.free(path);
 
-    try std.fs.cwd().makeDir(path);
+    try std.Io.Dir.cwd().createDir(io, path, .default_dir);
 
     return path;
 }
 
 /// Remove temporary directory and contents
-pub fn removeTempDir(path: []const u8) !void {
-    try std.fs.cwd().deleteTree(path);
+pub fn removeTempDir(io: std.Io, path: []const u8) !void {
+    try std.Io.Dir.cwd().deleteTree(io, path);
 }
 
 /// Self-deleting temporary file
 pub const SelfDeletingFile = struct {
-    file: std.fs.File,
+    file: std.Io.File,
     path: []const u8,
     allocator: std.mem.Allocator,
 
-    pub fn create(allocator: std.mem.Allocator, prefix: []const u8) !SelfDeletingFile {
-        const temp = try createTempFile(allocator, prefix);
+    pub fn create(io: std.Io, allocator: std.mem.Allocator, prefix: []const u8) !SelfDeletingFile {
+        const temp = try createTempFile(io, allocator, prefix);
         return .{
             .file = temp.file,
             .path = temp.path,
@@ -16639,53 +16858,52 @@ pub const SelfDeletingFile = struct {
         };
     }
 
-    pub fn deinit(self: *SelfDeletingFile) void {
-        self.file.close();
-        std.fs.cwd().deleteFile(self.path) catch {};
+    pub fn deinit(self: *SelfDeletingFile, io: std.Io) void {
+        self.file.close(io);
+        std.Io.Dir.cwd().deleteFile(io, self.path) catch {};
         self.allocator.free(self.path);
     }
 
-    pub fn writeAll(self: *SelfDeletingFile, bytes: []const u8) !void {
-        return self.file.writeAll(bytes);
+    pub fn writeAll(self: *SelfDeletingFile, io: std.Io, bytes: []const u8) !void {
+        return self.file.writeStreamingAll(io, bytes);
     }
 
-    pub fn read(self: *SelfDeletingFile, buffer: []u8) !usize {
-        return self.file.read(buffer);
+    pub fn read(self: *SelfDeletingFile, io: std.Io, buffer: []u8) !usize {
+        return self.file.readPositionalAll(io, buffer, 0);
     }
 };
 
 /// Create temp file with initial content
-pub fn createTempFileWithContent(
+pub fn createTempFileWithContent(io: std.Io, 
     allocator: std.mem.Allocator,
     prefix: []const u8,
     content: []const u8,
 ) !struct {
-    file: std.fs.File,
+    file: std.Io.File,
     path: []const u8,
 } {
-    const temp = try createTempFile(allocator, prefix);
+    const temp = try createTempFile(io, allocator, prefix);
     errdefer {
-        temp.file.close();
+        temp.file.close(io);
         allocator.free(temp.path);
-        std.fs.cwd().deleteFile(temp.path) catch {};
+        std.Io.Dir.cwd().deleteFile(io, temp.path) catch {};
     }
 
-    try temp.file.writeAll(content);
-    try temp.file.seekTo(0);
+    try temp.file.writeStreamingAll(io, content);
 
     return .{ .file = temp.file, .path = temp.path };
 }
 
 /// Create named temporary file with extension
-pub fn createNamedTempFile(
+pub fn createNamedTempFile(io: std.Io, 
     allocator: std.mem.Allocator,
     name: []const u8,
     extension: []const u8,
 ) !struct {
-    file: std.fs.File,
+    file: std.Io.File,
     path: []const u8,
 } {
-    var prng = std.Random.DefaultPrng.init(@intCast(std.time.milliTimestamp()));
+    var prng = std.Random.DefaultPrng.init(@intCast(@as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_ms)))));
     const random = prng.random();
 
     const path = try std.fmt.allocPrint(
@@ -16695,26 +16913,26 @@ pub fn createNamedTempFile(
     );
     errdefer allocator.free(path);
 
-    const file = try std.fs.cwd().createFile(path, .{ .read = true });
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{ .read = true });
 
     return .{ .file = file, .path = path };
 }
 
 /// Create unique temp file atomically
-pub fn createUniqueTempFile(
+pub fn createUniqueTempFile(io: std.Io, 
     allocator: std.mem.Allocator,
     prefix: []const u8,
     max_attempts: usize,
 ) !struct {
-    file: std.fs.File,
+    file: std.Io.File,
     path: []const u8,
 } {
     var attempts: usize = 0;
     while (attempts < max_attempts) : (attempts += 1) {
-        const path = try makeTempPath(allocator, "/tmp", prefix);
+        const path = try makeTempPath(io, allocator, "/tmp", prefix);
         errdefer allocator.free(path);
 
-        const file = std.fs.cwd().createFile(path, .{
+        const file = std.Io.Dir.cwd().createFile(io, path, .{
             .read = true,
             .exclusive = true,
         }) catch |err| switch (err) {
@@ -16732,40 +16950,35 @@ pub fn createUniqueTempFile(
 }
 
 /// Clean up temporary file
-pub fn cleanupTempFile(path: []const u8, allocator: std.mem.Allocator) void {
-    std.fs.cwd().deleteFile(path) catch {};
+pub fn cleanupTempFile(io: std.Io, path: []const u8, allocator: std.mem.Allocator) void {
+    std.Io.Dir.cwd().deleteFile(io, path) catch {};
     allocator.free(path);
 }
 
 /// Clean up temporary directory
-pub fn cleanupTempDir(path: []const u8, allocator: std.mem.Allocator) void {
-    std.fs.cwd().deleteTree(path) catch {};
+pub fn cleanupTempDir(io: std.Io, path: []const u8, allocator: std.mem.Allocator) void {
+    std.Io.Dir.cwd().deleteTree(io, path) catch {};
     allocator.free(path);
 }
 
 /// Get platform-specific temp directory
-pub fn getTempDir(allocator: std.mem.Allocator) ![]u8 {
+// 0.16 has no global environment; the caller passes the map it got from
+// `std.process.Init`.
+pub fn getTempDir(allocator: std.mem.Allocator, environ: *const std.process.Environ.Map) ![]u8 {
     const builtin = @import("builtin");
 
-    if (builtin.os.tag == .windows) {
-        return std.process.getEnvVarOwned(allocator, "TEMP") catch |err| switch (err) {
-            error.EnvironmentVariableNotFound => try allocator.dupe(u8, "C:\\Temp"),
-            else => return err,
-        };
-    } else {
-        return std.process.getEnvVarOwned(allocator, "TMPDIR") catch |err| switch (err) {
-            error.EnvironmentVariableNotFound => try allocator.dupe(u8, "/tmp"),
-            else => return err,
-        };
-    }
+    const key = if (builtin.os.tag == .windows) "TEMP" else "TMPDIR";
+    const fallback = if (builtin.os.tag == .windows) "C:\\Temp" else "/tmp";
+
+    return allocator.dupe(u8, environ.get(key) orelse fallback);
 }
 
 /// Create memory-backed temporary file (Linux only)
-pub fn createMemoryTempFile() !std.fs.File {
+pub fn createMemoryTempFile() !std.Io.File {
     const builtin = @import("builtin");
     if (builtin.os.tag == .linux) {
         const fd = try std.posix.memfd_create("memtemp", 0);
-        return std.fs.File{ .handle = fd };
+        return std.Io.File{ .handle = fd, .flags = .{ .nonblocking = false } };
     } else {
         return error.NotSupported;
     }
@@ -16775,32 +16988,33 @@ pub fn createMemoryTempFile() !std.fs.File {
 
 // ANCHOR: basic_temp_files
 test "create temp file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const temp = try createTempFile(allocator, "test");
-    defer temp.file.close();
+    const temp = try createTempFile(io, allocator, "test");
+    defer temp.file.close(io);
     defer allocator.free(temp.path);
-    defer std.fs.cwd().deleteFile(temp.path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, temp.path) catch {};
 
-    try temp.file.writeAll("Temporary data");
+    try temp.file.writeStreamingAll(io, "Temporary data");
 
-    try temp.file.seekTo(0);
     var buffer: [20]u8 = undefined;
-    const n = try temp.file.read(&buffer);
+    const n = try temp.file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("Temporary data", buffer[0..n]);
 }
 
 test "temp dir for testing" {
+    const io = std.testing.io;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
-    const file = try tmp.dir.createFile("test.txt", .{});
-    defer file.close();
+    const file = try tmp.dir.createFile(io, "test.txt", .{});
+    defer file.close(io);
 
-    try file.writeAll("Test data");
+    try file.writeStreamingAll(io, "Test data");
 
-    const content = try tmp.dir.readFileAlloc(std.testing.allocator, "test.txt", 1024);
+    const content = try tmp.dir.readFileAlloc(io, "test.txt", std.testing.allocator, .limited(1024));
     defer std.testing.allocator.free(content);
 
     try std.testing.expectEqualStrings("Test data", content);
@@ -16808,102 +17022,109 @@ test "temp dir for testing" {
 // ANCHOR_END: basic_temp_files
 
 test "unique temp paths" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const path1 = try makeTempPath(allocator, "/tmp", "test");
+    const path1 = try makeTempPath(io, allocator, "/tmp", "test");
     defer allocator.free(path1);
 
     // Small delay to ensure different timestamp
-    std.Thread.sleep(1 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(1 * std.time.ns_per_ms), .awake);
 
-    const path2 = try makeTempPath(allocator, "/tmp", "test");
+    const path2 = try makeTempPath(io, allocator, "/tmp", "test");
     defer allocator.free(path2);
 
     try std.testing.expect(!std.mem.eql(u8, path1, path2));
 }
 
 test "temp directory" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const dir_path = try createTempDir(allocator, "testdir");
+    const dir_path = try createTempDir(io, allocator, "testdir");
     defer allocator.free(dir_path);
-    defer removeTempDir(dir_path) catch {};
+    defer removeTempDir(io, dir_path) catch {};
 
-    var dir = try std.fs.cwd().openDir(dir_path, .{});
-    defer dir.close();
+    var dir = try std.Io.Dir.cwd().openDir(io, dir_path, .{});
+    defer dir.close(io);
 
-    const file = try dir.createFile("test.txt", .{});
-    defer file.close();
+    const file = try dir.createFile(io, "test.txt", .{});
+    defer file.close(io);
 
-    try file.writeAll("In temp dir");
+    try file.writeStreamingAll(io, "In temp dir");
 }
 
 // ANCHOR: self_deleting
 test "self-deleting file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    var temp = try SelfDeletingFile.create(allocator, "self_delete");
-    defer temp.deinit();
+    var temp = try SelfDeletingFile.create(io, allocator, "self_delete");
+    defer temp.deinit(io);
 
-    try temp.writeAll("Auto-deleted");
+    try temp.writeAll(io, "Auto-deleted");
 
-    const stat = try std.fs.cwd().statFile(temp.path);
+    const stat = try std.Io.Dir.cwd().statFile(io, temp.path, .{});
     try std.testing.expect(stat.kind == .file);
 }
 
 test "temp file with content" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const temp = try createTempFileWithContent(allocator, "content", "Initial content");
-    defer temp.file.close();
+    const temp = try createTempFileWithContent(io, allocator, "content", "Initial content");
+    defer temp.file.close(io);
     defer allocator.free(temp.path);
-    defer std.fs.cwd().deleteFile(temp.path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, temp.path) catch {};
 
     var buffer: [20]u8 = undefined;
-    const n = try temp.file.read(&buffer);
+    const n = try temp.file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("Initial content", buffer[0..n]);
 }
 
 test "named temp file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const temp = try createNamedTempFile(allocator, "myfile", "txt");
-    defer temp.file.close();
+    const temp = try createNamedTempFile(io, allocator, "myfile", "txt");
+    defer temp.file.close(io);
     defer allocator.free(temp.path);
-    defer std.fs.cwd().deleteFile(temp.path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, temp.path) catch {};
 
     try std.testing.expect(std.mem.endsWith(u8, temp.path, ".txt"));
 }
 // ANCHOR_END: self_deleting
 
 test "unique temp file" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const temp = try createUniqueTempFile(allocator, "unique", 10);
-    defer temp.file.close();
+    const temp = try createUniqueTempFile(io, allocator, "unique", 10);
+    defer temp.file.close(io);
     defer allocator.free(temp.path);
-    defer std.fs.cwd().deleteFile(temp.path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, temp.path) catch {};
 
-    try temp.file.writeAll("Unique file");
+    try temp.file.writeStreamingAll(io, "Unique file");
 }
 
 // ANCHOR: cleanup_helpers
 test "iterate temp dir" {
+    const io = std.testing.io;
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
 
     // Create some files
     {
-        const file1 = try tmp.dir.createFile("file1.txt", .{});
-        defer file1.close();
-        const file2 = try tmp.dir.createFile("file2.txt", .{});
-        defer file2.close();
+        const file1 = try tmp.dir.createFile(io, "file1.txt", .{});
+        defer file1.close(io);
+        const file2 = try tmp.dir.createFile(io, "file2.txt", .{});
+        defer file2.close(io);
     }
 
     var count: usize = 0;
     var iter = tmp.dir.iterate();
-    while (try iter.next()) |_| {
+    while (try iter.next(io)) |_| {
         count += 1;
     }
 
@@ -16912,39 +17133,42 @@ test "iterate temp dir" {
 
 test "get temp dir" {
     const allocator = std.testing.allocator;
+    var environ_map: std.process.Environ.Map = .init(allocator);
+    defer environ_map.deinit();
 
-    const temp_dir = try getTempDir(allocator);
+    const temp_dir = try getTempDir(allocator, &environ_map);
     defer allocator.free(temp_dir);
 
     try std.testing.expect(temp_dir.len > 0);
 }
 
 test "memory temp file" {
+    const io = std.testing.io;
     const builtin = @import("builtin");
     if (builtin.os.tag != .linux) return error.SkipZigTest;
 
     const file = try createMemoryTempFile();
-    defer file.close();
+    defer file.close(io);
 
-    try file.writeAll("In memory");
+    try file.writeStreamingAll(io, "In memory");
 
-    try file.seekTo(0);
     var buffer: [20]u8 = undefined;
-    const n = try file.read(&buffer);
+    const n = try file.readPositionalAll(io, &buffer, 0);
 
     try std.testing.expectEqualStrings("In memory", buffer[0..n]);
 }
 
 test "cleanup helpers" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     // Create temp file
-    const temp = try createTempFile(allocator, "cleanup");
-    try temp.file.writeAll("test");
-    temp.file.close();
+    const temp = try createTempFile(io, allocator, "cleanup");
+    try temp.file.writeStreamingAll(io, "test");
+    temp.file.close(io);
 
     // Verify exists
-    const stat = try std.fs.cwd().statFile(temp.path);
+    const stat = try std.Io.Dir.cwd().statFile(io, temp.path, .{});
     try std.testing.expect(stat.kind == .file);
 
     // Make a copy of path for later check
@@ -16952,26 +17176,27 @@ test "cleanup helpers" {
     defer allocator.free(path_copy);
 
     // Cleanup (frees temp.path)
-    cleanupTempFile(temp.path, allocator);
+    cleanupTempFile(io, temp.path, allocator);
 
     // Should not exist (use path_copy)
-    const result = std.fs.cwd().statFile(path_copy);
+    const result = std.Io.Dir.cwd().statFile(io, path_copy, .{});
     try std.testing.expectError(error.FileNotFound, result);
 }
 
 test "temp dir cleanup" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const dir_path = try createTempDir(allocator, "cleanup_dir");
+    const dir_path = try createTempDir(io, allocator, "cleanup_dir");
 
     // Create file in it
-    var dir = try std.fs.cwd().openDir(dir_path, .{});
-    const file = try dir.createFile("file.txt", .{});
-    file.close();
-    dir.close();
+    var dir = try std.Io.Dir.cwd().openDir(io, dir_path, .{});
+    const file = try dir.createFile(io, "file.txt", .{});
+    file.close(io);
+    dir.close(io);
 
     // Verify exists
-    const stat = try std.fs.cwd().statFile(dir_path);
+    const stat = try std.Io.Dir.cwd().statFile(io, dir_path, .{});
     try std.testing.expect(stat.kind == .directory);
 
     // Make a copy of path for later check
@@ -16979,27 +17204,28 @@ test "temp dir cleanup" {
     defer allocator.free(path_copy);
 
     // Cleanup (frees dir_path)
-    cleanupTempDir(dir_path, allocator);
+    cleanupTempDir(io, dir_path, allocator);
 
     // Should not exist (use path_copy)
-    const result = std.fs.cwd().statFile(path_copy);
+    const result = std.Io.Dir.cwd().statFile(io, path_copy, .{});
     try std.testing.expectError(error.FileNotFound, result);
 }
 
 test "multiple temp files" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const temp1 = try createTempFile(allocator, "multi");
-    defer temp1.file.close();
+    const temp1 = try createTempFile(io, allocator, "multi");
+    defer temp1.file.close(io);
     defer allocator.free(temp1.path);
-    defer std.fs.cwd().deleteFile(temp1.path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, temp1.path) catch {};
 
-    std.Thread.sleep(2 * std.time.ns_per_ms);
+    try io.sleep(.fromNanoseconds(2 * std.time.ns_per_ms), .awake);
 
-    const temp2 = try createTempFile(allocator, "multi");
-    defer temp2.file.close();
+    const temp2 = try createTempFile(io, allocator, "multi");
+    defer temp2.file.close(io);
     defer allocator.free(temp2.path);
-    defer std.fs.cwd().deleteFile(temp2.path) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, temp2.path) catch {};
 
     // Paths should be different
     try std.testing.expect(!std.mem.eql(u8, temp1.path, temp2.path));
@@ -17025,9 +17251,9 @@ You need to communicate with hardware devices via serial ports (RS-232, USB-to-s
 
 ```zig
 test "baud rate conversion" {
-    const speed_9600: std.posix.speed_t = @enumFromInt(9600);
-    const speed_115200: std.posix.speed_t = @enumFromInt(115200);
-    const speed_57600: std.posix.speed_t = @enumFromInt(57600);
+    const speed_9600: std.posix.speed_t = .B9600;
+    const speed_115200: std.posix.speed_t = .B115200;
+    const speed_57600: std.posix.speed_t = .B57600;
 
     try std.testing.expectEqual(speed_9600, baudToSpeed(9600));
     try std.testing.expectEqual(speed_115200, baudToSpeed(115200));
@@ -17115,21 +17341,23 @@ test "windows not supported" {
 
 ```zig
 test "serial port API" {
+    const io = std.testing.io;
     // This test documents the API without requiring hardware
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) return error.SkipZigTest;
 
     // Example usage (would fail without hardware):
     // var port = try SerialPort.open("/dev/ttyUSB0", 115200);
-    // defer port.close();
+    // defer port.close(io);
     //
     // try port.write("Hello\r\n");
     //
     // var buffer: [100]u8 = undefined;
-    // const n = try port.read(&buffer);
+    // const n = try port.readPositionalAll(io, &buffer, 0);
 }
 
 test "configured open API" {
+    const io = std.testing.io;
     // This test documents the configured API without requiring hardware
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) return error.SkipZigTest;
@@ -17142,7 +17370,7 @@ test "configured open API" {
     // };
     //
     // var port = try openConfigured("/dev/ttyUSB0", config);
-    // defer port.close();
+    // defer port.close(io);
 }
 
 test "read line simulation" {
@@ -17216,7 +17444,6 @@ pub fn openSerialPort(allocator: std.mem.Allocator, device: []const u8, baud_rat
         return error.NotSupported;
     }
 
-    _ = allocator;
     return SerialPort.open(device, baud_rate);
 }
 
@@ -17234,7 +17461,7 @@ test "open serial port" {
 Set communication speed:
 
 ```zig
-pub fn setBaudRate(file: std.fs.File, baud_rate: u32) !void {
+pub fn setBaudRate(file: std.Io.File, baud_rate: u32) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17261,7 +17488,7 @@ pub const Parity = enum {
     odd,
 };
 
-pub fn setParity(file: std.fs.File, parity: Parity) !void {
+pub fn setParity(file: std.Io.File, parity: Parity) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17291,7 +17518,7 @@ pub fn setParity(file: std.fs.File, parity: Parity) !void {
 Configure stop bits:
 
 ```zig
-pub fn setStopBits(file: std.fs.File, stop_bits: u8) !void {
+pub fn setStopBits(file: std.Io.File, stop_bits: u8) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17314,7 +17541,7 @@ pub fn setStopBits(file: std.fs.File, stop_bits: u8) !void {
 Configure data bits:
 
 ```zig
-pub fn setDataBits(file: std.fs.File, data_bits: u8) !void {
+pub fn setDataBits(file: std.Io.File, data_bits: u8) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17349,7 +17576,7 @@ pub const FlowControl = enum {
     hardware,
 };
 
-pub fn setFlowControl(file: std.fs.File, flow: FlowControl) !void {
+pub fn setFlowControl(file: std.Io.File, flow: FlowControl) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17381,7 +17608,7 @@ pub fn setFlowControl(file: std.fs.File, flow: FlowControl) !void {
 Control read/write timeouts:
 
 ```zig
-pub fn setTimeout(file: std.fs.File, timeout_deciseconds: u8) !void {
+pub fn setTimeout(file: std.Io.File, timeout_deciseconds: u8) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17401,7 +17628,7 @@ pub fn setTimeout(file: std.fs.File, timeout_deciseconds: u8) !void {
 Discard buffered data:
 
 ```zig
-pub fn flushInput(file: std.fs.File) !void {
+pub fn flushInput(file: std.Io.File) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17410,7 +17637,7 @@ pub fn flushInput(file: std.fs.File) !void {
     try std.posix.tcflush(file.handle, .IFLUSH);
 }
 
-pub fn flushOutput(file: std.fs.File) !void {
+pub fn flushOutput(file: std.Io.File) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17419,7 +17646,7 @@ pub fn flushOutput(file: std.fs.File) !void {
     try std.posix.tcflush(file.handle, .OFLUSH);
 }
 
-pub fn flushBoth(file: std.fs.File) !void {
+pub fn flushBoth(file: std.Io.File) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17434,11 +17661,11 @@ pub fn flushBoth(file: std.fs.File) !void {
 Read from serial port:
 
 ```zig
-pub fn readLine(file: std.fs.File, buffer: []u8, delimiter: u8) ![]const u8 {
+pub fn readLine(io: std.Io, file: std.Io.File, buffer: []u8, delimiter: u8) ![]const u8 {
     var pos: usize = 0;
 
     while (pos < buffer.len) {
-        const n = try file.read(buffer[pos..pos + 1]);
+        const n = try file.readPositionalAll(io, buffer[pos..pos + 1], 0);
         if (n == 0) break;
 
         if (buffer[pos] == delimiter) {
@@ -17451,11 +17678,11 @@ pub fn readLine(file: std.fs.File, buffer: []u8, delimiter: u8) ![]const u8 {
     return buffer[0..pos];
 }
 
-pub fn readExactly(file: std.fs.File, buffer: []u8) !void {
+pub fn readExactly(io: std.Io, file: std.Io.File, buffer: []u8) !void {
     var pos: usize = 0;
 
     while (pos < buffer.len) {
-        const n = try file.read(buffer[pos..]);
+        const n = try file.readPositionalAll(io, buffer[pos..], 0);
         if (n == 0) return error.EndOfStream;
         pos += n;
     }
@@ -17467,14 +17694,14 @@ pub fn readExactly(file: std.fs.File, buffer: []u8) !void {
 Write to serial port:
 
 ```zig
-pub fn writeLine(file: std.fs.File, data: []const u8) !void {
-    try file.writeAll(data);
-    try file.writeAll("\r\n");
+pub fn writeLine(io: std.Io, file: std.Io.File, data: []const u8) !void {
+    try file.writeStreamingAll(io, data);
+    try file.writeStreamingAll(io, "\r\n");
 }
 
-pub fn writeCommand(file: std.fs.File, command: []const u8) !void {
-    try file.writeAll(command);
-    try file.writeAll("\r");
+pub fn writeCommand(io: std.Io, file: std.Io.File, command: []const u8) !void {
+    try file.writeStreamingAll(io, command);
+    try file.writeStreamingAll(io, "\r");
 }
 ```
 
@@ -17492,14 +17719,14 @@ pub const SerialConfig = struct {
     timeout_deciseconds: u8 = 10,
 };
 
-pub fn openConfigured(path: []const u8, config: SerialConfig) !SerialPort {
+pub fn openConfigured(io: std.Io, path: []const u8, config: SerialConfig) !SerialPort {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
     }
 
     var port = try SerialPort.open(path, config.baud_rate);
-    errdefer port.close();
+    errdefer port.close(io);
 
     try setDataBits(port.file, config.data_bits);
     try setStopBits(port.file, config.stop_bits);
@@ -17540,7 +17767,7 @@ const port = SerialPort.open("/dev/ttyUSB0", 115200) catch |err| {
     std.log.err("Failed to open serial port: {}", .{err});
     return err;
 };
-defer port.close();
+defer port.close(io);
 ```
 
 **Timeouts:**
@@ -17566,7 +17793,7 @@ defer port.close();
 - `std.posix.tcdrain()` - Wait for output to drain
 - `std.fs.File.read()` - Read data
 - `std.fs.File.writeAll()` - Write data
-- `std.fs.cwd().openFile()` - Open file/device
+- `std.Io.Dir.cwd().openFile()` - Open file/device
 
 ### Full Tested Code
 
@@ -17575,37 +17802,37 @@ const std = @import("std");
 
 /// Serial port wrapper
 pub const SerialPort = struct {
-    file: std.fs.File,
+    file: std.Io.File,
 
-    pub fn open(path: []const u8, baud_rate: u32) !SerialPort {
+    pub fn open(io: std.Io, path: []const u8, baud_rate: u32) !SerialPort {
         const builtin = @import("builtin");
         if (builtin.os.tag == .windows) {
             return error.NotSupported;
         }
 
-        const file = try std.fs.cwd().openFile(path, .{ .mode = .read_write });
-        errdefer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, path, .{ .mode = .read_write });
+        errdefer file.close(io);
 
         try configurePort(file, baud_rate);
 
         return SerialPort{ .file = file };
     }
 
-    pub fn close(self: *SerialPort) void {
-        self.file.close();
+    pub fn close(self: *SerialPort, io: std.Io) void {
+        self.file.close(io);
     }
 
-    pub fn write(self: *SerialPort, data: []const u8) !void {
-        return self.file.writeAll(data);
+    pub fn write(self: *SerialPort, io: std.Io, data: []const u8) !void {
+        return self.file.writeStreamingAll(io, data);
     }
 
-    pub fn read(self: *SerialPort, buffer: []u8) !usize {
-        return self.file.read(buffer);
+    pub fn read(self: *SerialPort, io: std.Io, buffer: []u8) !usize {
+        return self.file.readPositionalAll(io, buffer, 0);
     }
 };
 
 /// Configure serial port with termios
-fn configurePort(file: std.fs.File, baud_rate: u32) !void {
+fn configurePort(file: std.Io.File, baud_rate: u32) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17658,7 +17885,7 @@ pub const Parity = enum {
 };
 
 /// Set parity
-pub fn setParity(file: std.fs.File, parity: Parity) !void {
+pub fn setParity(file: std.Io.File, parity: Parity) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17683,7 +17910,7 @@ pub fn setParity(file: std.fs.File, parity: Parity) !void {
 }
 
 /// Set stop bits (1 or 2)
-pub fn setStopBits(file: std.fs.File, stop_bits: u8) !void {
+pub fn setStopBits(file: std.Io.File, stop_bits: u8) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17705,7 +17932,7 @@ pub fn setStopBits(file: std.fs.File, stop_bits: u8) !void {
 }
 
 /// Set data bits (5, 6, 7, or 8)
-pub fn setDataBits(file: std.fs.File, data_bits: u8) !void {
+pub fn setDataBits(file: std.Io.File, data_bits: u8) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17729,7 +17956,7 @@ pub fn setDataBits(file: std.fs.File, data_bits: u8) !void {
 }
 
 /// Set baud rate
-pub fn setBaudRate(file: std.fs.File, baud_rate: u32) !void {
+pub fn setBaudRate(file: std.Io.File, baud_rate: u32) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17752,7 +17979,7 @@ pub const FlowControl = enum {
 };
 
 /// Set flow control
-pub fn setFlowControl(file: std.fs.File, flow: FlowControl) !void {
+pub fn setFlowControl(file: std.Io.File, flow: FlowControl) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17779,7 +18006,7 @@ pub fn setFlowControl(file: std.fs.File, flow: FlowControl) !void {
 }
 
 /// Set read timeout in deciseconds (tenths of a second)
-pub fn setTimeout(file: std.fs.File, timeout_deciseconds: u8) !void {
+pub fn setTimeout(file: std.Io.File, timeout_deciseconds: u8) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17794,7 +18021,7 @@ pub fn setTimeout(file: std.fs.File, timeout_deciseconds: u8) !void {
 }
 
 /// Flush input buffer
-pub fn flushInput(file: std.fs.File) !void {
+pub fn flushInput(file: std.Io.File) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17804,7 +18031,7 @@ pub fn flushInput(file: std.fs.File) !void {
 }
 
 /// Flush output buffer
-pub fn flushOutput(file: std.fs.File) !void {
+pub fn flushOutput(file: std.Io.File) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17814,7 +18041,7 @@ pub fn flushOutput(file: std.fs.File) !void {
 }
 
 /// Flush both input and output buffers
-pub fn flushBoth(file: std.fs.File) !void {
+pub fn flushBoth(file: std.Io.File) !void {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
@@ -17824,11 +18051,11 @@ pub fn flushBoth(file: std.fs.File) !void {
 }
 
 /// Read line until delimiter
-pub fn readLine(file: std.fs.File, buffer: []u8, delimiter: u8) ![]const u8 {
+pub fn readLine(io: std.Io, file: std.Io.File, buffer: []u8, delimiter: u8) ![]const u8 {
     var pos: usize = 0;
 
     while (pos < buffer.len) {
-        const n = try file.read(buffer[pos..pos + 1]);
+        const n = try file.readPositionalAll(io, buffer[pos..pos + 1], 0);
         if (n == 0) break;
 
         if (buffer[pos] == delimiter) {
@@ -17842,26 +18069,26 @@ pub fn readLine(file: std.fs.File, buffer: []u8, delimiter: u8) ![]const u8 {
 }
 
 /// Read exact number of bytes
-pub fn readExactly(file: std.fs.File, buffer: []u8) !void {
+pub fn readExactly(io: std.Io, file: std.Io.File, buffer: []u8) !void {
     var pos: usize = 0;
 
     while (pos < buffer.len) {
-        const n = try file.read(buffer[pos..]);
+        const n = try file.readPositionalAll(io, buffer[pos..], 0);
         if (n == 0) return error.EndOfStream;
         pos += n;
     }
 }
 
 /// Write line with CRLF
-pub fn writeLine(file: std.fs.File, data: []const u8) !void {
-    try file.writeAll(data);
-    try file.writeAll("\r\n");
+pub fn writeLine(io: std.Io, file: std.Io.File, data: []const u8) !void {
+    try file.writeStreamingAll(io, data);
+    try file.writeStreamingAll(io, "\r\n");
 }
 
 /// Write command with CR
-pub fn writeCommand(file: std.fs.File, command: []const u8) !void {
-    try file.writeAll(command);
-    try file.writeAll("\r");
+pub fn writeCommand(io: std.Io, file: std.Io.File, command: []const u8) !void {
+    try file.writeStreamingAll(io, command);
+    try file.writeStreamingAll(io, "\r");
 }
 
 /// Serial configuration struct
@@ -17875,14 +18102,14 @@ pub const SerialConfig = struct {
 };
 
 /// Open serial port with custom configuration
-pub fn openConfigured(path: []const u8, config: SerialConfig) !SerialPort {
+pub fn openConfigured(io: std.Io, path: []const u8, config: SerialConfig) !SerialPort {
     const builtin = @import("builtin");
     if (builtin.os.tag == .windows) {
         return error.NotSupported;
     }
 
     var port = try SerialPort.open(path, config.baud_rate);
-    errdefer port.close();
+    errdefer port.close(io);
 
     try setDataBits(port.file, config.data_bits);
     try setStopBits(port.file, config.stop_bits);
@@ -17894,19 +18121,19 @@ pub fn openConfigured(path: []const u8, config: SerialConfig) !SerialPort {
 }
 
 /// Send AT command and read response
-pub fn sendATCommand(port: *SerialPort, command: []const u8, response_buffer: []u8) ![]const u8 {
+pub fn sendATCommand(io: std.Io, port: *SerialPort, command: []const u8, response_buffer: []u8) ![]const u8 {
     try flushBoth(port.file);
 
-    try writeCommand(port.file, command);
+    try writeCommand(io, port.file, command);
 
-    const response = try readLine(port.file, response_buffer, '\n');
+    const response = try readLine(io, port.file, response_buffer, '\n');
 
     return response;
 }
 
 /// Get common serial device paths
-pub fn getCommonDevices(allocator: std.mem.Allocator) ![][]const u8 {
-    var devices = std.ArrayList([]const u8){};
+pub fn getCommonDevices(io: std.Io, allocator: std.mem.Allocator) ![][]const u8 {
+    var devices = std.ArrayList([]const u8).empty;
     errdefer {
         for (devices.items) |item| {
             allocator.free(item);
@@ -17925,7 +18152,7 @@ pub fn getCommonDevices(allocator: std.mem.Allocator) ![][]const u8 {
     };
 
     for (patterns) |pattern| {
-        std.fs.cwd().access(pattern, .{}) catch continue;
+        std.Io.Dir.cwd().access(io, pattern, .{}) catch continue;
         const device = try allocator.dupe(u8, pattern);
         try devices.append(allocator, device);
     }
@@ -17937,9 +18164,9 @@ pub fn getCommonDevices(allocator: std.mem.Allocator) ![][]const u8 {
 
 // ANCHOR: serial_config
 test "baud rate conversion" {
-    const speed_9600: std.posix.speed_t = @enumFromInt(9600);
-    const speed_115200: std.posix.speed_t = @enumFromInt(115200);
-    const speed_57600: std.posix.speed_t = @enumFromInt(57600);
+    const speed_9600: std.posix.speed_t = .B9600;
+    const speed_115200: std.posix.speed_t = .B115200;
+    const speed_57600: std.posix.speed_t = .B57600;
 
     try std.testing.expectEqual(speed_9600, baudToSpeed(9600));
     try std.testing.expectEqual(speed_115200, baudToSpeed(115200));
@@ -17998,9 +18225,10 @@ test "flow control enum" {
 
 // ANCHOR: device_discovery
 test "get common devices" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
-    const devices = try getCommonDevices(allocator);
+    const devices = try getCommonDevices(io, allocator);
     defer {
         for (devices) |device| {
             allocator.free(device);
@@ -18031,12 +18259,12 @@ test "serial port API" {
 
     // Example usage (would fail without hardware):
     // var port = try SerialPort.open("/dev/ttyUSB0", 115200);
-    // defer port.close();
+    // defer port.close(io);
     //
     // try port.write("Hello\r\n");
     //
     // var buffer: [100]u8 = undefined;
-    // const n = try port.read(&buffer);
+    // const n = try port.readPositionalAll(io, &buffer, 0);
 }
 
 test "configured open API" {
@@ -18051,8 +18279,8 @@ test "configured open API" {
     //     .flow_control = .hardware,
     // };
     //
-    // var port = try openConfigured("/dev/ttyUSB0", config);
-    // defer port.close();
+    // var port = try openConfigured(io, "/dev/ttyUSB0", config);
+    // defer port.close(io);
 }
 
 test "read line simulation" {
@@ -18061,21 +18289,21 @@ test "read line simulation" {
     @memcpy(buffer[0.."Hello\n".len], "Hello\n");
 
     // In real use, this would read from a file
-    // const line = try readLine(file, &buffer, '\n');
+    // const line = try readLine(io, file, &buffer, '\n');
 }
 
 test "write commands simulation" {
     // Documents the write command API
     // In real use:
-    // try writeCommand(file, "AT");
-    // try writeLine(file, "Hello World");
+    // try writeCommand(io, file, "AT");
+    // try writeLine(io, file, "Hello World");
 }
 
 test "AT command simulation" {
     // Documents AT command pattern
     // In real use with modem:
     // var response_buffer: [256]u8 = undefined;
-    // const response = try sendATCommand(&port, "AT", &response_buffer);
+    // const response = try sendATCommand(io, &port, "AT", &response_buffer);
     // Expected response: "OK"
 }
 
@@ -18132,6 +18360,7 @@ You need to convert Zig structs and data types to bytes for file storage, networ
 
 ```zig
 test "serialize to disk" {
+    const io = std.testing.io;
     var person = Person{
         .age = 30,
         .height = 1.75,
@@ -18139,13 +18368,12 @@ test "serialize to disk" {
     };
     @memcpy(&person.name, "Alice" ++ ([_]u8{0} ** 15));
 
-    const file = try std.fs.cwd().createFile("/tmp/person.bin", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/person.bin") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/person.bin", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/person.bin") catch {};
 
     try serializeToDisk(file, person);
 
-    try file.seekTo(0);
     const loaded = try deserializeFromDisk(file);
 
     try std.testing.expectEqual(person.age, loaded.age);
@@ -18260,6 +18488,7 @@ test "JSON contains expected fields" {
 
 ```zig
 test "struct array serialization" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const Point = struct {
@@ -18273,13 +18502,12 @@ test "struct array serialization" {
         .{ .x = 5, .y = 6 },
     };
 
-    const file = try std.fs.cwd().createFile("/tmp/points.bin", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/points.bin") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/points.bin", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/points.bin") catch {};
 
     try writeStructArray(Point, file, &points);
 
-    try file.seekTo(0);
     const loaded = try readStructArray(Point, allocator, file);
     defer allocator.free(loaded);
 
@@ -18291,6 +18519,7 @@ test "struct array serialization" {
 }
 
 test "empty struct array" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const Point = struct {
@@ -18300,13 +18529,12 @@ test "empty struct array" {
 
     const points: []const Point = &.{};
 
-    const file = try std.fs.cwd().createFile("/tmp/empty_points.bin", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/empty_points.bin") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/empty_points.bin", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/empty_points.bin") catch {};
 
     try writeStructArray(Point, file, points);
 
-    try file.seekTo(0);
     const loaded = try readStructArray(Point, allocator, file);
     defer allocator.free(loaded);
 
@@ -18589,7 +18817,7 @@ test "JSON serialization" {
 Serialize arrays of structs:
 
 ```zig
-pub fn writeStructArray(comptime T: type, file: std.fs.File, items: []const T) !void {
+pub fn writeStructArray(io: std.Io, comptime T: type, file: std.Io.File, items: []const T) !void {
     // Write count first
     const count: u32 = @intCast(items.len);
     try file.writeInt(u32, count, .little);
@@ -18597,13 +18825,13 @@ pub fn writeStructArray(comptime T: type, file: std.fs.File, items: []const T) !
     // Write each struct
     for (items) |item| {
         const bytes = std.mem.asBytes(&item);
-        try file.writeAll(bytes);
+        try file.writeStreamingAll(io, bytes);
     }
 }
 
-pub fn readStructArray(comptime T: type, allocator: std.mem.Allocator, file: std.fs.File) ![]T {
+pub fn readStructArray(io: std.Io, comptime T: type, allocator: std.mem.Allocator, file: std.Io.File) ![]T {
     // Read count
-    const count = try file.readInt(u32, .little);
+    const count = std.mem.readInt(u32, try file.takeArray(@divExact(@bitSizeOf(u32), 8)), .little);
 
     // Allocate array
     const items = try allocator.alloc(T, count);
@@ -18612,7 +18840,7 @@ pub fn readStructArray(comptime T: type, allocator: std.mem.Allocator, file: std
     // Read each struct
     for (items) |*item| {
         const bytes = std.mem.asBytes(item);
-        const n = try file.readAll(bytes);
+        const n = try file.readPositionalAll(io, bytes, 0);
         if (n != bytes.len) {
             return error.UnexpectedEof;
         }
@@ -18622,6 +18850,7 @@ pub fn readStructArray(comptime T: type, allocator: std.mem.Allocator, file: std
 }
 
 test "struct array serialization" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const Point = struct {
@@ -18635,14 +18864,13 @@ test "struct array serialization" {
         .{ .x = 5, .y = 6 },
     };
 
-    const file = try std.fs.cwd().createFile("/tmp/points.bin", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/points.bin") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/points.bin", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/points.bin") catch {};
 
-    try writeStructArray(Point, file, &points);
+    try writeStructArray(io, Point, file, &points);
 
-    try file.seekTo(0);
-    const loaded = try readStructArray(Point, allocator, file);
+    const loaded = try readStructArray(io, Point, allocator, file);
     defer allocator.free(loaded);
 
     try std.testing.expectEqual(points.len, loaded.len);
@@ -18663,7 +18891,7 @@ const CustomData = struct {
     data: []const u8,
 
     pub fn serialize(self: CustomData, allocator: std.mem.Allocator) ![]u8 {
-        var list = std.ArrayList(u8){};
+        var list = std.ArrayList(u8).empty;
         errdefer list.deinit(allocator);
 
         // Write version
@@ -18734,7 +18962,7 @@ const VersionedData = struct {
     extra: ?[]const u8, // Added in version 2
 
     pub fn serialize(self: VersionedData, allocator: std.mem.Allocator) ![]u8 {
-        var list = std.ArrayList(u8){};
+        var list = std.ArrayList(u8).empty;
         errdefer list.deinit(allocator);
 
         // Write version
@@ -18882,16 +19110,16 @@ const Person = struct {
 };
 
 /// Serialize struct to file
-pub fn serializeToDisk(file: std.fs.File, person: Person) !void {
+pub fn serializeToDisk(io: std.Io, file: std.Io.File, person: Person) !void {
     const bytes = std.mem.asBytes(&person);
-    try file.writeAll(bytes);
+    try file.writeStreamingAll(io, bytes);
 }
 
 /// Deserialize struct from file
-pub fn deserializeFromDisk(file: std.fs.File) !Person {
+pub fn deserializeFromDisk(io: std.Io, file: std.Io.File) !Person {
     var person: Person = undefined;
     const bytes = std.mem.asBytes(&person);
-    const n = try file.readAll(bytes);
+    const n = try file.readPositionalAll(io, bytes, 0);
 
     if (n != bytes.len) {
         return error.UnexpectedEof;
@@ -18956,7 +19184,7 @@ const User = struct {
     active: bool,
 };
 
-/// Serialize to JSON (manual implementation for Zig 0.15.2)
+/// Serialize to JSON (manual implementation for Zig 0.16.0)
 pub fn serializeToJson(allocator: std.mem.Allocator, user: User) ![]u8 {
     return std.fmt.allocPrint(allocator,
         \\{{"id":{d},"name":"{s}","active":{s}}}
@@ -18976,25 +19204,25 @@ pub fn deserializeFromJson(allocator: std.mem.Allocator, json: []const u8) !User
 }
 
 /// Write array of structs to file
-pub fn writeStructArray(comptime T: type, file: std.fs.File, items: []const T) !void {
+pub fn writeStructArray(io: std.Io, comptime T: type, file: std.Io.File, items: []const T) !void {
     // Write count first
     const count: u32 = @intCast(items.len);
     var count_bytes: [4]u8 = undefined;
     std.mem.writeInt(u32, &count_bytes, count, .little);
-    try file.writeAll(&count_bytes);
+    try file.writeStreamingAll(io, &count_bytes);
 
     // Write each struct
     for (items) |item| {
         const bytes = std.mem.asBytes(&item);
-        try file.writeAll(bytes);
+        try file.writeStreamingAll(io, bytes);
     }
 }
 
 /// Read array of structs from file
-pub fn readStructArray(comptime T: type, allocator: std.mem.Allocator, file: std.fs.File) ![]T {
+pub fn readStructArray(io: std.Io, comptime T: type, allocator: std.mem.Allocator, file: std.Io.File) ![]T {
     // Read count
     var count_bytes: [4]u8 = undefined;
-    const n = try file.readAll(&count_bytes);
+    const n = try file.readPositionalAll(io, &count_bytes, 0);
     if (n != 4) {
         return error.UnexpectedEof;
     }
@@ -19007,7 +19235,7 @@ pub fn readStructArray(comptime T: type, allocator: std.mem.Allocator, file: std
     // Read each struct
     for (items) |*item| {
         const bytes = std.mem.asBytes(item);
-        const bytes_read = try file.readAll(bytes);
+        const bytes_read = try file.readPositionalAll(io, bytes, 0);
         if (bytes_read != bytes.len) {
             return error.UnexpectedEof;
         }
@@ -19022,7 +19250,7 @@ const CustomData = struct {
     data: []const u8,
 
     pub fn serialize(self: CustomData, allocator: std.mem.Allocator) ![]u8 {
-        var list = std.ArrayList(u8){};
+        var list = std.ArrayList(u8).empty;
         errdefer list.deinit(allocator);
 
         // Write version
@@ -19070,7 +19298,7 @@ const VersionedData = struct {
     extra: ?[]const u8, // Added in version 2
 
     pub fn serialize(self: VersionedData, allocator: std.mem.Allocator) ![]u8 {
-        var list = std.ArrayList(u8){};
+        var list = std.ArrayList(u8).empty;
         errdefer list.deinit(allocator);
 
         // Write version
@@ -19144,6 +19372,7 @@ const VersionedData = struct {
 
 // ANCHOR: basic_serialization
 test "serialize to disk" {
+    const io = std.testing.io;
     var person = Person{
         .age = 30,
         .height = 1.75,
@@ -19151,14 +19380,13 @@ test "serialize to disk" {
     };
     @memcpy(&person.name, "Alice" ++ ([_]u8{0} ** 15));
 
-    const file = try std.fs.cwd().createFile("/tmp/person.bin", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/person.bin") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/person.bin", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/person.bin") catch {};
 
-    try serializeToDisk(file, person);
+    try serializeToDisk(io, file, person);
 
-    try file.seekTo(0);
-    const loaded = try deserializeFromDisk(file);
+    const loaded = try deserializeFromDisk(io, file);
 
     try std.testing.expectEqual(person.age, loaded.age);
     try std.testing.expectEqual(person.height, loaded.height);
@@ -19282,6 +19510,7 @@ test "JSON contains expected fields" {
 
 // ANCHOR: array_serialization
 test "struct array serialization" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const Point = struct {
@@ -19295,14 +19524,13 @@ test "struct array serialization" {
         .{ .x = 5, .y = 6 },
     };
 
-    const file = try std.fs.cwd().createFile("/tmp/points.bin", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/points.bin") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/points.bin", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/points.bin") catch {};
 
-    try writeStructArray(Point, file, &points);
+    try writeStructArray(io, Point, file, &points);
 
-    try file.seekTo(0);
-    const loaded = try readStructArray(Point, allocator, file);
+    const loaded = try readStructArray(io, Point, allocator, file);
     defer allocator.free(loaded);
 
     try std.testing.expectEqual(points.len, loaded.len);
@@ -19313,6 +19541,7 @@ test "struct array serialization" {
 }
 
 test "empty struct array" {
+    const io = std.testing.io;
     const allocator = std.testing.allocator;
 
     const Point = struct {
@@ -19322,14 +19551,13 @@ test "empty struct array" {
 
     const points: []const Point = &.{};
 
-    const file = try std.fs.cwd().createFile("/tmp/empty_points.bin", .{ .read = true });
-    defer file.close();
-    defer std.fs.cwd().deleteFile("/tmp/empty_points.bin") catch {};
+    const file = try std.Io.Dir.cwd().createFile(io, "/tmp/empty_points.bin", .{ .read = true });
+    defer file.close(io);
+    defer std.Io.Dir.cwd().deleteFile(io, "/tmp/empty_points.bin") catch {};
 
-    try writeStructArray(Point, file, points);
+    try writeStructArray(io, Point, file, points);
 
-    try file.seekTo(0);
-    const loaded = try readStructArray(Point, allocator, file);
+    const loaded = try readStructArray(io, Point, allocator, file);
     defer allocator.free(loaded);
 
     try std.testing.expectEqual(@as(usize, 0), loaded.len);

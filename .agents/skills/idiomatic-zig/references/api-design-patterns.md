@@ -24,10 +24,74 @@ Keep dependencies (allocator, tracer, io) positional — they are singletons wit
 threaded through constructors from most general to most specific:
 
 ```zig
-pub fn init(gpa: Allocator, io: *IO, opts: Options) !Server { ... }
+pub fn init(gpa: Allocator, io: std.Io, opts: Options) !Server { ... }
 ```
 
 Put configuration in the options struct.
+
+Zig 0.16's standard library follows exactly this split. `net.IpAddress.listen` takes the
+address and the `Io` positionally, then a `ListenOptions` holding `kernel_backlog`,
+`reuse_address`, `mode` and `protocol` — four values that would otherwise be four
+guessable positional arguments.
+
+## Io Is a Dependency, Not Ambient Authority
+
+Zig 0.16 turned I/O into an interface value. `std.Io` is passed the same way `Allocator`
+always was, and the two rules are the same rules:
+
+- **Pass it, never reach for it.** `std.fs.cwd()` is gone. `std.Io.Dir.cwd()` replaces it and
+  still needs no `Io` -- but the handle it returns is inert until you supply one, because
+  every operation on a `Dir` takes an `Io`. The ambient *handle* survived; the ambient
+  *authority* did not. Take an `Io` parameter, or take a caller who has one.
+- **Store it only when the object outlives the call.** A `Server` that owns a socket keeps
+  no `Io` field. Its `deinit(io)` takes the one that opened the socket. Caching an `Io` in a
+  struct is the same smell as caching an `Allocator` you did not allocate with.
+- **The signature is the documentation.** A function without an `Io` parameter cannot block,
+  cannot touch the disk, and cannot be cancelled. That is a much stronger guarantee than a
+  comment, and the compiler checks it.
+
+```zig
+// Good: the caller can see this touches the outside world.
+pub fn load(gpa: Allocator, io: std.Io, path: []const u8) ![]u8 { ... }
+
+// Bad in 0.16 — and no longer expressible. The old `std.fs.cwd()` let any
+// function anywhere open a file with nothing in its signature to say so.
+pub fn load(gpa: Allocator, path: []const u8) ![]u8 { ... }
+```
+
+This is the "no hidden control flow" principle finally applied to I/O. It also collapses a
+distinction the skill used to have to explain: dependency injection for testability is no
+longer a pattern you adopt, it is how the standard library is shaped.
+
+### Positional Order
+
+Dependencies go most-general to most-specific. `Allocator` before `Io` is the dominant
+stdlib order — `std.process.run(gpa, io, options)` — but not a universal one: the same file
+has `std.process.currentPathAlloc(io, allocator)` and `executablePathAlloc(io, allocator)`.
+Pick one order and hold it across your own API. Consistency within a codebase is what
+actually prevents the mistake, and neither order is wrong.
+
+### Cancellation Changes Return Types
+
+Anything that can block through an `Io` can be cancelled, so blocking calls return
+`Cancelable!T`. Before propagating that, ask whether the wait is actually cancellable in any
+useful sense:
+
+```zig
+// A mutex guarding an O(1) critical section with no I/O inside it can only be
+// held for a few instructions. `lockUncancelable` keeps `pop` returning `?T`
+// instead of inflating it to `Cancelable!?T` for a cancellation point that no
+// caller can ever benefit from.
+pub fn pop(self: *Self, io: std.Io) ?T {
+    self.mutex.lockUncancelable(io);
+    defer self.mutex.unlock(io);
+    ...
+}
+```
+
+Weigh this against *Simpler Return Types* below. Propagate cancellation when the wait is
+genuinely unbounded — a socket read, a lock held across I/O. Absorb it when the wait is
+bounded by a few instructions.
 
 ### When to Use
 

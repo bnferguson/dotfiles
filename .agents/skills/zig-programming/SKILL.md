@@ -5,7 +5,7 @@ description: "Comprehensive Zig language expertise covering syntax, stdlib, buil
 
 # Zig Programming Language Skill
 
-This skill provides expertise in Zig, a general-purpose programming language focused on robustness, optimality, and maintainability. The skill includes version-specific documentation (0.2.0 through master), automatic version detection, code templates, and comprehensive reference materials organized for progressive disclosure.
+This skill provides expertise in Zig, a general-purpose programming language focused on robustness, optimality, and maintainability. The skill includes version-specific documentation (0.2.0 through master), automatic version detection, code templates, and reference materials organized for progressive disclosure.
 
 ## Table of Contents
 
@@ -23,7 +23,7 @@ This skill provides expertise in Zig, a general-purpose programming language foc
 
 ### References - Progressive Loading Guide
 
-**Important:** References are version-specific. Use `scripts/get_references.py` to get the correct reference path for the detected Zig version, or load from `references/latest/` (symlink to current stable: 0.15.2).
+**Important:** References are version-specific. Use `scripts/get_references.py` to get the correct reference path for the detected Zig version, or load from `references/latest/` (current stable: 0.16.0).
 
 Load documentation progressively based on task complexity. Use this decision tree:
 
@@ -41,6 +41,7 @@ Load documentation progressively based on task complexity. Use this decision tre
 - **Stdlib lookup** → grep `latest/stdlib-builtins.md` (large file, 68KB)
 - **C interop** → `latest/c-interop.md` + `latest/patterns-integration.md`
 - **Build system** → `latest/build-system.md` + `latest/patterns-integration.md`
+- **Zig 0.16 I/O, tasks, files, time, entropy, or process state** → `latest/io.md`
 
 **Advanced topics** (after mastering fundamentals):
 - `references/latest/comptime.md` - Compile-time execution and generics
@@ -53,7 +54,7 @@ Load documentation progressively based on task complexity. Use this decision tre
 ```bash
 # Get reference path for detected version
 python scripts/get_references.py
-# Output: references/v0.15.2
+# Output: references/v0.16.0
 
 # With specific version
 python scripts/get_references.py --version 0.13.0
@@ -65,7 +66,44 @@ python scripts/get_references.py --json
 
 ### Recipes - Cookbook
 
-The skill includes **223 tested recipes** from the Zig BBQ Cookbook, organized by topic. All recipes include complete, compilable code verified against Zig 0.15.2.
+The skill includes **223 recipes** from the Zig BBQ Cookbook, organized by topic. They target Zig 0.16.0.
+
+**Verification:** 207 of the 218 recipes that ship a full-code block compile against Zig 0.16.0. Re-check them at any time:
+
+```bash
+python scripts/verify_recipes.py                       # uses `zig` from PATH
+python scripts/verify_recipes.py --filter files-io -v  # one topic, with errors
+```
+
+Read that number precisely, because compiling is weaker than checking in two ways:
+
+- **It covers the full-code blocks, not the snippets.** Those 218 blocks are about 218 of
+  the ~3360 Zig blocks in `recipes/`. The rest are fragments that cannot compile standalone.
+  `python scripts/lint_snippets.py` scans those for APIs 0.16 removed instead -- a token
+  blacklist, not a compiler, so treat a hit as a strong hint rather than a proof.
+- **Zig only analyses code something references.** A recipe can compile while a method no
+  test calls uses an API deleted two releases ago. `verify_recipes.py` therefore appends a
+  walker that touches every reachable public declaration. `--shallow` turns it off. Without
+  it the same recipe set scores 210 instead of 207, and the extra three are false passes.
+
+Eleven recipes do not yet compile, and each recipe file says so in its header. None of them
+are blocked on the I/O change:
+
+- `build-system` 10.3-10.6 reference module files the markdown never included. The content
+  is missing rather than wrong, so the compiler names exactly what each one needs.
+- `files-io` 5.18 (serial ports) and `networking` 20.5 (UDP multicast) are reachable.
+  `std.posix` kept `poll`, `setsockopt`, `tcgetattr` and `tcsetattr`, the termios flags
+  moved to `std.c` / `std.os.linux` as packed struct fields rather than disappearing, and
+  both `Io.File.handle` and `net.Socket.handle` are still `std.posix.fd_t`. `IpAddress.bind`
+  with `.mode = .dgram` gives the datagram socket.
+- `networking` 20.1 can be made to compile the same way, but the idiomatic 0.16 answer to
+  "non-blocking server" is concurrent tasks over `std.Io.Group`, so it wants rethinking
+  rather than porting.
+- `files-io` 5.16 and `networking` 20.2/20.6 have no standard-library path in 0.16:
+  `std.posix.socket`, `sendfile`, `dup`, `fcntl` and `pipe` are all gone. They need direct
+  syscalls, or they need to go.
+- `strings-text` 2.14 links ICU and needs a matching local ICU version. This one is an
+  environment problem, not a code problem.
 
 **Finding recipes by topic:**
 - `recipes/fundamentals.md` - Philosophy, basics (19 recipes)
@@ -111,11 +149,17 @@ python scripts/query_recipes.py --topic data-structures --json
 
 **Recipe format:** Each recipe includes Problem, Solution, Discussion sections plus full tested code.
 
+**Recipes are 0.16 code.** They pass `io` explicitly, take `std.process.Init` in `main`, and use `std.Io.Dir` / `std.Io.File` rather than `std.fs`. See `references/latest/io.md` for the model behind that.
+
 **When to use recipes vs references:**
 - **Recipes**: "How do I..." questions, practical tasks, working code examples
 - **References**: "What is..." questions, API lookup, comprehensive documentation
 
 ### Templates
+
+All templates and examples compile against Zig 0.16.0 and their tests pass. The
+two build scripts were checked with a real `zig build run`. Re-check with
+`./scripts/check_files.sh`.
 
 Copy and customize these starting points:
 - `assets/templates/basic-program.zig` - Basic program with allocator
@@ -133,7 +177,7 @@ Complete, runnable code demonstrating patterns:
 - `examples/error_handling.zig` - Error handling
 - `examples/c_interop.zig` - C FFI
 - `examples/comptime_example.zig` - Compile-time programming
-- `examples/build_example/` - Multi-file project
+- `examples/build_example/` - Multi-file project (`zig build test` passes on 0.16.0)
 
 ### Scripts
 
@@ -145,6 +189,11 @@ Use these Python automation tools for version management, recipe queries, and co
 
 **Recipe Queries:**
 - `scripts/query_recipes.py` - Search and filter recipes by topic, tag, difficulty, or keyword
+
+**Verification:**
+- `scripts/verify_recipes.py` - Compile every recipe against a real Zig toolchain and report what fails
+- `scripts/lint_snippets.py` - Scan the illustrative snippets (which no compiler sees) for APIs 0.16 removed
+- `scripts/check_files.sh` - Compile and test every template and example
 
 **Code Generation:**
 - `scripts/code_generator.py` - Generate Zig code from JSON specifications
@@ -162,7 +211,7 @@ See `scripts/README.md` for complete script documentation.
 ### Writing New Code
 
 1. **Start from template** - Copy appropriate template from `assets/templates/`
-2. **Check version** - Default to Zig 0.15.2 unless specified
+2. **Check version** - Default to Zig 0.16.0 unless specified
 3. **Handle errors explicitly** - Use `try`, `catch`, or `errdefer`
 4. **Pass allocators** - Never use global state, pass allocators as parameters
 5. **Add tests immediately** - Write `test` blocks alongside implementation
@@ -187,7 +236,7 @@ To teach Zig concepts effectively:
 
 ## Version Awareness
 
-**Default to Zig 0.15.2** unless user specifies otherwise or detection determines a different version.
+**Default to Zig 0.16.0** unless user specifies otherwise or detection determines a different version.
 
 ### Version Detection Workflow
 
@@ -223,24 +272,24 @@ This script:
 
 **4. Ask user if ambiguous:**
 - "I detected you might be using Zig 0.13+ based on your build.zig. Can you confirm your version?"
-- Offer common versions: 0.15.2 (stable), 0.14.1, 0.13.0, master (development)
+- Offer common versions: 0.16.0 (stable), 0.15.2, 0.14.1, master (development)
 
-**5. Default to 0.15.2:**
+**5. Default to 0.16.0:**
 - Use current stable if no detection succeeds
-- Inform user: "Assuming Zig 0.15.2. Let me know if you're using a different version."
+- Inform user: "Assuming Zig 0.16.0. Let me know if you're using a different version."
 
 ### Loading Version-Specific References
 
 **After detecting version:**
 1. Use `scripts/get_references.py` to determine correct reference path
-2. Load references from that version directory (e.g., `references/v0.15.2/`)
+2. Load references from that version directory (e.g., `references/v0.16.0/`)
 3. Always load `references/version-differences.md` (shared file) for migration guidance
 
 **Example workflow:**
 ```bash
 # Detect version and get reference path
 REF_PATH=$(python scripts/get_references.py)
-# REF_PATH is now "references/v0.15.2" or "references/latest"
+# REF_PATH is now "references/v0.16.0" or "references/latest"
 
 # Load version-specific documentation
 cat $REF_PATH/core-language.md
@@ -259,13 +308,14 @@ cat references/version-differences.md
 
 Be aware of these major version differences when writing code:
 
+- **0.16+**: Pass `std.Io` to I/O operations; use `std.process.Init` for application-owned I/O, arguments, and environment data
 - **0.11+**: Async/await removed, new build.zig API (`std.Build`, `b.path()`)
 - **0.13+**: Modern for loop syntax (`for (items, 0..) |item, i|`)
 - **0.12-**: Different for loop syntax (manual index variables)
 - **Pre-0.11**: Legacy build API (`std.build.Builder`), different error sets
 
 **See `references/version-differences.md` for:**
-- Detailed migration guides (0.10→0.11, 0.12→0.13, 0.13→0.15)
+- Detailed migration guides (0.10→0.11, 0.12→0.13, 0.13→0.15, 0.15→0.16)
 - Error message translations
 - Before/after code examples
 - Breaking changes catalog
@@ -283,7 +333,7 @@ Be aware of these major version differences when writing code:
 **Best practice for cross-version code:**
 - Prefer feature detection over version checks: `@hasDecl(std, "Build")` instead of `if (version >= 0.11)`
 - See `references/latest/patterns-integration.md` for `@hasDecl`/`@hasField` examples
-- Document target version in code comments: `// Target Zig Version: 0.15.2`
+- Document target version in code comments: `// Target Zig Version: 0.16.0`
 - For cross-version templates, see `assets/templates/cross-version/`
 
 ## Best Practices

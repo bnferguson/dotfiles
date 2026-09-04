@@ -73,14 +73,21 @@ const Atlas = struct {
 // -- errdefer comptime unreachable --
 
 const Registry = struct {
-    items: std.ArrayList(u64),
-    count: usize,
+    /// `std.ArrayList` is unmanaged: it holds no allocator, so every method
+    /// that allocates takes one.
+    items: std.ArrayList(u64) = .empty,
+    count: usize = 0,
+
+    pub fn deinit(self: *Registry, gpa: Allocator) void {
+        self.items.deinit(gpa);
+        self.* = undefined;
+    }
 
     /// After the last fallible operation, `errdefer comptime unreachable`
     /// documents that everything below is infallible. If a future edit
     /// adds a fallible call below this line, it becomes a compile error.
-    pub fn insert(self: *Registry, value: u64) !void {
-        try self.items.append(value);
+    pub fn insert(self: *Registry, gpa: Allocator, value: u64) !void {
+        try self.items.append(gpa, value);
         errdefer comptime unreachable;
 
         // Everything below is infallible.
@@ -139,18 +146,40 @@ test "atlas init succeeds with valid allocator" {
     var atlas = try Atlas.init(std.testing.allocator, 1024);
     defer atlas.deinit(std.testing.allocator);
 
-    try std.testing.expectEqual(@as(usize, 1024), atlas.data.len);
-    try std.testing.expectEqual(@as(usize, 128), atlas.nodes.len);
+    try std.testing.expectEqual(1024, atlas.data.len);
+    try std.testing.expectEqual(128, atlas.nodes.len);
 }
 
 test "error translation preserves specificity" {
     var set = InnerSet{};
     const result = addHyperlink(&set, 42);
     // Successful case.
-    try std.testing.expectEqual(@as(u64, 0), try result);
+    try std.testing.expectEqual(0, try result);
 }
 
 test "processTransaction asserts on zero amount" {
     // Valid case.
-    try std.testing.expectEqual(@as(u64, 90), processTransaction(10, 100));
+    try std.testing.expectEqual(90, processTransaction(10, 100));
+}
+
+test "registry insert" {
+    const gpa = std.testing.allocator;
+    var registry: Registry = .{};
+    defer registry.deinit(gpa);
+
+    try registry.insert(gpa, 42);
+    try std.testing.expectEqual(1, registry.count);
+    try std.testing.expectEqual(42, registry.items.items[0]);
+}
+
+// Zig only analyses a function something references, so an untested method can
+// keep calling a deleted stdlib API for releases without anyone noticing.
+// `refAllDecls` is shallow and `@typeInfo().decls` lists only public
+// declarations, so name the file-scope types too.
+test "every declaration compiles" {
+    std.testing.refAllDecls(@This());
+    _ = InnerSet;
+    _ = Atlas;
+    _ = Registry;
+    _ = FatalReason;
 }

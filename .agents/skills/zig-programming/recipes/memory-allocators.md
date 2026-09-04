@@ -1,6 +1,6 @@
 # Memory & Allocators Recipes
 
-*6 tested recipes for Zig 0.15.2*
+*6 recipes, all compiled against Zig 0.16.0*
 
 ## Quick Reference
 
@@ -269,7 +269,7 @@ Custom allocators give you precise control over memory management, enabling spec
 
 ### The Allocator Interface
 
-In Zig 0.15.2, the `std.mem.Allocator` interface requires a VTable with four functions:
+In Zig 0.16.0, the `std.mem.Allocator` interface requires a VTable with four functions:
 
 **alloc**: Allocate memory of a given size and alignment. Returns a pointer or null on failure.
 
@@ -287,7 +287,7 @@ Each function receives:
 
 ### Alignment Handling
 
-Zig 0.15.2 introduced `std.mem.Alignment` as a type-safe replacement for raw `u8` values:
+Zig 0.16.0 introduced `std.mem.Alignment` as a type-safe replacement for raw `u8` values:
 
 ```zig
 fn alloc(ctx: *anyopaque, len: usize, ptr_align: std.mem.Alignment, ret_addr: usize) ?[*]u8
@@ -351,7 +351,7 @@ This verifies your code correctly handles allocation failures, a critical requir
 
 ### The remap Function
 
-The `remap` function is required in Zig 0.15.2's allocator interface. It attempts to reallocate memory to a new size, potentially moving it to a different location.
+The `remap` function is required in Zig 0.16.0's allocator interface. It attempts to reallocate memory to a new size, potentially moving it to a different location.
 
 For simple allocators that don't support reallocation:
 
@@ -415,7 +415,7 @@ Custom allocators work with all standard library containers:
 var bump = BumpAllocator.init(&buffer);
 const allocator = bump.allocator();
 
-var list = std.ArrayList(u32).init(allocator);
+var list = std.ArrayList(u32).empty;
 defer list.deinit();
 
 var map = std.AutoHashMap(u32, []const u8).init(allocator);
@@ -829,7 +829,7 @@ const Record = struct {
 };
 
 fn processBatch(allocator: Allocator, ids: []const u32) ![]Record {
-    var records: std.ArrayList(Record) = .{};
+    var records: std.ArrayList(Record) = .empty;
 
     for (ids) |id| {
         const data = try std.fmt.allocPrint(allocator, "Record-{d}", .{id});
@@ -929,10 +929,11 @@ Arena allocators are significantly faster than general-purpose allocators:
 ```zig
 // Performance comparison: arena vs general allocator
 test "arena vs general allocator performance" {
+    const io = std.testing.io;
     const iterations = 100;
 
     // Measure general allocator
-    var general_timer = try std.time.Timer.start();
+    var general_timer = std.Io.Timestamp.now(io, .awake);
     {
         var i: usize = 0;
         while (i < iterations) : (i += 1) {
@@ -941,10 +942,10 @@ test "arena vs general allocator performance" {
             @memset(slice, 0);
         }
     }
-    const general_ns = general_timer.read();
+    const general_ns = general_timer.durationTo(.now(io, .awake)).toNanoseconds();
 
     // Measure arena allocator
-    var arena_timer = try std.time.Timer.start();
+    var arena_timer = std.Io.Timestamp.now(io, .awake);
     {
         var arena = std.heap.ArenaAllocator.init(testing.allocator);
         defer arena.deinit();
@@ -956,7 +957,7 @@ test "arena vs general allocator performance" {
             @memset(slice, 0);
         }
     }
-    const arena_ns = arena_timer.read();
+    const arena_ns = arena_timer.durationTo(.now(io, .awake)).toNanoseconds();
 
     // Arena should be faster (no individual frees)
     std.debug.print("\nGeneral: {d}ns, Arena: {d}ns, Speedup: {d:.2}x\n", .{
@@ -981,10 +982,10 @@ Use arenas for function-scoped temporary allocations:
 // Scoped arena pattern for temporary allocations
 fn buildJsonResponse(allocator: Allocator, user_id: u32, username: []const u8) ![]const u8 {
     // All allocations from this function will be freed together
-    var list: std.ArrayList(u8) = .{};
+    var list: std.ArrayList(u8) = .empty;
 
     try list.appendSlice(allocator, "{\"user_id\": ");
-    try list.writer(allocator).print("{d}", .{user_id});
+    try list.print(allocator, "{d}", .{user_id});
     try list.appendSlice(allocator, ", \"username\": \"");
     try list.appendSlice(allocator, username);
     try list.appendSlice(allocator, "\"}");
@@ -1499,7 +1500,7 @@ const Record = struct {
 };
 
 fn processBatch(allocator: Allocator, ids: []const u32) ![]Record {
-    var records: std.ArrayList(Record) = .{};
+    var records: std.ArrayList(Record) = .empty;
 
     for (ids) |id| {
         const data = try std.fmt.allocPrint(allocator, "Record-{d}", .{id});
@@ -1591,10 +1592,11 @@ test "nested arena scopes" {
 // ANCHOR: arena_vs_general
 // Performance comparison: arena vs general allocator
 test "arena vs general allocator performance" {
+    const io = std.testing.io;
     const iterations = 100;
 
     // Measure general allocator
-    var general_timer = try std.time.Timer.start();
+    var general_timer = std.Io.Timestamp.now(io, .awake);
     {
         var i: usize = 0;
         while (i < iterations) : (i += 1) {
@@ -1603,10 +1605,10 @@ test "arena vs general allocator performance" {
             @memset(slice, 0);
         }
     }
-    const general_ns = general_timer.read();
+    const general_ns = general_timer.durationTo(.now(io, .awake)).toNanoseconds();
 
     // Measure arena allocator
-    var arena_timer = try std.time.Timer.start();
+    var arena_timer = std.Io.Timestamp.now(io, .awake);
     {
         var arena = std.heap.ArenaAllocator.init(testing.allocator);
         defer arena.deinit();
@@ -1618,7 +1620,7 @@ test "arena vs general allocator performance" {
             @memset(slice, 0);
         }
     }
-    const arena_ns = arena_timer.read();
+    const arena_ns = arena_timer.durationTo(.now(io, .awake)).toNanoseconds();
 
     // Arena should be faster (no individual frees)
     std.debug.print("\nGeneral: {d}ns, Arena: {d}ns, Speedup: {d:.2}x\n", .{
@@ -1633,10 +1635,10 @@ test "arena vs general allocator performance" {
 // Scoped arena pattern for temporary allocations
 fn buildJsonResponse(allocator: Allocator, user_id: u32, username: []const u8) ![]const u8 {
     // All allocations from this function will be freed together
-    var list: std.ArrayList(u8) = .{};
+    var list: std.ArrayList(u8) = .empty;
 
     try list.appendSlice(allocator, "{\"user_id\": ");
-    try list.writer(allocator).print("{d}", .{user_id});
+    try list.print(allocator, "{d}", .{user_id});
     try list.appendSlice(allocator, ", \"username\": \"");
     try list.appendSlice(allocator, username);
     try list.appendSlice(allocator, "\"}");
@@ -1832,28 +1834,29 @@ Map a file into memory and access it directly:
 ```zig
 // Basic memory-mapped file reading
 test "basic memory-mapped file" {
+    const io = std.testing.io;
     const filename = "test_mmap_basic.dat";
-    defer fs.cwd().deleteFile(filename) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, filename) catch {};
 
     // Create test file
     {
-        const file = try fs.cwd().createFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, filename, .{});
+        defer file.close(io);
 
         const data = "Hello, Memory-Mapped World!";
-        try file.writeAll(data);
+        try file.writeStreamingAll(io, data);
     }
 
     // Memory-map the file
     {
-        const file = try fs.cwd().openFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, filename, .{});
+        defer file.close(io);
 
-        const file_size = (try file.stat()).size;
+        const file_size = (try file.stat(io)).size;
         const mapped = try os.mmap(
             null,
             file_size,
-            os.PROT.READ,
+            .{ .READ = true },
             .{ .TYPE = .SHARED },
             file.handle,
             0,
@@ -1872,28 +1875,29 @@ Create writable mappings to modify file contents:
 ```zig
 // Memory-mapped file for writing
 test "memory-mapped file writing" {
+    const io = std.testing.io;
     const filename = "test_mmap_write.dat";
-    defer fs.cwd().deleteFile(filename) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, filename) catch {};
 
     const data_size = 4096;
 
     // Create file with desired size
     {
-        const file = try fs.cwd().createFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, filename, .{});
+        defer file.close(io);
 
-        try file.setEndPos(data_size);
+        try file.setLength(io, data_size);
     }
 
     // Memory-map for writing
     {
-        const file = try fs.cwd().openFile(filename, .{ .mode = .read_write });
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, filename, .{ .mode = .read_write });
+        defer file.close(io);
 
         const mapped = try os.mmap(
             null,
             data_size,
-            os.PROT.READ | os.PROT.WRITE,
+            .{ .READ = true, .WRITE = true },
             .{ .TYPE = .SHARED },
             file.handle,
             0,
@@ -1909,11 +1913,11 @@ test "memory-mapped file writing" {
 
     // Verify the write
     {
-        const file = try fs.cwd().openFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, filename, .{});
+        defer file.close(io);
 
         var buffer: [100]u8 = undefined;
-        const bytes_read = try file.read(&buffer);
+        const bytes_read = try file.readPositionalAll(io, &buffer, 0);
         try testing.expectEqualStrings("Written via mmap", buffer[0..16]);
         try testing.expect(bytes_read >= 16);
     }
@@ -1931,38 +1935,39 @@ fn searchInMappedFile(mapped: []const u8, needle: []const u8) ?usize {
 }
 
 test "searching in memory-mapped file" {
+    const io = std.testing.io;
     const filename = "test_mmap_search.dat";
-    defer fs.cwd().deleteFile(filename) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, filename) catch {};
 
     // Create file with test data
     {
-        const file = try fs.cwd().createFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, filename, .{});
+        defer file.close(io);
 
         var buffer: [4096]u8 = undefined;
         var i: usize = 0;
         while (i < 1000) : (i += 1) {
             const line = try std.fmt.bufPrint(&buffer, "Line {d}: Some test data here\n", .{i});
-            try file.writeAll(line);
+            try file.writeStreamingAll(io, line);
         }
-        try file.writeAll("FINDME: This is the target line\n");
+        try file.writeStreamingAll(io, "FINDME: This is the target line\n");
         i = 0;
         while (i < 1000) : (i += 1) {
             const line = try std.fmt.bufPrint(&buffer, "Line {d}: More test data\n", .{i + 1000});
-            try file.writeAll(line);
+            try file.writeStreamingAll(io, line);
         }
     }
 
     // Memory-map and search
     {
-        const file = try fs.cwd().openFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, filename, .{});
+        defer file.close(io);
 
-        const file_size = (try file.stat()).size;
+        const file_size = (try file.stat(io)).size;
         const mapped = try os.mmap(
             null,
             file_size,
-            os.PROT.READ,
+            .{ .READ = true },
             .{ .TYPE = .SHARED },
             file.handle,
             0,
@@ -1970,7 +1975,7 @@ test "searching in memory-mapped file" {
         defer os.munmap(mapped);
 
         const pos = searchInMappedFile(mapped, "FINDME");
-        try testing.expect(pos != null);
+        try testing.expect((pos) != null);
         try testing.expect(pos.? > 0);
     }
 }
@@ -2000,15 +2005,16 @@ fn processRecords(data: []align(@alignOf(BinaryRecord)) const u8) !u64 {
 }
 
 test "binary file processing with mmap" {
+    const io = std.testing.io;
     const filename = "test_mmap_binary.dat";
-    defer fs.cwd().deleteFile(filename) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, filename) catch {};
 
     const record_count = 100;
 
     // Create binary file
     {
-        const file = try fs.cwd().createFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, filename, .{});
+        defer file.close(io);
 
         var i: u32 = 0;
         while (i < record_count) : (i += 1) {
@@ -2018,20 +2024,20 @@ test "binary file processing with mmap" {
                 .flags = i % 2,
             };
             const bytes = std.mem.asBytes(&record);
-            try file.writeAll(bytes);
+            try file.writeStreamingAll(io, bytes);
         }
     }
 
     // Memory-map and process
     {
-        const file = try fs.cwd().openFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, filename, .{});
+        defer file.close(io);
 
-        const file_size = (try file.stat()).size;
+        const file_size = (try file.stat(io)).size;
         const mapped = try os.mmap(
             null,
             file_size,
-            os.PROT.READ,
+            .{ .READ = true },
             .{ .TYPE = .SHARED },
             file.handle,
             0,
@@ -2054,14 +2060,14 @@ Create a RAII wrapper for safer memory-mapped file usage:
 ```zig
 // Safe memory-mapped file wrapper
 const MappedFile = struct {
-    file: fs.File,
+    file: std.Io.File,
     data: []align(std.heap.page_size_min) const u8,
 
-    pub fn init(path: []const u8) !MappedFile {
-        const file = try fs.cwd().openFile(path, .{});
-        errdefer file.close();
+    pub fn init(io: std.Io, path: []const u8) !MappedFile {
+        const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+        errdefer file.close(io);
 
-        const file_size = (try file.stat()).size;
+        const file_size = (try file.stat(io)).size;
         if (file_size == 0) {
             return error.EmptyFile;
         }
@@ -2069,7 +2075,7 @@ const MappedFile = struct {
         const mapped = try os.mmap(
             null,
             file_size,
-            os.PROT.READ,
+            .{ .READ = true },
             .{ .TYPE = .SHARED },
             file.handle,
             0,
@@ -2081,9 +2087,9 @@ const MappedFile = struct {
         };
     }
 
-    pub fn deinit(self: *MappedFile) void {
+    pub fn deinit(self: *MappedFile, io: std.Io) void {
         os.munmap(self.data);
-        self.file.close();
+        self.file.close(io);
     }
 
     pub fn slice(self: MappedFile) []const u8 {
@@ -2092,14 +2098,15 @@ const MappedFile = struct {
 };
 
 test "safe mapped file wrapper" {
+    const io = std.testing.io;
     const filename = "test_mmap_wrapper.dat";
-    defer fs.cwd().deleteFile(filename) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, filename) catch {};
 
     // Create test file
     {
-        const file = try fs.cwd().createFile(filename, .{});
-        defer file.close();
-        try file.writeAll("Test data for wrapper");
+        const file = try std.Io.Dir.cwd().createFile(io, filename, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "Test data for wrapper");
     }
 
     // Use wrapper
@@ -2117,30 +2124,31 @@ Compare memory-mapped I/O with traditional read operations:
 ```zig
 // Performance comparison: mmap vs read
 test "mmap vs read performance" {
+    const io = std.testing.io;
     const filename = "test_mmap_perf.dat";
-    defer fs.cwd().deleteFile(filename) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, filename) catch {};
 
     // Create large file (1 MB)
     const file_size = 1024 * 1024;
     {
-        const file = try fs.cwd().createFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, filename, .{});
+        defer file.close(io);
 
         var i: usize = 0;
         while (i < file_size) : (i += 1) {
             const byte = [_]u8{@as(u8, @intCast(i % 256))};
-            try file.writeAll(&byte);
+            try file.writeStreamingAll(io, &byte);
         }
     }
 
     // Test regular read
-    var read_timer = try std.time.Timer.start();
+    var read_timer = std.Io.Timestamp.now(io, .awake);
     {
-        const file = try fs.cwd().openFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, filename, .{});
+        defer file.close(io);
 
         var buffer: [file_size]u8 = undefined;
-        _ = try file.readAll(&buffer);
+        _ = try file.readPositionalAll(io, &buffer, 0);
 
         var sum: u64 = 0;
         for (buffer) |byte| {
@@ -2148,18 +2156,18 @@ test "mmap vs read performance" {
         }
         try testing.expect(sum > 0);
     }
-    const read_ns = read_timer.read();
+    const read_ns = read_timer.durationTo(.now(io, .awake)).toNanoseconds();
 
     // Test mmap
-    var mmap_timer = try std.time.Timer.start();
+    var mmap_timer = std.Io.Timestamp.now(io, .awake);
     {
-        const file = try fs.cwd().openFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, filename, .{});
+        defer file.close(io);
 
         const mapped = try os.mmap(
             null,
             file_size,
-            os.PROT.READ,
+            .{ .READ = true },
             .{ .TYPE = .SHARED },
             file.handle,
             0,
@@ -2172,7 +2180,7 @@ test "mmap vs read performance" {
         }
         try testing.expect(sum > 0);
     }
-    const mmap_ns = mmap_timer.read();
+    const mmap_ns = mmap_timer.durationTo(.now(io, .awake)).toNanoseconds();
 
     std.debug.print("\nRead: {d}ns, Mmap: {d}ns, Speedup: {d:.2}x\n", .{
         read_ns,
@@ -2437,28 +2445,29 @@ const os = std.posix;
 // ANCHOR: basic_mmap
 // Basic memory-mapped file reading
 test "basic memory-mapped file" {
+    const io = std.testing.io;
     const filename = "test_mmap_basic.dat";
-    defer fs.cwd().deleteFile(filename) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, filename) catch {};
 
     // Create test file
     {
-        const file = try fs.cwd().createFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, filename, .{});
+        defer file.close(io);
 
         const data = "Hello, Memory-Mapped World!";
-        try file.writeAll(data);
+        try file.writeStreamingAll(io, data);
     }
 
     // Memory-map the file
     {
-        const file = try fs.cwd().openFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, filename, .{});
+        defer file.close(io);
 
-        const file_size = (try file.stat()).size;
+        const file_size = (try file.stat(io)).size;
         const mapped = try os.mmap(
             null,
             file_size,
-            os.PROT.READ,
+            .{ .READ = true },
             .{ .TYPE = .SHARED },
             file.handle,
             0,
@@ -2473,28 +2482,29 @@ test "basic memory-mapped file" {
 // ANCHOR: write_mmap
 // Memory-mapped file for writing
 test "memory-mapped file writing" {
+    const io = std.testing.io;
     const filename = "test_mmap_write.dat";
-    defer fs.cwd().deleteFile(filename) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, filename) catch {};
 
     const data_size = 4096;
 
     // Create file with desired size
     {
-        const file = try fs.cwd().createFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, filename, .{});
+        defer file.close(io);
 
-        try file.setEndPos(data_size);
+        try file.setLength(io, data_size);
     }
 
     // Memory-map for writing
     {
-        const file = try fs.cwd().openFile(filename, .{ .mode = .read_write });
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, filename, .{ .mode = .read_write });
+        defer file.close(io);
 
         const mapped = try os.mmap(
             null,
             data_size,
-            os.PROT.READ | os.PROT.WRITE,
+            .{ .READ = true, .WRITE = true },
             .{ .TYPE = .SHARED },
             file.handle,
             0,
@@ -2510,11 +2520,11 @@ test "memory-mapped file writing" {
 
     // Verify the write
     {
-        const file = try fs.cwd().openFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, filename, .{});
+        defer file.close(io);
 
         var buffer: [100]u8 = undefined;
-        const bytes_read = try file.read(&buffer);
+        const bytes_read = try file.readPositionalAll(io, &buffer, 0);
         try testing.expectEqualStrings("Written via mmap", buffer[0..16]);
         try testing.expect(bytes_read >= 16);
     }
@@ -2528,38 +2538,39 @@ fn searchInMappedFile(mapped: []const u8, needle: []const u8) ?usize {
 }
 
 test "searching in memory-mapped file" {
+    const io = std.testing.io;
     const filename = "test_mmap_search.dat";
-    defer fs.cwd().deleteFile(filename) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, filename) catch {};
 
     // Create file with test data
     {
-        const file = try fs.cwd().createFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, filename, .{});
+        defer file.close(io);
 
         var buffer: [4096]u8 = undefined;
         var i: usize = 0;
         while (i < 1000) : (i += 1) {
             const line = try std.fmt.bufPrint(&buffer, "Line {d}: Some test data here\n", .{i});
-            try file.writeAll(line);
+            try file.writeStreamingAll(io, line);
         }
-        try file.writeAll("FINDME: This is the target line\n");
+        try file.writeStreamingAll(io, "FINDME: This is the target line\n");
         i = 0;
         while (i < 1000) : (i += 1) {
             const line = try std.fmt.bufPrint(&buffer, "Line {d}: More test data\n", .{i + 1000});
-            try file.writeAll(line);
+            try file.writeStreamingAll(io, line);
         }
     }
 
     // Memory-map and search
     {
-        const file = try fs.cwd().openFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, filename, .{});
+        defer file.close(io);
 
-        const file_size = (try file.stat()).size;
+        const file_size = (try file.stat(io)).size;
         const mapped = try os.mmap(
             null,
             file_size,
-            os.PROT.READ,
+            .{ .READ = true },
             .{ .TYPE = .SHARED },
             file.handle,
             0,
@@ -2567,7 +2578,7 @@ test "searching in memory-mapped file" {
         defer os.munmap(mapped);
 
         const pos = searchInMappedFile(mapped, "FINDME");
-        try testing.expect(pos != null);
+        try testing.expect((pos) != null);
         try testing.expect(pos.? > 0);
     }
 }
@@ -2593,15 +2604,16 @@ fn processRecords(data: []align(@alignOf(BinaryRecord)) const u8) !u64 {
 }
 
 test "binary file processing with mmap" {
+    const io = std.testing.io;
     const filename = "test_mmap_binary.dat";
-    defer fs.cwd().deleteFile(filename) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, filename) catch {};
 
     const record_count = 100;
 
     // Create binary file
     {
-        const file = try fs.cwd().createFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, filename, .{});
+        defer file.close(io);
 
         var i: u32 = 0;
         while (i < record_count) : (i += 1) {
@@ -2611,20 +2623,20 @@ test "binary file processing with mmap" {
                 .flags = i % 2,
             };
             const bytes = std.mem.asBytes(&record);
-            try file.writeAll(bytes);
+            try file.writeStreamingAll(io, bytes);
         }
     }
 
     // Memory-map and process
     {
-        const file = try fs.cwd().openFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, filename, .{});
+        defer file.close(io);
 
-        const file_size = (try file.stat()).size;
+        const file_size = (try file.stat(io)).size;
         const mapped = try os.mmap(
             null,
             file_size,
-            os.PROT.READ,
+            .{ .READ = true },
             .{ .TYPE = .SHARED },
             file.handle,
             0,
@@ -2643,14 +2655,14 @@ test "binary file processing with mmap" {
 // ANCHOR: safe_mmap_wrapper
 // Safe memory-mapped file wrapper
 const MappedFile = struct {
-    file: fs.File,
+    file: std.Io.File,
     data: []align(std.heap.page_size_min) const u8,
 
-    pub fn init(path: []const u8) !MappedFile {
-        const file = try fs.cwd().openFile(path, .{});
-        errdefer file.close();
+    pub fn init(io: std.Io, path: []const u8) !MappedFile {
+        const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+        errdefer file.close(io);
 
-        const file_size = (try file.stat()).size;
+        const file_size = (try file.stat(io)).size;
         if (file_size == 0) {
             return error.EmptyFile;
         }
@@ -2658,7 +2670,7 @@ const MappedFile = struct {
         const mapped = try os.mmap(
             null,
             file_size,
-            os.PROT.READ,
+            .{ .READ = true },
             .{ .TYPE = .SHARED },
             file.handle,
             0,
@@ -2670,9 +2682,9 @@ const MappedFile = struct {
         };
     }
 
-    pub fn deinit(self: *MappedFile) void {
+    pub fn deinit(self: *MappedFile, io: std.Io) void {
         os.munmap(self.data);
-        self.file.close();
+        self.file.close(io);
     }
 
     pub fn slice(self: MappedFile) []const u8 {
@@ -2681,19 +2693,20 @@ const MappedFile = struct {
 };
 
 test "safe mapped file wrapper" {
+    const io = std.testing.io;
     const filename = "test_mmap_wrapper.dat";
-    defer fs.cwd().deleteFile(filename) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, filename) catch {};
 
     // Create test file
     {
-        const file = try fs.cwd().createFile(filename, .{});
-        defer file.close();
-        try file.writeAll("Test data for wrapper");
+        const file = try std.Io.Dir.cwd().createFile(io, filename, .{});
+        defer file.close(io);
+        try file.writeStreamingAll(io, "Test data for wrapper");
     }
 
     // Use wrapper
-    var mapped = try MappedFile.init(filename);
-    defer mapped.deinit();
+    var mapped = try MappedFile.init(io, filename);
+    defer mapped.deinit(io);
 
     try testing.expectEqualStrings("Test data for wrapper", mapped.slice());
 }
@@ -2702,30 +2715,31 @@ test "safe mapped file wrapper" {
 // ANCHOR: performance_comparison
 // Performance comparison: mmap vs read
 test "mmap vs read performance" {
+    const io = std.testing.io;
     const filename = "test_mmap_perf.dat";
-    defer fs.cwd().deleteFile(filename) catch {};
+    defer std.Io.Dir.cwd().deleteFile(io, filename) catch {};
 
     // Create large file (1 MB)
     const file_size = 1024 * 1024;
     {
-        const file = try fs.cwd().createFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().createFile(io, filename, .{});
+        defer file.close(io);
 
         var i: usize = 0;
         while (i < file_size) : (i += 1) {
             const byte = [_]u8{@as(u8, @intCast(i % 256))};
-            try file.writeAll(&byte);
+            try file.writeStreamingAll(io, &byte);
         }
     }
 
     // Test regular read
-    var read_timer = try std.time.Timer.start();
+    var read_timer = std.Io.Timestamp.now(io, .awake);
     {
-        const file = try fs.cwd().openFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, filename, .{});
+        defer file.close(io);
 
         var buffer: [file_size]u8 = undefined;
-        _ = try file.readAll(&buffer);
+        _ = try file.readPositionalAll(io, &buffer, 0);
 
         var sum: u64 = 0;
         for (buffer) |byte| {
@@ -2733,18 +2747,18 @@ test "mmap vs read performance" {
         }
         try testing.expect(sum > 0);
     }
-    const read_ns = read_timer.read();
+    const read_ns = read_timer.durationTo(.now(io, .awake)).toNanoseconds();
 
     // Test mmap
-    var mmap_timer = try std.time.Timer.start();
+    var mmap_timer = std.Io.Timestamp.now(io, .awake);
     {
-        const file = try fs.cwd().openFile(filename, .{});
-        defer file.close();
+        const file = try std.Io.Dir.cwd().openFile(io, filename, .{});
+        defer file.close(io);
 
         const mapped = try os.mmap(
             null,
             file_size,
-            os.PROT.READ,
+            .{ .READ = true },
             .{ .TYPE = .SHARED },
             file.handle,
             0,
@@ -2757,7 +2771,7 @@ test "mmap vs read performance" {
         }
         try testing.expect(sum > 0);
     }
-    const mmap_ns = mmap_timer.read();
+    const mmap_ns = mmap_timer.durationTo(.now(io, .awake)).toNanoseconds();
 
     std.debug.print("\nRead: {d}ns, Mmap: {d}ns, Speedup: {d:.2}x\n", .{
         read_ns,
@@ -2968,7 +2982,7 @@ fn ThreadSafePool(comptime T: type) type {
 
         allocator: Allocator,
         free_list: ?*Node,
-        mutex: std.Thread.Mutex,
+        mutex: std.Io.Mutex,
         capacity: usize,
         used: usize,
 
@@ -2976,15 +2990,19 @@ fn ThreadSafePool(comptime T: type) type {
             return .{
                 .allocator = allocator,
                 .free_list = null,
-                .mutex = .{},
+                .mutex = .init,
                 .capacity = 0,
                 .used = 0,
             };
         }
 
-        pub fn deinit(self: *Self) void {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+        pub fn deinit(self: *Self, io: std.Io) void {
+            // Freeing the free list is O(n) pointer chasing with no I/O in it,
+            // so the wait is bounded and there is nothing useful to cancel.
+            // `lockUncancelable` keeps `deinit` infallible, which is what a
+            // caller in a `defer` needs it to be.
+            self.mutex.lockUncancelable(io);
+            defer self.mutex.unlock(io);
 
             while (self.free_list) |node| {
                 self.free_list = node.next;
@@ -2992,9 +3010,9 @@ fn ThreadSafePool(comptime T: type) type {
             }
         }
 
-        pub fn acquire(self: *Self) !*T {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+        pub fn acquire(self: *Self, io: std.Io) !*T {
+            try self.mutex.lock(io);
+            defer self.mutex.unlock(io);
 
             if (self.free_list) |node| {
                 self.free_list = node.next;
@@ -3012,9 +3030,9 @@ fn ThreadSafePool(comptime T: type) type {
             return &node.data;
         }
 
-        pub fn release(self: *Self, item: *T) void {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+        pub fn release(self: *Self, io: std.Io, item: *T) void {
+            self.mutex.lockUncancelable(io);
+            defer self.mutex.unlock(io);
 
             const node: *Node = @alignCast(@fieldParentPtr("data", item));
             node.next = self.free_list;
@@ -3025,7 +3043,8 @@ fn ThreadSafePool(comptime T: type) type {
 }
 
 test "thread-safe pool" {
-    var pool = ThreadSafePool(u32).init(testing.allocator);
+    const io = std.testing.io;
+    var pool = ThreadSafePool(io, u32).init(testing.allocator);
     defer pool.deinit();
 
     const obj1 = try pool.acquire();
@@ -3186,10 +3205,11 @@ Object pools provide dramatic performance improvements:
 ```zig
 // Performance comparison: pool vs allocator
 test "pool vs allocator performance" {
+    const io = std.testing.io;
     const iterations = 1000;
 
     // Test regular allocator
-    var alloc_timer = try std.time.Timer.start();
+    var alloc_timer = std.Io.Timestamp.now(io, .awake);
     {
         var i: usize = 0;
         while (i < iterations) : (i += 1) {
@@ -3198,10 +3218,10 @@ test "pool vs allocator performance" {
             testing.allocator.destroy(obj);
         }
     }
-    const alloc_ns = alloc_timer.read();
+    const alloc_ns = alloc_timer.durationTo(.now(io, .awake)).toNanoseconds();
 
     // Test pool
-    var pool_timer = try std.time.Timer.start();
+    var pool_timer = std.Io.Timestamp.now(io, .awake);
     {
         var pool = Pool(u64).init(testing.allocator);
         defer pool.deinit();
@@ -3213,7 +3233,7 @@ test "pool vs allocator performance" {
             pool.release(obj);
         }
     }
-    const pool_ns = pool_timer.read();
+    const pool_ns = pool_timer.durationTo(.now(io, .awake)).toNanoseconds();
 
     std.debug.print("\nAllocator: {d}ns, Pool: {d}ns, Speedup: {d:.2}x\n", .{
         alloc_ns,
@@ -3368,9 +3388,9 @@ Choose pre-allocated for real-time systems and embedded platforms. Use dynamic f
 Thread-safe pools add mutex protection:
 
 ```zig
-pub fn acquire(self: *Self) !*T {
-    self.mutex.lock();
-    defer self.mutex.unlock();
+pub fn acquire(self: *Self, io: std.Io) !*T {
+    try self.mutex.lock(io);
+    defer self.mutex.unlock(io);
     // ... pool logic
 }
 ```
@@ -3794,7 +3814,7 @@ fn ThreadSafePool(comptime T: type) type {
 
         allocator: Allocator,
         free_list: ?*Node,
-        mutex: std.Thread.Mutex,
+        mutex: std.Io.Mutex,
         capacity: usize,
         used: usize,
 
@@ -3802,15 +3822,19 @@ fn ThreadSafePool(comptime T: type) type {
             return .{
                 .allocator = allocator,
                 .free_list = null,
-                .mutex = .{},
+                .mutex = .init,
                 .capacity = 0,
                 .used = 0,
             };
         }
 
-        pub fn deinit(self: *Self) void {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+        pub fn deinit(self: *Self, io: std.Io) void {
+            // Freeing the free list is O(n) pointer chasing with no I/O in it,
+            // so the wait is bounded and there is nothing useful to cancel.
+            // `lockUncancelable` keeps `deinit` infallible, which is what a
+            // caller in a `defer` needs it to be.
+            self.mutex.lockUncancelable(io);
+            defer self.mutex.unlock(io);
 
             while (self.free_list) |node| {
                 self.free_list = node.next;
@@ -3818,9 +3842,9 @@ fn ThreadSafePool(comptime T: type) type {
             }
         }
 
-        pub fn acquire(self: *Self) !*T {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+        pub fn acquire(self: *Self, io: std.Io) !*T {
+            try self.mutex.lock(io);
+            defer self.mutex.unlock(io);
 
             if (self.free_list) |node| {
                 self.free_list = node.next;
@@ -3838,9 +3862,9 @@ fn ThreadSafePool(comptime T: type) type {
             return &node.data;
         }
 
-        pub fn release(self: *Self, item: *T) void {
-            self.mutex.lock();
-            defer self.mutex.unlock();
+        pub fn release(self: *Self, io: std.Io, item: *T) void {
+            self.mutex.lockUncancelable(io);
+            defer self.mutex.unlock(io);
 
             const node: *Node = @alignCast(@fieldParentPtr("data", item));
             node.next = self.free_list;
@@ -3851,22 +3875,23 @@ fn ThreadSafePool(comptime T: type) type {
 }
 
 test "thread-safe pool" {
+    const io = std.testing.io;
     var pool = ThreadSafePool(u32).init(testing.allocator);
-    defer pool.deinit();
+    defer pool.deinit(io);
 
-    const obj1 = try pool.acquire();
+    const obj1 = try pool.acquire(io);
     obj1.* = 100;
 
-    const obj2 = try pool.acquire();
+    const obj2 = try pool.acquire(io);
     obj2.* = 200;
 
-    pool.release(obj1);
-    pool.release(obj2);
+    pool.release(io, obj1);
+    pool.release(io, obj2);
 
-    const obj3 = try pool.acquire();
+    const obj3 = try pool.acquire(io);
     try testing.expect(obj3.* == 200 or obj3.* == 100);
 
-    pool.release(obj3);
+    pool.release(io, obj3);
 }
 // ANCHOR_END: thread_safe_pool
 
@@ -4000,10 +4025,11 @@ test "pool allocator" {
 // ANCHOR: performance_comparison
 // Performance comparison: pool vs allocator
 test "pool vs allocator performance" {
+    const io = std.testing.io;
     const iterations = 1000;
 
     // Test regular allocator
-    var alloc_timer = try std.time.Timer.start();
+    var alloc_timer = std.Io.Timestamp.now(io, .awake);
     {
         var i: usize = 0;
         while (i < iterations) : (i += 1) {
@@ -4012,10 +4038,10 @@ test "pool vs allocator performance" {
             testing.allocator.destroy(obj);
         }
     }
-    const alloc_ns = alloc_timer.read();
+    const alloc_ns = alloc_timer.durationTo(.now(io, .awake)).toNanoseconds();
 
     // Test pool
-    var pool_timer = try std.time.Timer.start();
+    var pool_timer = std.Io.Timestamp.now(io, .awake);
     {
         var pool = Pool(u64).init(testing.allocator);
         defer pool.deinit();
@@ -4027,7 +4053,7 @@ test "pool vs allocator performance" {
             pool.release(obj);
         }
     }
-    const pool_ns = pool_timer.read();
+    const pool_ns = pool_timer.durationTo(.now(io, .awake)).toNanoseconds();
 
     std.debug.print("\nAllocator: {d}ns, Pool: {d}ns, Speedup: {d:.2}x\n", .{
         alloc_ns,
@@ -4261,7 +4287,6 @@ fn parseJson(allocator: Allocator, json: []const u8) !u32 {
     @memset(temp, 0);
 
     // Real result allocated from parent allocator
-    _ = allocator;
     return 42;
 }
 
@@ -4307,10 +4332,11 @@ Stack allocation is dramatically faster than heap allocation:
 ```zig
 // Performance comparison: stack vs heap
 test "stack vs heap performance" {
+    const io = std.testing.io;
     const iterations = 1000;
 
     // Heap allocation
-    var heap_timer = try std.time.Timer.start();
+    var heap_timer = std.Io.Timestamp.now(io, .awake);
     {
         var i: usize = 0;
         while (i < iterations) : (i += 1) {
@@ -4319,10 +4345,10 @@ test "stack vs heap performance" {
             testing.allocator.free(slice);
         }
     }
-    const heap_ns = heap_timer.read();
+    const heap_ns = heap_timer.durationTo(.now(io, .awake)).toNanoseconds();
 
     // Stack allocation
-    var stack_timer = try std.time.Timer.start();
+    var stack_timer = std.Io.Timestamp.now(io, .awake);
     {
         var buffer: [100 * 1000]u8 = undefined;
         var fba = std.heap.FixedBufferAllocator.init(&buffer);
@@ -4334,7 +4360,7 @@ test "stack vs heap performance" {
             @memset(slice, 0);
         }
     }
-    const stack_ns = stack_timer.read();
+    const stack_ns = stack_timer.durationTo(.now(io, .awake)).toNanoseconds();
 
     std.debug.print("\nHeap: {d}ns, Stack: {d}ns, Speedup: {d:.2}x\n", .{
         heap_ns,
@@ -4813,6 +4839,7 @@ test "thread-local buffer" {
 // ANCHOR: nested_fixed_buffers
 // Nested fixed buffer allocators
 fn parseJson(allocator: Allocator, json: []const u8) !u32 {
+    _ = allocator;
     // Inner function with its own stack buffer
     var buffer: [256]u8 = undefined;
     var fba = std.heap.FixedBufferAllocator.init(&buffer);
@@ -4824,7 +4851,6 @@ fn parseJson(allocator: Allocator, json: []const u8) !u32 {
     @memset(temp, 0);
 
     // Real result allocated from parent allocator
-    _ = allocator;
     return 42;
 }
 
@@ -4862,10 +4888,11 @@ test "string building with fixed buffer" {
 // ANCHOR: performance_comparison
 // Performance comparison: stack vs heap
 test "stack vs heap performance" {
+    const io = std.testing.io;
     const iterations = 1000;
 
     // Heap allocation
-    var heap_timer = try std.time.Timer.start();
+    var heap_timer = std.Io.Timestamp.now(io, .awake);
     {
         var i: usize = 0;
         while (i < iterations) : (i += 1) {
@@ -4874,10 +4901,10 @@ test "stack vs heap performance" {
             testing.allocator.free(slice);
         }
     }
-    const heap_ns = heap_timer.read();
+    const heap_ns = heap_timer.durationTo(.now(io, .awake)).toNanoseconds();
 
     // Stack allocation
-    var stack_timer = try std.time.Timer.start();
+    var stack_timer = std.Io.Timestamp.now(io, .awake);
     {
         var buffer: [100 * 1000]u8 = undefined;
         var fba = std.heap.FixedBufferAllocator.init(&buffer);
@@ -4889,7 +4916,7 @@ test "stack vs heap performance" {
             @memset(slice, 0);
         }
     }
-    const stack_ns = stack_timer.read();
+    const stack_ns = stack_timer.durationTo(.now(io, .awake)).toNanoseconds();
 
     std.debug.print("\nHeap: {d}ns, Stack: {d}ns, Speedup: {d:.2}x\n", .{
         heap_ns,
@@ -5839,7 +5866,7 @@ const TrackingAllocator = struct {
     pub fn init(parent: Allocator) TrackingAllocator {
         return .{
             .parent = parent,
-            .allocations = .{},
+            .allocations = .empty,
             .total_allocated = 0,
             .peak_allocated = 0,
         };

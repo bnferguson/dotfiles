@@ -10,7 +10,9 @@ Patterns distilled from two flagship Zig projects:
 - **Ghostty** — GPU-accelerated terminal emulator. SIMD optimization, cache-friendly packed structs, offset-based memory addressing, cross-platform abstraction.
 - **TigerBeetle** — Distributed financial database. Static allocation discipline, assertion-driven safety, deterministic simulation testing, io_uring integration. Their [TIGER_STYLE.md](https://github.com/tigerbeetle/tigerbeetle/blob/main/docs/TIGER_STYLE.md) is one of the best coding style guides ever written.
 
-**Target version:** Zig 0.15+. When using the `zig-programming` skill alongside this one, defer to its version detection for API specifics. Some builtins referenced here (e.g., `@branchHint`) are recent additions.
+**Target version:** Zig 0.16. Every example in `examples/` compiles and its tests pass on 0.16.0 — run `./check.sh` to re-verify. When using the `zig-programming` skill alongside this one, defer to its version detection for API specifics.
+
+0.16 moved enough ground that a few of these idioms changed shape rather than wording. `std.Io` is now an interface value passed like an `Allocator`. The blocking primitives moved out of `std.Thread` into `std.Io`. `@Type` split into `@Struct` / `@Enum` / `@Int` / `@Union` / `@Pointer`. And `main` receives a `std.process.Init` carrying a ready-made allocator and `Io`. Where that changes the *advice* and not just the spelling, it is called out inline below.
 
 ## How to Use This Skill
 
@@ -25,28 +27,28 @@ Load this skill alongside `zig-programming` for production Zig work. This skill 
 ### Reference Files (load as needed)
 
 - `references/memory-patterns.md` — Allocator strategies, pools, offset addressing, in-place init
-  (grep: `StaticAllocator`, `BitmapAllocator`, `Offset`, `mmap`, `MemoryPool`, `errdefer`, `deinit`)
+  (grep: `StaticAllocator`, `BitmapAllocator`, `Offset`, `mmap`, `MemoryPool`, `errdefer`, `deinit`, `init.gpa`)
 - `references/performance-patterns.md` — SIMD, cache lines, branch hints, hot loop extraction
   (grep: `@branchHint`, `@prefetch`, `packed struct`, `fastmem`, `@divExact`, `cache_line`)
 - `references/safety-and-assertions.md` — Assertion discipline, NASA Power of Ten, pair assertions
   (grep: `assert`, `fatal`, `maybe`, `comptime unreachable`, `slow_runtime_safety`, `verify`)
 - `references/testing-strategies.md` — VOPR, fuzz testing, tripwire error injection, coverage marks
-  (grep: `tripwire`, `VOPR`, `fuzz`, `coverage`, `refAllDecls`, `verifyIntegrity`, `swarm`)
-- `references/api-design-patterns.md` — Options structs, tagged unions, generic type functions
-  (grep: `Options`, `union(enum)`, `TreeType`, `Renderer`, `callback`, `inline else`)
+  (grep: `tripwire`, `VOPR`, `fuzz`, `coverage`, `refAllDecls`, `verifyIntegrity`, `swarm`, `testing.io`)
+- `references/api-design-patterns.md` — Options structs, tagged unions, generic type functions, `Io` as a dependency
+  (grep: `Options`, `union(enum)`, `TreeType`, `Renderer`, `callback`, `inline else`, `Io`, `Cancelable`)
 - `references/tiger-style-principles.md` — Core philosophy from TigerBeetle's style guide
   (grep: `Power of Ten`, `zero technical debt`, `70-line`, `control plane`, `data plane`)
 
 ### Example Files
 
 - `examples/assertion_patterns.zig` — Comptime assertions, pair assertions, positive/negative space
-- `examples/comptime_type_generation.zig` — Data table to packed struct + enum + dispatch
+- `examples/comptime_type_generation.zig` — Data table to packed struct + enum + dispatch (`@Struct` / `@Enum`)
 - `examples/generic_type_function.zig` — `FooType()` pattern with comptime callbacks
-- `examples/options_struct.zig` — Named arguments via config struct
+- `examples/options_struct.zig` — Named arguments via config struct, `Io` threaded positionally
 - `examples/packed_struct.zig` — Cache-friendly Cell/Row layout with fast-path skipping
 - `examples/static_allocator.zig` — Three-phase allocator lifecycle
 - `examples/error_handling_patterns.zig` — Narrow error sets, translation, errdefer discipline
-- `examples/concurrency_patterns.zig` — Dirty flags, atomics, blocking queues
+- `examples/concurrency_patterns.zig` — Dirty flags, atomics, blocking queues over `std.Io.Mutex`
 
 ## Design Philosophy
 
@@ -68,7 +70,7 @@ Load this skill alongside `zig-programming` for production Zig work. This skill 
 
 Key patterns:
 
-- **Choose the right allocator per layer** — GPA at top level, `ArenaAllocator` for temp work, `MemoryPool` for fixed-size objects, direct OS allocation for hot paths.
+- **Choose the right allocator per layer** — `init.gpa` at top level, `ArenaAllocator` for temp work, `MemoryPool` for fixed-size objects, direct OS allocation for hot paths. In 0.16 do not construct your own top-level allocator: `init.gpa` is already leak-checking in Debug and `smp_allocator`/`c_allocator` in release.
 - **Static allocation after init** — When memory needs are known at startup, allocate everything upfront, then forbid further allocation. A performance choice, not a universal rule.
 - **In-place initialization** — Initialize large structs via out pointers to avoid stack copies. Viral — if any field needs it, the container should too.
 - **deinit sets undefined** — Set `self.* = undefined` after freeing to catch use-after-free in debug builds.
@@ -113,7 +115,7 @@ See `examples/error_handling_patterns.zig` for complete examples.
 > Detailed examples in `references/api-design-patterns.md` and `examples/comptime_type_generation.zig`.
 
 - **Generic data structures via type functions** — `pub fn FooType(comptime T: type) type { return struct { ... }; }`.
-- **Type generation from data tables** — Define data as a table, generate packed structs and enums at comptime.
+- **Type generation from data tables** — Define data as a table, generate packed structs and enums at comptime. 0.16 replaced `@Type` with one builtin per kind: `@Struct(layout, backing_int, names, types, attrs)`, `@Enum(Tag, exhaustiveness, names, values)`, `@Int`, `@Union`, `@Pointer`.
 - **`inline else` for comptime dispatch** — Turn runtime enum values into comptime-known values.
 - **Platform selection at comptime** — `pub const Io = switch (builtin.target.os.tag) { ... }`.
 - **Compile-time layout verification** — `comptime { assert(@sizeOf(Cell) == 8); }`.
@@ -176,7 +178,8 @@ const IO = @import("IO.zig");
 
 > Full examples in `references/api-design-patterns.md`.
 
-- **Options structs** — When arguments can be mixed up (especially multiple integers), use an options struct. Dependencies stay positional, configuration goes in the struct.
+- **Options structs** — When arguments can be mixed up (especially multiple integers), use an options struct. Dependencies stay positional, configuration goes in the struct. 0.16's `net.IpAddress.listen(address, io, options)` is the stdlib's own worked example.
+- **`Io` is a dependency, not ambient authority** — Pass `std.Io` like an `Allocator`, most-general first (`gpa, io, ...`). A function with no `Io` parameter cannot block, touch the disk, or be cancelled — a guarantee the compiler enforces, because every `Dir` and `File` operation takes an `Io`.
 - **Tagged unions for state machines** — Express multi-state logic as `union(enum)`, not boolean flags.
 - **Return struct for multiple values** — `struct { row: *Row, cell: *Cell }`.
 - **Callbacks go last** — Mirror control flow. Name with calling function as prefix: `readSector()` / `readSectorCallback()`.
@@ -193,7 +196,7 @@ const IO = @import("IO.zig");
 - **Coverage marks** — Trace from test to production code, proving the test exercises the intended path.
 - **Fuzz every data structure** — Dedicated fuzzer per major data structure. Use swarm testing for better coverage.
 - **Integrity verification** — `verifyIntegrity()` checks all invariants; `assertIntegrity()` is a no-op in release.
-- **`refAllDecls`** — Ensure all declarations at least compile.
+- **`refAllDecls`** — Make sure all declarations at least compile. It is shallow, so also write `_ = &Type.method;` for I/O-shaped functions that have no unit test — Zig never analyses a function nothing reaches, which is how untested code silently rots across a release.
 
 ## Concurrency
 
@@ -202,7 +205,31 @@ const IO = @import("IO.zig");
 - **Dirty flags over locks** — Signal what needs updating via `packed struct` flags rather than locking.
 - **Atomic values for cross-thread state** — `std.atomic.Value(usize)`.
 - **Blocking queues** — Fixed-capacity `BlockingQueue` for producer-consumer between threads.
-- **io_uring on Linux** — Submit batched I/O operations, process completions in a loop.
+- **io_uring on Linux** — Submit batched I/O operations, process completions in a loop. In 0.16 this is `std.Io.Evented`, which selects io_uring, kqueue or Dispatch per target.
+
+### What Moved in 0.16
+
+The blocking primitives left `std.Thread` for `std.Io`, and they take the `Io` as a parameter:
+
+| 0.15 | 0.16 |
+| --- | --- |
+| `std.Thread.Mutex` | `std.Io.Mutex` |
+| `std.Thread.RwLock` | `std.Io.RwLock` |
+| `std.Thread.Condition` | `std.Io.Condition` |
+| `std.Thread.Semaphore` | `std.Io.Semaphore` |
+| `std.Thread.ResetEvent` | `std.Io.Event` |
+| `std.Thread.WaitGroup` | `std.Io.Group` (`async` / `await` / `cancel`) |
+
+Initialise with the decl literal — `mutex: std.Io.Mutex = .init`, not `= .{}`.
+
+**Atomics and dirty flags did not move.** That is the useful signal: a primitive takes an
+`Io` exactly when it can block. If a type needs no `Io`, it cannot block, and the signature
+says so without a comment.
+
+**Cancellation is the new cost.** `lock(io)` returns `Cancelable!void`. Propagate that when
+the wait is genuinely unbounded. Use `lockUncancelable(io)` when the critical section is
+O(1) with no I/O inside it, so a bounded wait does not inflate every caller's return type.
+See `examples/concurrency_patterns.zig`.
 
 ## Sources
 

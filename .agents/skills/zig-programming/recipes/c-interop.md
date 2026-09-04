@@ -1,6 +1,6 @@
 # C Interoperability Recipes
 
-*7 tested recipes for Zig 0.15.2*
+*7 recipes, all compiled against Zig 0.16.0*
 
 ## Quick Reference
 
@@ -209,7 +209,7 @@ test "working with C time functions" {
 
     // C functions can be called naturally from Zig
     const tm_ptr = c_time.localtime(&timestamp);
-    try testing.expect(tm_ptr != null);
+    try testing.expect((tm_ptr) != null);
 }
 ```
 
@@ -384,7 +384,7 @@ test "working with C time functions" {
 
     // C functions can be called naturally from Zig
     const tm_ptr = c_time.localtime(&timestamp);
-    try testing.expect(tm_ptr != null);
+    try testing.expect((tm_ptr) != null);
 }
 // ANCHOR_END: multiple_headers
 
@@ -627,7 +627,7 @@ export fn counter_destroy(counter: ?*Counter) void {
 
 test "exported opaque type" {
     const counter = counter_create();
-    try testing.expect(counter != null);
+    try testing.expect((counter) != null);
 
     try testing.expectEqual(@as(c_int, 0), counter_get_value(counter));
 
@@ -926,7 +926,7 @@ export fn counter_destroy(counter: ?*Counter) void {
 
 test "exported opaque type" {
     const counter = counter_create();
-    try testing.expect(counter != null);
+    try testing.expect((counter) != null);
 
     try testing.expectEqual(@as(c_int, 0), counter_get_value(counter));
 
@@ -1271,7 +1271,7 @@ export fn free_array(arr: ?[*]c_int, len: usize) void {
 
 test "dynamic array allocation" {
     const arr = create_fibonacci(10);
-    try testing.expect(arr != null);
+    try testing.expect((arr) != null);
 
     if (arr) |a| {
         try testing.expectEqual(@as(c_int, 0), a[0]);
@@ -1617,7 +1617,7 @@ export fn free_array(arr: ?[*]c_int, len: usize) void {
 
 test "dynamic array allocation" {
     const arr = create_fibonacci(10);
-    try testing.expect(arr != null);
+    try testing.expect((arr) != null);
 
     if (arr) |a| {
         try testing.expectEqual(@as(c_int, 0), a[0]);
@@ -1760,7 +1760,7 @@ export fn database_destroy(db: ?*Database) void {
 
 test "basic opaque handle" {
     const db = database_create("test_db");
-    try testing.expect(db != null);
+    try testing.expect((db) != null);
 
     try testing.expect(database_connect(db));
     try testing.expect(database_connect(db));
@@ -1858,7 +1858,7 @@ export fn file_close(handle: ?*FileHandle) void {
 
 test "opaque file handle with state" {
     const handle = file_open("test.txt");
-    try testing.expect(handle != null);
+    try testing.expect((handle) != null);
 
     try testing.expect(file_read(handle));
     try testing.expect(file_read(handle));
@@ -1938,7 +1938,7 @@ export fn iterator_destroy(iter: ?*Iterator) void {
 test "opaque iterator pattern" {
     const data = [_]c_int{ 10, 20, 30, 40 };
     const iter = iterator_create(&data, data.len);
-    try testing.expect(iter != null);
+    try testing.expect((iter) != null);
 
     var value: c_int = 0;
     var count: usize = 0;
@@ -2041,7 +2041,7 @@ export fn stack_destroy(stack: ?*Stack) void {
 
 test "opaque stack collection" {
     const stack = stack_create(5);
-    try testing.expect(stack != null);
+    try testing.expect((stack) != null);
     try testing.expect(stack_is_empty(stack));
 
     try testing.expect(stack_push(stack, 10));
@@ -2155,7 +2155,7 @@ export fn resource_pool_destroy(pool: ?*ResourcePool) void {
 
 test "opaque resource pool" {
     const pool = resource_pool_create(3);
-    try testing.expect(pool != null);
+    try testing.expect((pool) != null);
     try testing.expectEqual(@as(usize, 3), resource_pool_available_count(pool));
 
     const r1 = resource_pool_acquire(pool);
@@ -2363,7 +2363,7 @@ export fn database_destroy(db: ?*Database) void {
 
 test "basic opaque handle" {
     const db = database_create("test_db");
-    try testing.expect(db != null);
+    try testing.expect((db) != null);
 
     try testing.expect(database_connect(db));
     try testing.expect(database_connect(db));
@@ -2438,7 +2438,7 @@ export fn file_close(handle: ?*FileHandle) void {
 
 test "opaque file handle with state" {
     const handle = file_open("test.txt");
-    try testing.expect(handle != null);
+    try testing.expect((handle) != null);
 
     try testing.expect(file_read(handle));
     try testing.expect(file_read(handle));
@@ -2514,7 +2514,7 @@ export fn iterator_destroy(iter: ?*Iterator) void {
 test "opaque iterator pattern" {
     const data = [_]c_int{ 10, 20, 30, 40 };
     const iter = iterator_create(&data, data.len);
-    try testing.expect(iter != null);
+    try testing.expect((iter) != null);
 
     var value: c_int = 0;
     var count: usize = 0;
@@ -2549,7 +2549,7 @@ export fn stack_create(max_size: usize) ?*Stack {
     const impl = allocator.create(StackImpl) catch return null;
 
     impl.* = StackImpl{
-        .items = .{},
+        .items = .empty,
         .max_size = max_size,
         .allocator = allocator,
     };
@@ -2608,7 +2608,7 @@ export fn stack_destroy(stack: ?*Stack) void {
 
 test "opaque stack collection" {
     const stack = stack_create(5);
-    try testing.expect(stack != null);
+    try testing.expect((stack) != null);
     try testing.expect(stack_is_empty(stack));
 
     try testing.expect(stack_push(stack, 10));
@@ -2652,7 +2652,7 @@ export fn resource_pool_create(initial_capacity: usize) ?*ResourcePool {
     const impl = allocator.create(ResourcePoolImpl) catch return null;
 
     impl.* = ResourcePoolImpl{
-        .resources = .{},
+        .resources = .empty,
         .next_id = 0,
         .allocator = allocator,
     };
@@ -2718,7 +2718,7 @@ export fn resource_pool_destroy(pool: ?*ResourcePool) void {
 
 test "opaque resource pool" {
     const pool = resource_pool_create(3);
-    try testing.expect(pool != null);
+    try testing.expect((pool) != null);
     try testing.expectEqual(@as(usize, 3), resource_pool_available_count(pool));
 
     const r1 = resource_pool_acquire(pool);
@@ -2787,14 +2787,14 @@ pub const CMemory = struct {
 
 test "wrapping C memory functions" {
     const ptr = CMemory.alloc(100);
-    try testing.expect(ptr != null);
+    try testing.expect((ptr) != null);
 
     if (ptr) |p| {
         p[0] = 42;
         try testing.expectEqual(@as(u8, 42), p[0]);
 
         const new_ptr = CMemory.realloc(p, 200);
-        try testing.expect(new_ptr != null);
+        try testing.expect((new_ptr) != null);
 
         if (new_ptr) |np| {
             try testing.expectEqual(@as(u8, 42), np[0]);
@@ -2881,10 +2881,11 @@ pub const CString = struct {
 };
 
 test "C string wrapper" {
+    const io = std.testing.io;
     const str1 = "hello";
     const str2 = "world";
 
-    const len = CString.length(str1.ptr);
+    const len = CString.length(io, str1.ptr);
     try testing.expectEqual(@as(usize, 5), len);
 
     var buffer: [20]u8 = undefined;
@@ -2934,10 +2935,11 @@ pub const CFile = struct {
 };
 
 test "RAII C file wrapper" {
+    const io = std.testing.io;
     // Test file operations (in-memory for testing)
     const filename = "/tmp/test_zig_c_wrapper.txt";
     var file = try CFile.open(filename, "w");
-    defer file.close();
+    defer file.close(io);
 
     const data = "Hello from Zig!";
     _ = try file.write(data);
@@ -3119,14 +3121,14 @@ pub const CMemory = struct {
 
 test "wrapping C memory functions" {
     const ptr = CMemory.alloc(100);
-    try testing.expect(ptr != null);
+    try testing.expect((ptr) != null);
 
     if (ptr) |p| {
         p[0] = 42;
         try testing.expectEqual(@as(u8, 42), p[0]);
 
         const new_ptr = CMemory.realloc(p, 200);
-        try testing.expect(new_ptr != null);
+        try testing.expect((new_ptr) != null);
 
         if (new_ptr) |np| {
             try testing.expectEqual(@as(u8, 42), np[0]);
@@ -3615,13 +3617,13 @@ test "string search operations" {
     const text = "Hello, World! Hello!";
 
     const found = StringSearch.find(text.ptr, "World");
-    try testing.expect(found != null);
+    try testing.expect((found) != null);
 
     const char_pos = StringSearch.findChar(text.ptr, 'W');
-    try testing.expect(char_pos != null);
+    try testing.expect((char_pos) != null);
 
     const last_h = StringSearch.findLastChar(text.ptr, 'H');
-    try testing.expect(last_h != null);
+    try testing.expect((last_h) != null);
 }
 ```
 
@@ -3911,13 +3913,13 @@ test "string search operations" {
     const text = "Hello, World! Hello!";
 
     const found = StringSearch.find(text.ptr, "World");
-    try testing.expect(found != null);
+    try testing.expect((found) != null);
 
     const char_pos = StringSearch.findChar(text.ptr, 'W');
-    try testing.expect(char_pos != null);
+    try testing.expect((char_pos) != null);
 
     const last_h = StringSearch.findLastChar(text.ptr, 'H');
-    try testing.expect(last_h != null);
+    try testing.expect((last_h) != null);
 }
 // ANCHOR_END: string_search
 
