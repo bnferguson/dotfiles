@@ -195,7 +195,7 @@ pointer stability and immovable types.
 
 ```
 Application startup
-  └── GeneralPurposeAllocator (debug) / c_allocator (release)
+  └── init.gpa  (from `pub fn main(init: std.process.Init) !void`)
        ├── StaticAllocator wrapper (when memory needs are known at startup)
        ├── MemoryPool for fixed-size objects
        ├── ArenaAllocator for temporary work
@@ -203,6 +203,22 @@ Application startup
             ├── Offset-based sub-allocation
             └── BitmapAllocator for variable-size within page
 ```
+
+In Zig 0.16, do not build the top-level allocator yourself. `init.gpa` is already a
+leak-checking `DebugAllocator` in Debug and `smp_allocator` / `c_allocator` in release
+builds, so constructing a second one buys nothing and hides the leak report behind your own
+`deinit` handling. Reach for `std.heap.DebugAllocator` (the 0.16 name for what used to be
+`GeneralPurposeAllocator`) only when you need a *second*, independently-audited heap —
+testing an allocator-failure path, say.
+
+`init.arena` is the companion to know: permanent, threadsafe storage for the whole process,
+freed automatically on exit. Use it for startup data you never free — parsed arguments,
+config read once — not as a general scratch arena.
+
+One caveat on the leak report: `std.start` runs the `DebugAllocator`'s `deinit` for you, but
+**leaks do not affect the exit code**. A leaking program still exits `0`, so a test suite
+that only checks the exit status will not catch it. Where a leak must fail the build, use
+`std.testing.allocator` in a test rather than relying on `init.gpa` in `main`.
 
 ## deinit Patterns
 

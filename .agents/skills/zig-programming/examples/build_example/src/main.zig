@@ -106,7 +106,7 @@ test "math and string integration" {
 
     // Use math to generate numbers, convert to string
     const sum = math.add(10, 20);
-    try testing.expectEqual(@as(i32, 30), sum);
+    try testing.expectEqual(30, sum);
 
     // Use string utils on text
     const text = "hello";
@@ -119,7 +119,7 @@ test "math and string integration" {
 test "factorial and palindrome" {
     // Calculate factorial
     const fact = math.factorial(4);
-    try testing.expectEqual(@as(u64, 24), fact);
+    try testing.expectEqual(24, fact);
 
     // Check palindrome
     try testing.expect(!strings.isPalindrome("24"));

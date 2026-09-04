@@ -58,7 +58,7 @@ test "capture and verify stdout output" {
 
 ### Discussion
 
-Testing output is crucial for CLI tools and scripts. Instead of writing directly to `std.io.getStdOut()`, design your functions to accept any writer through the `anytype` parameter. This makes them testable and more flexible.
+Testing output matters for CLI tools and scripts. Instead of writing directly to `std.Io.File.stdout()`, design your functions to accept any writer through the `anytype` parameter. This makes them testable and more flexible.
 
 The pattern works because:
 
@@ -10127,7 +10127,7 @@ You need to measure your program's performance, identify bottlenecks, and optimi
 
 ### Solution
 
-Use `std.time.nanoTimestamp()` for high-resolution timing:
+Use `std.Io.Timestamp.now(io, .awake)` for high-resolution timing -- `.awake` is monotonic, so it cannot run backwards mid-measurement the way the wall clock can. `toNanoseconds()` returns an `i96`:
 
 ```zig
 fn measureFunction(io: std.Io) !void {

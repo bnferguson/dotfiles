@@ -12,7 +12,10 @@ const StringProcessor = struct {
 
     pub fn toUpperCase(self: StringProcessor, input: []const u8) ![]u8 {
         const result = try self.allocator.alloc(u8, input.len);
-        errdefer self.allocator.free(result);
+        // Nothing below this line can fail, so there is no error path for a
+        // cleanup `errdefer` to run on. Saying so makes a future `try` added
+        // below a compile error instead of a silent leak.
+        errdefer comptime unreachable;
 
         for (input, 0..) |char, i| {
             result[i] = std.ascii.toUpper(char);
@@ -23,7 +26,10 @@ const StringProcessor = struct {
 
     pub fn toLowerCase(self: StringProcessor, input: []const u8) ![]u8 {
         const result = try self.allocator.alloc(u8, input.len);
-        errdefer self.allocator.free(result);
+        // Nothing below this line can fail, so there is no error path for a
+        // cleanup `errdefer` to run on. Saying so makes a future `try` added
+        // below a compile error instead of a silent leak.
+        errdefer comptime unreachable;
 
         for (input, 0..) |char, i| {
             result[i] = std.ascii.toLower(char);
@@ -34,7 +40,10 @@ const StringProcessor = struct {
 
     pub fn reverse(self: StringProcessor, input: []const u8) ![]u8 {
         const result = try self.allocator.alloc(u8, input.len);
-        errdefer self.allocator.free(result);
+        // Nothing below this line can fail, so there is no error path for a
+        // cleanup `errdefer` to run on. Saying so makes a future `try` added
+        // below a compile error instead of a silent leak.
+        errdefer comptime unreachable;
 
         var i: usize = 0;
         while (i < input.len) : (i += 1) {
@@ -51,7 +60,10 @@ const StringProcessor = struct {
         }
 
         const result = try self.allocator.alloc([]const u8, count);
-        errdefer self.allocator.free(result);
+        // Nothing below this line can fail, so there is no error path for a
+        // cleanup `errdefer` to run on. Saying so makes a future `try` added
+        // below a compile error instead of a silent leak.
+        errdefer comptime unreachable;
 
         var iter = std.mem.splitScalar(u8, input, delimiter);
         var index: usize = 0;
@@ -65,11 +77,10 @@ const StringProcessor = struct {
     }
 };
 
-pub fn main() !void {
-    // Initialize allocator
-    var gpa = std.heap.DebugAllocator(.{}).init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    // `init.gpa` is already a leak-checking DebugAllocator in Debug builds and
+    // a fast allocator in release, so there is no second one to construct.
+    const allocator = init.gpa;
 
     // Create processor
     const processor = StringProcessor.init(allocator);
@@ -146,7 +157,7 @@ test "StringProcessor.split" {
     const result = try processor.split(input, ',');
     defer allocator.free(result);
 
-    try testing.expectEqual(@as(usize, 3), result.len);
+    try testing.expectEqual(3, result.len);
     try testing.expectEqualStrings("a", result[0]);
     try testing.expectEqualStrings("b", result[1]);
     try testing.expectEqualStrings("c", result[2]);

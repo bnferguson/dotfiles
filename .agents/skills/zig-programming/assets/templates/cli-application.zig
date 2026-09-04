@@ -15,12 +15,13 @@ const Config = struct {
     pub fn init(allocator: std.mem.Allocator) Config {
         return .{
             .allocator = allocator,
-            .input_files = std.ArrayList([]const u8).empty,
+            .input_files = .empty,
         };
     }
 
     pub fn deinit(self: *Config) void {
         self.input_files.deinit(self.allocator);
+        self.* = undefined;
     }
 };
 
@@ -64,8 +65,6 @@ fn processCommand(stdout: *std.Io.Writer, config: *const Config, args: []const [
     }
 
     try stdout.print("Processing complete!\n", .{});
-
-    try stdout.flush();
 }
 
 fn convertCommand(stdout: *std.Io.Writer, config: *const Config, args: []const []const u8) !void {
@@ -88,8 +87,6 @@ fn convertCommand(stdout: *std.Io.Writer, config: *const Config, args: []const [
     // TODO: Implement your conversion logic here
 
     try stdout.print("Conversion complete!\n", .{});
-
-    try stdout.flush();
 }
 
 pub fn main(init: std.process.Init) !void {
@@ -103,17 +100,20 @@ pub fn main(init: std.process.Init) !void {
     var stdout_buffer: [1024]u8 = undefined;
     var stdout_writer = std.Io.File.stdout().writerStreaming(io, &stdout_buffer);
     const stdout = &stdout_writer.interface;
-    defer stdout.flush() catch {};
+    // A backstop for the error paths below, which are already returning a more
+    // interesting error than a failed flush. The success path flushes with
+    // `try` at the end of this function so a write failure is not swallowed.
+    defer stdout_writer.flush() catch {};
 
     // Arguments come from the process init data; the arena owns them.
     const args = try init.minimal.args.toSlice(init.arena.allocator());
 
     // Parse command line arguments
-    var config = Config.init(allocator);
+    var config: Config = .init(allocator);
     defer config.deinit();
 
     var command: ?[]const u8 = null;
-    var command_args = std.ArrayList([]const u8).empty;
+    var command_args: std.ArrayList([]const u8) = .empty;
     defer command_args.deinit(allocator);
 
     var i: usize = 1; // Skip program name
@@ -159,6 +159,10 @@ pub fn main(init: std.process.Init) !void {
         printUsage();
         return error.UnknownCommand;
     }
+
+    // `File.Writer.flush` unwraps the `error.WriteFailed` placeholder and
+    // returns the real error, which the `defer` above deliberately cannot.
+    try stdout_writer.flush();
 }
 
 // Tests
@@ -171,5 +175,15 @@ test "Config initialization" {
 
     try testing.expect(!config.verbose);
     try testing.expect(config.output_file == null);
-    try testing.expectEqual(@as(usize, 0), config.input_files.items.len);
+    try testing.expectEqual(0, config.input_files.items.len);
+}
+
+test "every declaration compiles" {
+    // The command handlers have no test of their own -- they need a writer and
+    // a parsed argv. Referencing them still forces the compiler through their
+    // bodies, which is what catches a stdlib API disappearing under them.
+    testing.refAllDecls(@This());
+    _ = &processCommand;
+    _ = &convertCommand;
+    _ = &printUsage;
 }

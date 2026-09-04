@@ -602,8 +602,8 @@ try csv.writeField(utf8_field);
 
 - `std.mem.tokenizeAny()` - Simple field splitting
 - `std.fmt.allocPrint()` - Format values as strings
-- `std.io.AnyWriter` - Generic writer interface
-- `std.io.AnyReader` - Generic reader interface
+- `std.Io.Writer` - Generic writer interface (0.16 replaced the erased `std.io.AnyWriter`)
+- `std.Io.Reader` - Generic reader interface (0.16 replaced the erased `std.io.AnyReader`)
 - `std.ArrayList` - Dynamic arrays
 
 ### Full Tested Code

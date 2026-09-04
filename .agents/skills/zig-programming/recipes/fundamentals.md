@@ -7613,7 +7613,7 @@ Zig requires **explicit memory allocation** - you must choose where memory comes
 
 Common allocators:
 - `FixedBufferAllocator` - Stack memory, no malloc
-- `GeneralPurposeAllocator` - Safe malloc with leak detection
+- `DebugAllocator` - Safe malloc with leak detection (called `GeneralPurposeAllocator` before 0.16)
 - `ArenaAllocator` - Batch allocate, free all at once
 - `testing.allocator` - For tests, detects leaks automatically
 
@@ -7704,7 +7704,7 @@ test "FixedBufferAllocator - stack memory" {
     try testing.expectError(error.OutOfMemory, result);
 }
 
-test "GeneralPurposeAllocator - safe malloc" {
+test "DebugAllocator - safe malloc" {
     // GPA is like malloc but with leak detection
     var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
@@ -7864,8 +7864,7 @@ test "choosing the right allocator" {
     temp_data[0] = 2;
     try testing.expectEqual(@as(i32, 2), temp_data[0]);
 
-    // For general use - GeneralPurposeAllocator
-    // (or testing.allocator in tests)
+    // For general use - init.gpa in main, testing.allocator in tests
     const general_alloc = testing.allocator;
     const general_data = try general_alloc.alloc(f32, 50);
     defer general_alloc.free(general_data);
@@ -7978,7 +7977,7 @@ test "building a dynamic data structure" {
 - Writing tests? → `testing.allocator`
 - Small, temporary, stack allocation? → `FixedBufferAllocator`
 - Many allocations, free all at once? → `ArenaAllocator`
-- General purpose, long-lived? → `GeneralPurposeAllocator`
+- General purpose, long-lived? → `init.gpa`, handed to `main` by `std.process.Init`. It is already a leak-checking `DebugAllocator` in Debug and `smp_allocator`/`c_allocator` in release, so building your own is redundant.
 
 **Should I store the allocator in my struct?**
 
@@ -8134,7 +8133,7 @@ test "FixedBufferAllocator - stack memory" {
     try testing.expectError(error.OutOfMemory, result);
 }
 
-test "GeneralPurposeAllocator - safe malloc" {
+test "DebugAllocator - safe malloc" {
     // GPA is like malloc but with leak detection
     var gpa = std.heap.DebugAllocator(.{}).init;
     defer {
@@ -8290,8 +8289,7 @@ test "choosing the right allocator" {
     temp_data[0] = 2;
     try testing.expectEqual(@as(i32, 2), temp_data[0]);
 
-    // For general use - GeneralPurposeAllocator
-    // (or testing.allocator in tests)
+    // For general use - init.gpa in main, testing.allocator in tests
     const general_alloc = testing.allocator;
     const general_data = try general_alloc.alloc(f32, 50);
     defer general_alloc.free(general_data);
@@ -8390,7 +8388,7 @@ test "allocator with errdefer" {
 // - Zig has NO default allocator - you must provide one
 // - std.mem.Allocator is the interface all allocators implement
 // - FixedBufferAllocator: stack memory, no malloc
-// - GeneralPurposeAllocator: safe malloc with leak detection
+// - DebugAllocator: safe malloc with leak detection (0.15 called it GeneralPurposeAllocator)
 // - ArenaAllocator: batch allocate, free all at once
 // - testing.allocator: for tests, detects leaks
 // - Convention: allocator is first function parameter

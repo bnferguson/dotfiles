@@ -83,9 +83,9 @@ pub fn isPalindrome(str: []const u8) bool {
 
 // Tests
 test "count character" {
-    try testing.expectEqual(@as(usize, 3), countChar("hello world", 'l'));
-    try testing.expectEqual(@as(usize, 0), countChar("hello", 'z'));
-    try testing.expectEqual(@as(usize, 3), countChar("banana", 'a'));
+    try testing.expectEqual(3, countChar("hello world", 'l'));
+    try testing.expectEqual(0, countChar("hello", 'z'));
+    try testing.expectEqual(3, countChar("banana", 'a'));
 }
 
 test "starts with" {

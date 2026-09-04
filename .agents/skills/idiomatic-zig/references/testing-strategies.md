@@ -49,6 +49,23 @@ test {
 }
 ```
 
+`refAllDecls` is shallow: it references the container's own declarations, so a *method* on a
+nested struct is not analysed by it. Zig only analyses functions that are actually reached,
+which means an untested method can reference a deleted stdlib API and still "compile" for
+years. Name such functions explicitly:
+
+```zig
+test "every declaration compiles" {
+    std.testing.refAllDecls(@This());
+    // `listen` has no unit test -- it needs a real network. Taking its address
+    // still forces the compiler through its body.
+    _ = &Server.listen;
+}
+```
+
+This is worth doing for anything I/O-shaped, which by definition resists unit testing and is
+therefore exactly what silently rots across a release.
+
 ## Tripwire Error Injection (Ghostty)
 
 Inject errors at specific allocation points to verify errdefer cleanup paths:
@@ -111,6 +128,32 @@ operation to hit.
 
 Pass the current commit hash as the fuzzer seed. Any failure can be reproduced exactly from
 the commit alone.
+
+### What Zig 0.16 Changes
+
+`std.Io` standardises the seam this technique depends on. Clock, network, disk and task
+scheduling now reach the program through one interface value rather than through ambient
+`std.fs` / `std.time` / `std.Thread` calls, so "stub all sources of non-determinism" no
+longer means auditing every call site for hidden I/O — a function without an `Io` parameter
+cannot have any.
+
+Do not mistake the seam for the simulator. `Io.VTable` is roughly 116 function pointers, and
+the shipped implementations (`Threaded`, and `Evented` over io_uring / kqueue / Dispatch) are
+all real I/O. A deterministic implementation is still yours to write. 0.16 gives you a
+defined interface to write it against and a compiler-checked guarantee that nothing bypasses
+it.
+
+For ordinary tests, use `std.testing.io` — a `Threaded` instance the test runner sets up:
+
+```zig
+test "blocking queue rejects when full" {
+    const io = std.testing.io;
+    var queue: BlockingQueue(u8, 2) = .{};
+    try queue.push(io, 1);
+    try queue.push(io, 2);
+    try std.testing.expectError(error.QueueFull, queue.push(io, 3));
+}
+```
 
 ## Fuzz Every Data Structure (TigerBeetle)
 

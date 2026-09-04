@@ -68,17 +68,31 @@ python scripts/get_references.py --json
 
 The skill includes **223 recipes** from the Zig BBQ Cookbook, organized by topic. They target Zig 0.16.0.
 
-**Verification:** 210 of the 218 recipes that ship a full-code block compile against Zig 0.16.0. Re-check them at any time:
+**Verification:** 207 of the 218 recipes that ship a full-code block compile against Zig 0.16.0. Re-check them at any time:
 
 ```bash
 python scripts/verify_recipes.py                       # uses `zig` from PATH
 python scripts/verify_recipes.py --filter files-io -v  # one topic, with errors
 ```
 
-Eight recipes do not yet compile, and each recipe file says so in its header. They are not blocked on the I/O change:
+Read that number precisely, because compiling is weaker than checking in two ways:
+
+- **It covers the full-code blocks, not the snippets.** Those 218 blocks are about 218 of
+  the ~3360 Zig blocks in `recipes/`. The rest are fragments that cannot compile standalone.
+  `python scripts/lint_snippets.py` scans those for APIs 0.16 removed instead -- a token
+  blacklist, not a compiler, so treat a hit as a strong hint rather than a proof.
+- **Zig only analyses code something references.** A recipe can compile while a method no
+  test calls uses an API deleted two releases ago. `verify_recipes.py` therefore appends a
+  walker that touches every reachable public declaration. `--shallow` turns it off. Without
+  it the same recipe set scores 210 instead of 207, and the extra three are false passes.
+
+Eleven recipes do not yet compile, and each recipe file says so in its header. None of them
+are blocked on the I/O change:
 
 - `build-system` 10.3-10.6 reference module files the markdown never included.
-- `files-io` 5.16 and `networking` 20.1/20.5 are built on the raw `std.posix` socket, `poll` and file-descriptor calls that 0.16 removed in favour of `std.Io.net`; they need rewriting, not translating.
+- `files-io` 5.16/5.18 and `networking` 20.1/20.2/20.5/20.6 are built on the raw `std.posix`
+  socket, `poll`, termios and file-descriptor calls that 0.16 removed in favour of
+  `std.Io.net`. They need rewriting, not translating.
 - `strings-text` 2.14 links ICU and needs a matching local ICU version.
 
 **Finding recipes by topic:**
@@ -133,8 +147,9 @@ python scripts/query_recipes.py --topic data-structures --json
 
 ### Templates
 
-All templates and examples compile against Zig 0.16.0; the two build scripts
-were checked with a real `zig build run`.
+All templates and examples compile against Zig 0.16.0 and their tests pass. The
+two build scripts were checked with a real `zig build run`. Re-check with
+`./scripts/check_files.sh`.
 
 Copy and customize these starting points:
 - `assets/templates/basic-program.zig` - Basic program with allocator
@@ -165,8 +180,10 @@ Use these Python automation tools for version management, recipe queries, and co
 **Recipe Queries:**
 - `scripts/query_recipes.py` - Search and filter recipes by topic, tag, difficulty, or keyword
 
-**Recipe Verification:**
+**Verification:**
 - `scripts/verify_recipes.py` - Compile every recipe against a real Zig toolchain and report what fails
+- `scripts/lint_snippets.py` - Scan the illustrative snippets (which no compiler sees) for APIs 0.16 removed
+- `scripts/check_files.sh` - Compile and test every template and example
 
 **Code Generation:**
 - `scripts/code_generator.py` - Generate Zig code from JSON specifications

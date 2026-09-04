@@ -2990,14 +2990,18 @@ fn ThreadSafePool(comptime T: type) type {
             return .{
                 .allocator = allocator,
                 .free_list = null,
-                .mutex = .{},
+                .mutex = .init,
                 .capacity = 0,
                 .used = 0,
             };
         }
 
         pub fn deinit(self: *Self, io: std.Io) void {
-            try self.mutex.lock(io);
+            // Freeing the free list is O(n) pointer chasing with no I/O in it,
+            // so the wait is bounded and there is nothing useful to cancel.
+            // `lockUncancelable` keeps `deinit` infallible, which is what a
+            // caller in a `defer` needs it to be.
+            self.mutex.lockUncancelable(io);
             defer self.mutex.unlock(io);
 
             while (self.free_list) |node| {
@@ -3027,7 +3031,7 @@ fn ThreadSafePool(comptime T: type) type {
         }
 
         pub fn release(self: *Self, io: std.Io, item: *T) void {
-            try self.mutex.lock(io);
+            self.mutex.lockUncancelable(io);
             defer self.mutex.unlock(io);
 
             const node: *Node = @alignCast(@fieldParentPtr("data", item));
@@ -3824,8 +3828,12 @@ fn ThreadSafePool(comptime T: type) type {
             };
         }
 
-        pub fn deinit(self: *Self, io: std.Io) !void {
-            try self.mutex.lock(io);
+        pub fn deinit(self: *Self, io: std.Io) void {
+            // Freeing the free list is O(n) pointer chasing with no I/O in it,
+            // so the wait is bounded and there is nothing useful to cancel.
+            // `lockUncancelable` keeps `deinit` infallible, which is what a
+            // caller in a `defer` needs it to be.
+            self.mutex.lockUncancelable(io);
             defer self.mutex.unlock(io);
 
             while (self.free_list) |node| {
@@ -3854,8 +3862,8 @@ fn ThreadSafePool(comptime T: type) type {
             return &node.data;
         }
 
-        pub fn release(self: *Self, io: std.Io, item: *T) !void {
-            try self.mutex.lock(io);
+        pub fn release(self: *Self, io: std.Io, item: *T) void {
+            self.mutex.lockUncancelable(io);
             defer self.mutex.unlock(io);
 
             const node: *Node = @alignCast(@fieldParentPtr("data", item));
@@ -3869,7 +3877,7 @@ fn ThreadSafePool(comptime T: type) type {
 test "thread-safe pool" {
     const io = std.testing.io;
     var pool = ThreadSafePool(u32).init(testing.allocator);
-    defer pool.deinit(io) catch {};
+    defer pool.deinit(io);
 
     const obj1 = try pool.acquire(io);
     obj1.* = 100;
@@ -3877,13 +3885,13 @@ test "thread-safe pool" {
     const obj2 = try pool.acquire(io);
     obj2.* = 200;
 
-    try pool.release(io, obj1);
-    try pool.release(io, obj2);
+    pool.release(io, obj1);
+    pool.release(io, obj2);
 
     const obj3 = try pool.acquire(io);
     try testing.expect(obj3.* == 200 or obj3.* == 100);
 
-    try pool.release(io, obj3);
+    pool.release(io, obj3);
 }
 // ANCHOR_END: thread_safe_pool
 

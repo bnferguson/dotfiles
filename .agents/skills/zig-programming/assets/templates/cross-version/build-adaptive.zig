@@ -60,8 +60,9 @@ pub fn build(b: *std.Build) void {
     const project_name = "myapp";
     const root_source = "src/main.zig";
 
-    // 0.16 moved the source, target and optimize options off the artifact
-    // and onto a module. Detect which shape this compiler wants.
+    // 0.15 moved the source, target and optimize options off the artifact
+    // and onto a module (0.14 added `root_module`, 0.15 removed the old
+    // fields). Detect which shape this compiler wants.
     const takes_module = @hasField(std.Build.ExecutableOptions, "root_module");
 
     // Build executable
@@ -81,7 +82,7 @@ pub fn build(b: *std.Build) void {
 
     // === OPTIONAL: Add dependencies ===
     //
-    // Example: Add a local dependency. Since 0.16 addStaticLibrary is gone and
+    // Example: Add a local dependency. Since 0.15 addStaticLibrary is gone and
     // the linking options live on the module:
     // const my_lib = b.addLibrary(.{
     //     .name = "mylib",
@@ -157,7 +158,7 @@ pub fn build(b: *std.Build) void {
     // const options = b.addOptions();
     // options.addOption(bool, "has_modern_for_loops", has_modern_for_loops);
     // options.addOption(bool, "has_http_client", has_http_client);
-    // exe.addOptions("build_options", options);
+    // exe.root_module.addOptions("build_options", options);
     //
     // Then in your code:
     // const build_options = @import("build_options");
@@ -172,11 +173,14 @@ pub fn build(b: *std.Build) void {
     // const custom_cmd = b.addSystemCommand(&[_][]const u8{"echo", "Custom build!"});
     // custom_step.dependOn(&custom_cmd.step);
     //
-    // Example: Generate documentation
-    // const docs = exe.getDocumentationStep();
-    // docs.step.dependOn(b.getInstallStep());
+    // Example: Generate documentation. `getEmittedDocs` returns a LazyPath,
+    // not a step, so install it rather than depending on it.
     // const docs_step = b.step("docs", "Generate documentation");
-    // docs_step.dependOn(&docs.step);
+    // docs_step.dependOn(&b.addInstallDirectory(.{
+    //     .source_dir = exe.getEmittedDocs(),
+    //     .install_dir = .prefix,
+    //     .install_subdir = "docs",
+    // }).step);
 }
 
 // === CROSS-VERSION COMPATIBILITY NOTES ===
@@ -190,13 +194,19 @@ pub fn build(b: *std.Build) void {
 //
 // 2. API Stability:
 //    - The core build API (0.11+) is relatively stable
-//    - addExecutable, addTest, addRunArtifact work across 0.11-0.16
+//    - addExecutable, addTest, addRunArtifact exist across 0.11-0.16, but
+//      their options struct changed shape in 0.15 (see below)
 //    - b.path() is required for file paths in 0.11+
 //
 // 3. Version-Specific Considerations:
 //    - 0.11-0.12: Initial modern build API
 //    - 0.13+: For-loop syntax changed (doesn't affect build.zig)
-//    - 0.14-0.15: Enhanced module system and package manager
+//    - 0.14: `root_module` added to ExecutableOptions and friends; the loose
+//      root_source_file/target/optimize fields deprecated
+//    - 0.15: those deprecated fields removed, so `root_module` is mandatory.
+//      addStaticLibrary/addSharedLibrary replaced by addLibrary(.{ .linkage })
+//    - 0.16: link options moved from Step.Compile onto Module, so it is
+//      exe.root_module.linkSystemLibrary / .addImport / .addOptions
 //
 // 4. Breaking Changes to Watch:
 //    - Package/module system APIs (evolving)

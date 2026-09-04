@@ -27,40 +27,33 @@ const entries = [_]ModeEntry{
 // -- Generated packed struct of booleans --
 
 pub const ModePacked = blk: {
-    var fields: [entries.len]std.builtin.Type.StructField = undefined;
+    var names: [entries.len][:0]const u8 = undefined;
+    var types: [entries.len]type = undefined;
+    var attrs: [entries.len]std.builtin.Type.StructField.Attributes = undefined;
     for (entries, 0..) |entry, i| {
-        fields[i] = .{
-            .name = entry.name,
-            .type = bool,
-            .default_value_ptr = @ptrCast(&entry.default),
-            .is_comptime = false,
-            .alignment = 0,
-        };
+        names[i] = entry.name;
+        types[i] = bool;
+        // `default_value_ptr` is a type-erased `*const anyopaque`, so the
+        // pointee's type is not checked here -- it has to match the field type
+        // exactly or the default is reinterpreted as garbage.
+        attrs[i] = .{ .default_value_ptr = @ptrCast(&entries[i].default) };
     }
-    break :blk @Type(.{ .@"struct" = .{
-        .layout = .@"packed",
-        .fields = &fields,
-        .decls = &.{},
-        .is_tuple = false,
-    } });
+    break :blk @Struct(.@"packed", null, &names, &types, &attrs);
 };
 
 // -- Generated enum --
 
 pub const Mode = blk: {
-    var fields: [entries.len]std.builtin.Type.EnumField = undefined;
+    // `@Enum` wants the values already narrowed to the tag type, so name the
+    // tag once and use it for both arguments.
+    const Tag = u8;
+    var names: [entries.len][:0]const u8 = undefined;
+    var values: [entries.len]Tag = undefined;
     for (entries, 0..) |entry, i| {
-        fields[i] = .{
-            .name = entry.name,
-            .value = i,
-        };
+        names[i] = entry.name;
+        values[i] = i;
     }
-    break :blk @Type(.{ .@"enum" = .{
-        .tag_type = u8,
-        .fields = &fields,
-        .decls = &.{},
-        .is_exhaustive = true,
-    } });
+    break :blk @Enum(Tag, .exhaustive, &names, &values);
 };
 
 // -- Comptime dispatch via inline else --
@@ -125,6 +118,16 @@ test "set and get round-trip" {
 }
 
 test "ansi codes from table" {
-    try std.testing.expectEqual(@as(u16, 25), ansiCodeForMode(.cursor_visible));
-    try std.testing.expectEqual(@as(u16, 7), ansiCodeForMode(.auto_wrap));
+    try std.testing.expectEqual(25, ansiCodeForMode(.cursor_visible));
+    try std.testing.expectEqual(7, ansiCodeForMode(.auto_wrap));
+}
+
+// Zig only analyses a function something references, so an untested method can
+// keep calling a deleted stdlib API for releases without anyone noticing.
+// `refAllDecls` is shallow and `@typeInfo().decls` lists only public
+// declarations, so name the file-scope types too.
+test "every declaration compiles" {
+    std.testing.refAllDecls(@This());
+    _ = ModeEntry;
+    _ = ModeState;
 }

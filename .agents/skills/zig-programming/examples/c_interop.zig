@@ -210,27 +210,27 @@ pub fn main() !void {
 test "C integer types" {
     const c_val: c_int = 42;
     const zig_val: i32 = @intCast(c_val);
-    try testing.expectEqual(@as(i32, 42), zig_val);
+    try testing.expectEqual(42, zig_val);
 }
 
 test "exported functions" {
     const result = zigAdd(10, 20);
-    try testing.expectEqual(@as(c_int, 30), result);
+    try testing.expectEqual(30, result);
 
     const result2 = zigMultiply(5, 6);
-    try testing.expectEqual(@as(c_int, 30), result2);
+    try testing.expectEqual(30, result2);
 }
 
 test "C string length" {
     const str = "Hello";
     const len = c.strlen(str.ptr);
-    try testing.expectEqual(@as(usize, 5), len);
+    try testing.expectEqual(5, len);
 }
 
 test "C struct layout" {
     const point = CPoint.init(10, 20);
-    try testing.expectEqual(@as(c_int, 10), point.x);
-    try testing.expectEqual(@as(c_int, 20), point.y);
+    try testing.expectEqual(10, point.x);
+    try testing.expectEqual(20, point.y);
 
     // Verify struct size matches C expectations
     try testing.expectEqual(@as(usize, @sizeOf(c_int) * 2), @sizeOf(CPoint));
@@ -238,10 +238,10 @@ test "C struct layout" {
 
 test "C math functions" {
     const result = c.sqrt(16.0);
-    try testing.expectEqual(@as(f64, 4.0), result);
+    try testing.expectEqual(4.0, result);
 
     const result2 = c.pow(2.0, 3.0);
-    try testing.expectEqual(@as(f64, 8.0), result2);
+    try testing.expectEqual(8.0, result2);
 }
 
 test "C memory allocation" {
@@ -252,5 +252,5 @@ test "C memory allocation" {
     // Write and read through C pointer
     const bytes: [*]u8 = @ptrCast(ptr);
     bytes[0] = 42;
-    try testing.expectEqual(@as(u8, 42), bytes[0]);
+    try testing.expectEqual(42, bytes[0]);
 }

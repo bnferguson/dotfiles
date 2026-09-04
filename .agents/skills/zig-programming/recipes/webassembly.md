@@ -2715,7 +2715,9 @@ var allocator_mutex = std.Io.Mutex.init;
 var global_alloc = BumpAllocator.init(&heap);
 
 export fn threadSafeAlloc(io: std.Io, size: usize) ?[*]u8 {
-    try allocator_mutex.lock(io);
+    // An `export fn` has no error union to propagate into, so the cancelable
+    // `lock` is not usable here even if the wait were worth cancelling.
+    allocator_mutex.lockUncancelable(io);
     defer allocator_mutex.unlock(io);
 
     return global_alloc.allocator().alloc(u8, size) catch null;

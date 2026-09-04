@@ -8,8 +8,9 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    // Since 0.16 an artifact takes a module, not loose source and target
-    // options. Build the module once and share it.
+    // Since 0.15 an artifact takes a module, not loose source and target
+    // options -- 0.14 added `root_module` and deprecated the old fields, 0.15
+    // removed them. Build the module once and share it.
     const exe_module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,

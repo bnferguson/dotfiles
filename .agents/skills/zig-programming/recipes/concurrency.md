@@ -93,12 +93,14 @@ const Counter = struct {
     fn init() Counter {
         return .{
             .value = 0,
-            .mutex = .{},
+            .mutex = .init,
         };
     }
 
-    fn increment(self: *Counter, io: std.Io) !void {
-        try self.mutex.lock(io);
+    fn increment(self: *Counter, io: std.Io) void {
+        // A single `+= 1` under the lock: nothing to cancel, so do not make
+        // every caller handle `error.Canceled`.
+        self.mutex.lockUncancelable(io);
         defer self.mutex.unlock(io);
         self.value += 1;
     }
@@ -316,8 +318,10 @@ const Counter = struct {
         };
     }
 
-    fn increment(self: *Counter, io: std.Io) !void {
-        try self.mutex.lock(io);
+    fn increment(self: *Counter, io: std.Io) void {
+        // A single `+= 1` under the lock: nothing to cancel, so do not make
+        // every caller handle `error.Canceled`.
+        self.mutex.lockUncancelable(io);
         defer self.mutex.unlock(io);
         self.value += 1;
     }
@@ -339,8 +343,8 @@ test "threads with shared state" {
     try testing.expectEqual(@as(usize, 4), counter.value);
 }
 
-fn incrementCounter(io: std.Io, counter: *Counter) !void {
-    try counter.increment(io);
+fn incrementCounter(io: std.Io, counter: *Counter) void {
+    counter.increment(io);
 }
 // ANCHOR_END: shared_counter
 
@@ -560,7 +564,7 @@ You need to protect shared mutable data from race conditions when multiple threa
 
 ### Solution
 
-Use `std.Thread.Mutex` to create critical sections where only one thread can execute at a time.
+Use `std.Io.Mutex` to create critical sections where only one thread can execute at a time. In Zig 0.16 the blocking primitives live on `std.Io`, not `std.Thread`, and take the `Io` as a parameter: `try mutex.lock(io)` returns `Cancelable!void` so a waiter can be cancelled.
 
 ### Basic Mutex Usage
 
@@ -611,7 +615,7 @@ const BankAccount = struct {
     fn init(initial_balance: i64) BankAccount {
         return .{
             .balance = initial_balance,
-            .mutex = .{},
+            .mutex = .init,
         };
     }
 
@@ -676,10 +680,10 @@ When an operation involves multiple objects, you must lock all of them to ensure
 
 ```zig
 fn transfer(io: std.Io, from: *BankAccount, to: *BankAccount, amount: i64) !void {
-    from.mutex.lock(io);
+    try from.mutex.lock(io);
     defer from.mutex.unlock(io);
 
-    to.mutex.lock(io);
+    try to.mutex.lock(io);
     defer to.mutex.unlock(io);
 
     if (from.balance < amount) {
@@ -707,10 +711,10 @@ fn safeConcurrentTransfer(io: std.Io, account1: *BankAccount,
     const second = if (@intFromPtr(account1) < @intFromPtr(account2))
         account2 else account1;
 
-    first.mutex.lock(io);
+    try first.mutex.lock(io);
     defer first.mutex.unlock(io);
 
-    second.mutex.lock(io);
+    try second.mutex.lock(io);
     defer second.mutex.unlock(io);
 
     if (account1.balance < amount) {
@@ -766,7 +770,7 @@ const ConcurrentHashMap = struct {
         const bucket_index = key % self.buckets.len;
         var bucket = &self.buckets[bucket_index];
 
-        bucket.mutex.lock(io);
+        try bucket.mutex.lock(io);
         defer bucket.mutex.unlock(io);
 
         // Only this bucket is locked, not the entire map
@@ -777,20 +781,51 @@ const ConcurrentHashMap = struct {
 
 Different buckets can be accessed concurrently, improving throughput.
 
+### Cancelable or Not
+
+`lock(io)` returns `Cancelable!void`, so taking a lock can make an otherwise
+infallible function fallible. That is a real cost: it shows up in every caller's
+signature, and a `deinit` that returns `!void` cannot be used in a plain `defer`.
+
+Use `lockUncancelable(io)` when the critical section is O(1), allocates nothing
+and does no I/O. The longest a waiter can block is the few instructions the
+holder needs to finish, so there is no meaningful wait to cancel:
+
+```zig
+// Infallible, and stays that way.
+pub fn deinit(self: *Pool, io: std.Io) void {
+    self.mutex.lockUncancelable(io);
+    defer self.mutex.unlock(io);
+    // ... O(1) or bounded cleanup, no I/O ...
+}
+```
+
+Use `try lock(io)` when the section holds the lock across something genuinely
+unbounded -- a socket read, a file write, an allocation that can block. There the
+cancellation point is worth the error union.
+
+The standard library makes the same split: `std.Io.Semaphore` and the internal
+re-lock in `Condition.wait` both use `lockUncancelable`.
+
 ### Mutex Initialization
 
-Mutexes use default initialization with empty braces:
+`std.Io.Mutex` has no default field values, so `.{}` is a compile error --
+`missing struct field: state`. Use the decl literal instead:
 
 ```zig
 // Standalone mutex
-var mutex = std.Io.Mutex.init;
+var mutex: std.Io.Mutex = .init;
 
-// Embedded in struct with default field syntax
+// Embedded in a struct, as a field default
 const Data = struct {
     value: i32,
-    lock: Mutex = .{},
+    lock: std.Io.Mutex = .init,
 };
 ```
+
+The same applies to `std.Io.RwLock`, `std.Io.Condition` and `std.Io.Semaphore`.
+This is the one change most likely to bite when porting 0.15 code: the old
+`std.Thread.Mutex` did default to `.{}`.
 
 ### Scoped Access Pattern
 
@@ -2590,7 +2625,7 @@ const BoundedQueue = struct {
             .head = 0,
             .tail = 0,
             .count = 0,
-            .mutex = .{},
+            .mutex = .init,
             .capacity = capacity,
         };
     }
@@ -3427,7 +3462,7 @@ Busy-waiting wastes CPU cycles. You need threads to sleep until a specific condi
 
 ### Solution
 
-Use condition variables (`std.Thread.Condition`) to block threads until notified.
+Use condition variables (`std.Io.Condition`) to block threads until notified. Note that 0.16 has no `timedWait`: build a deadline loop with `std.Io.Timestamp` and `io.sleep` instead.
 
 ### Basic Wait and Notify
 
@@ -3440,8 +3475,8 @@ const WaitNotify = struct {
     fn init() WaitNotify {
         return .{
             .ready = false,
-            .mutex = .{},
-            .condition = .{},
+            .mutex = .init,
+            .condition = .init,
         };
     }
 
@@ -4315,7 +4350,7 @@ Multiple threads frequently read shared data but rarely write it. Regular mutexe
 
 ### Solution
 
-Use `std.Thread.RwLock` to allow multiple concurrent readers or one exclusive writer.
+Use `std.Io.RwLock` to allow multiple concurrent readers or one exclusive writer.
 
 ```zig
 const SharedData = struct {
@@ -4325,7 +4360,7 @@ const SharedData = struct {
     fn init() SharedData {
         return .{
             .value = 0,
-            .lock = .{},
+            .lock = .init,
         };
     }
 
@@ -4335,8 +4370,8 @@ const SharedData = struct {
         return self.value;
     }
 
-    fn write(self: *SharedData, io: std.Io, value: i32) void {
-        self.lock.lock(io);
+    fn write(self: *SharedData, io: std.Io, value: i32) !void {
+        try self.lock.lock(io);
         defer self.lock.unlock(io);
         self.value = value;
     }
@@ -4346,7 +4381,7 @@ test "read-write lock basic usage" {
     const io = std.testing.io;
     var data = SharedData.init();
 
-    data.write(42);
+    try data.write(io, 42);
     const value = data.read();
 
     try testing.expectEqual(@as(i32, 42), value);
@@ -4371,7 +4406,7 @@ const Cache = struct {
     }
 
     fn put(self: *Cache, io: std.Io, key: []const u8, value: []const u8) !void {
-        self.lock.lock(io); // Exclusive write
+        try self.lock.lock(io); // Exclusive write
         defer self.lock.unlock(io);
         try self.data.put(key, value);
     }
@@ -4543,8 +4578,8 @@ const Counter = struct {
         self.value += 1;
     }
 
-    fn decrement(self: *Counter, io: std.Io) void {
-        self.lock.lock(io);
+    fn decrement(self: *Counter, io: std.Io) !void {
+        try self.lock.lock(io);
         defer self.lock.unlock(io);
         self.value -= 1;
     }
@@ -4621,7 +4656,7 @@ You're spawning multiple threads and need to wait for all of them to complete. M
 
 ### Solution
 
-Use `std.Thread.WaitGroup` to track and wait for parallel tasks.
+Use `std.Io.Group` to track and wait for parallel tasks. It replaces 0.15's `std.Thread.WaitGroup`, and swaps `start`/`finish`/`wait` for `async(io, fn, args)`, `await(io)` and `cancel(io)`.
 
 ```zig
 // 0.16 replaces Thread.WaitGroup with std.Io.Group: work is added with

@@ -1,6 +1,6 @@
 # Networking & Web Recipes
 
-*18 recipes for Zig 0.16.0 — 2 not yet migrated (see `scripts/verify_recipes.py`)*
+*18 recipes for Zig 0.16.0 — 4 not yet migrated (see `scripts/verify_recipes.py`)*
 
 ## Quick Reference
 
@@ -7308,7 +7308,7 @@ The implementation uses cryptographically secure random IDs:
 pub fn create(self: *SessionStore, io: std.Io) ![]const u8 {
     // Generate cryptographically secure session ID
     var random_bytes: [16]u8 = undefined;
-    io.random(&random_bytes);
+    try io.randomSecure(&random_bytes);
 
     // Encode as hex string (32 chars)
     var id_buf: [32]u8 = undefined;
@@ -7536,7 +7536,7 @@ The order of attributes doesn't matter - browsers parse all of them.
    // Generate CSRF token per session
    if (store.get(session_id)) |session| {
        var token_bytes: [16]u8 = undefined;
-       io.random(&token_bytes);
+       try io.randomSecure(&token_bytes);
        const token = std.fmt.bytesToHex(token_bytes, .lower);
        try session.data.set("csrf_token", &token);
    }
@@ -7616,7 +7616,7 @@ All three threads access `store.sessions` (a `StringHashMap`) concurrently. Hash
 
 #### Solution: Add Mutex Synchronization
 
-For production multi-threaded servers, protect the `SessionStore` with `std.Thread.Mutex`:
+For production multi-threaded servers, protect the `SessionStore` with `std.Io.Mutex`:
 
 ```zig
 /// Thread-Safe Session Store for Production Web Servers
@@ -7645,7 +7645,7 @@ pub const ThreadSafeSessionStore = struct {
             .sessions = std.StringHashMap(Session).init(allocator),
             .allocator = allocator,
             .default_timeout = 3600, // 1 hour default
-            .mutex = .{}, // Zero-initialize mutex
+            .mutex = .init, // Zero-initialize mutex
         };
     }
 
@@ -7667,7 +7667,7 @@ pub const ThreadSafeSessionStore = struct {
 
         // Generate cryptographically secure session ID
         var random_bytes: [16]u8 = undefined;
-        io.random(&random_bytes);
+        try io.randomSecure(&random_bytes);
 
         // Encode as hex string (32 chars)
         var id_buf: [32]u8 = undefined;
@@ -8179,7 +8179,7 @@ pub const SessionStore = struct {
     pub fn create(self: *SessionStore, io: std.Io) ![]const u8 {
         // Generate cryptographically secure session ID
         var random_bytes: [16]u8 = undefined;
-        io.random(&random_bytes);
+        try io.randomSecure(&random_bytes);
 
         // Encode as hex string (32 chars)
         var id_buf: [32]u8 = undefined;
@@ -10221,7 +10221,7 @@ The updated implementation uses cryptographically random boundaries:
 pub fn init(io: std.Io, allocator: std.mem.Allocator) !MultipartForm {
     // Generate cryptographically secure boundary
     var random_bytes: [16]u8 = undefined;
-    io.random(&random_bytes);
+    try io.randomSecure(&random_bytes);
 
     var boundary_buf: [50]u8 = undefined;
     const hex = std.fmt.bytesToHex(random_bytes, .lower);
@@ -10416,7 +10416,7 @@ pub const MultipartForm = struct {
         // Using random bytes prevents boundary collision attacks where
         // malicious file content contains the boundary string
         var random_bytes: [16]u8 = undefined;
-        io.random(&random_bytes);
+        try io.randomSecure(&random_bytes);
 
         var boundary_buf: [50]u8 = undefined;
         const hex = std.fmt.bytesToHex(random_bytes, .lower);
@@ -10969,7 +10969,7 @@ pub const TokenBucket = struct {
             .tokens = capacity,
             .refill_rate = refill_rate,
             .last_refill = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))),
-            .mutex = .{},
+            .mutex = .init,
         };
     }
 
@@ -10977,7 +10977,7 @@ pub const TokenBucket = struct {
         try self.mutex.lock(io);
         defer self.mutex.unlock(io);
 
-        self.refill();
+        self.refill(io);
 
         if (self.tokens >= tokens) {
             self.tokens -= tokens;
@@ -11007,11 +11007,13 @@ pub const TokenBucket = struct {
         }
     }
 
-    pub fn availableTokens(self: *TokenBucket, io: std.Io) !usize {
-        try self.mutex.lock(io);
+    pub fn availableTokens(self: *TokenBucket, io: std.Io) usize {
+        // Reading a counter under the lock cannot block on anything, so this
+        // stays infallible rather than returning `Cancelable!usize`.
+        self.mutex.lockUncancelable(io);
         defer self.mutex.unlock(io);
 
-        self.refill();
+        self.refill(io);
         return self.tokens;
     }
 };
@@ -11035,7 +11037,7 @@ pub const SlidingWindow = struct {
             .max_requests = max_requests,
             .requests = std.ArrayList(i64).empty,
             .allocator = allocator,
-            .mutex = .{},
+            .mutex = .init,
         };
     }
 
@@ -11106,7 +11108,7 @@ pub const RateLimiter = struct {
     }
 
     pub fn getRateLimitHeaders(self: *RateLimiter, io: std.Io) RateLimitHeaders {
-        const remaining = self.token_bucket.availableTokens();
+        const remaining = self.token_bucket.availableTokens(io);
         const reset_time = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))) + 60; // Reset in 1 minute
 
         return .{
@@ -11234,7 +11236,7 @@ The token bucket allows controlled bursts while maintaining an average rate:
 - Resource consumption limits
 
 **Thread Safety:**
-Token bucket uses `std.Thread.Mutex` to protect shared state. The `refill()` method calculates tokens based on elapsed time, making it safe even if called from multiple threads.
+Token bucket uses `std.Io.Mutex` to protect shared state. The `refill()` method calculates tokens based on elapsed time, making it safe even if called from multiple threads.
 
 **Overflow Protection:**
 The implementation includes bounds checking to prevent integer truncation:
@@ -11375,9 +11377,13 @@ These headers inform clients about:
 ### Production Considerations
 
 **Time Source:**
-This implementation uses `std.time.timestamp()` and `std.time.milliTimestamp()` which can be affected by system clock changes. For production:
-- Use monotonic clocks when available
-- Handle backward time jumps gracefully
+This implementation reads the wall clock with `std.Io.Timestamp.now(io, .real)`, which the
+system clock can move backwards. For production:
+- Ask for a monotonic clock instead: `std.Io.Timestamp.now(io, .awake)` intends to exclude
+  time the machine spent suspended and `.boot` intends to include it, though an OS that
+  cannot honour the distinction may treat them alike. Neither jumps when the wall clock is
+  set, which is the property a rate limiter needs.
+- Handle backward time jumps gracefully if you must keep `.real`
 - Consider timer-based refill instead of on-demand
 
 **Distributed Rate Limiting:**
@@ -11489,8 +11495,10 @@ pub const TokenBucket = struct {
         }
     }
 
-    pub fn availableTokens(self: *TokenBucket, io: std.Io) !usize {
-        try self.mutex.lock(io);
+    pub fn availableTokens(self: *TokenBucket, io: std.Io) usize {
+        // Reading a counter under the lock cannot block on anything, so this
+        // stays infallible rather than returning `Cancelable!usize`.
+        self.mutex.lockUncancelable(io);
         defer self.mutex.unlock(io);
 
         self.refill(io);
@@ -11589,7 +11597,7 @@ pub const RateLimiter = struct {
     }
 
     pub fn getRateLimitHeaders(self: *RateLimiter, io: std.Io) !RateLimitHeaders {
-        const remaining = try self.token_bucket.availableTokens(io);
+        const remaining = self.token_bucket.availableTokens(io);
         const reset_time = @as(i64, @intCast(@divFloor(std.Io.Timestamp.now(io, .real).toNanoseconds(), std.time.ns_per_s))) + 60; // Reset in 1 minute
 
         return .{
@@ -11717,7 +11725,7 @@ test "token bucket refill" {
     // Wait for refill (io, simulate by adjusting last_refill)
     bucket.last_refill -= 1; // Simulate 1 second passed
 
-    const available = try bucket.availableTokens(io);
+    const available = bucket.availableTokens(io);
     try testing.expect(available > 0);
 }
 // ANCHOR_END: test_token_bucket_refill
@@ -13157,7 +13165,7 @@ pub const PKCE = struct {
         // Generate 128-character code verifier (64 random bytes, hex-encoded)
         // RFC 7636 requires 43-128 characters
         var verifier_buf: [64]u8 = undefined;
-        io.random(&verifier_buf);
+        try io.randomSecure(&verifier_buf);
 
         var encoded_buf: [128]u8 = undefined;
         const verifier = std.fmt.bytesToHex(verifier_buf, .lower);
@@ -13549,7 +13557,7 @@ const url = try client.buildAuthorizationUrl(state, &pkce);
 **2. Generate cryptographically random state:**
 ```zig
 var state_buf: [32]u8 = undefined;
-io.random(&state_buf);
+try io.randomSecure(&state_buf);
 const state = std.fmt.bytesToHex(state_buf, .lower);
 ```
 
@@ -13805,12 +13813,13 @@ pub const PKCE = struct {
         // - Entropy: Minimum 256 bits recommended (we use 512 bits = 64 random bytes)
         //
         // Implementation:
-        // - std.crypto.random provides cryptographically secure random bytes
+        // - io.randomSecure always makes a syscall for fresh entropy; io.random
+        //   may fall back to a weaker source, which is not acceptable here
         // - Hex encoding (lowercase) produces characters [a-f][0-9], which are valid
         //   unreserved characters per RFC 3986 and satisfy RFC 7636 requirements
         // - 64 random bytes -> 128 hex characters = 512 bits of entropy (exceeds minimum)
         var verifier_buf: [64]u8 = undefined;
-        io.random(&verifier_buf);
+        try io.randomSecure(&verifier_buf);
 
         var encoded_buf: [128]u8 = undefined;
         const verifier = std.fmt.bytesToHex(verifier_buf, .lower);

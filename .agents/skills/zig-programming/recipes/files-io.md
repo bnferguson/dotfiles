@@ -1,6 +1,6 @@
 # Files & I/O Recipes
 
-*19 recipes for Zig 0.16.0 — 1 not yet migrated (see `scripts/verify_recipes.py`)*
+*19 recipes for Zig 0.16.0 — 2 not yet migrated (see `scripts/verify_recipes.py`)*
 
 ## Quick Reference
 
@@ -222,12 +222,17 @@ Buffered readers and writers significantly improve performance by reducing the n
 
 ### Buffer Sizes
 
-The standard library uses reasonable default buffer sizes (4096 bytes). You can customize buffer sizes if needed:
+Zig 0.16 has no separate buffering wrapper. A reader owns whatever buffer you hand it, so
+the size is the size of the array you declare:
 
 ```zig
+// The buffer is the buffering. There is no bufferedReader to wrap this in.
 var buffer: [8192]u8 = undefined;
-var buffered = std.io.bufferedReaderSize(4096, file.reader(io));
+var file_reader = file.reader(io, &buffer);
+const reader = &file_reader.interface;
 ```
+
+Pass a larger array for fewer, bigger reads. Pass `&.{}` for unbuffered access.
 
 ### Error Handling
 
@@ -4873,7 +4878,7 @@ test "multiple writes and reads" {
     try std.testing.expectEqualStrings("line 3", line3);
 }
 
-test "getWritten vs getPos" {
+test "buffered vs end" {
     var buffer: [100]u8 = undefined;
     var fbs = std.Io.Writer.fixed(&buffer);
     const writer = &fbs;
@@ -4883,7 +4888,7 @@ test "getWritten vs getPos" {
     // pos tracks current position
     try std.testing.expectEqual(@as(usize, 4), fbs.end);
 
-    // getWritten returns slice up to current position
+    // buffered() returns the slice written so far
     try std.testing.expectEqualStrings("test", fbs.buffered());
 }
 
@@ -5012,8 +5017,17 @@ pub fn readGzipFile(io: std.Io, path: []const u8, allocator: std.mem.Allocator) 
 
     var chunk_buffer: [4096]u8 = undefined;
     while (true) {
+        // `error.ReadFailed` is a placeholder: the decompressor stashes the
+        // real error on `.err`. Breaking on the placeholder would silently
+        // return a truncated result for a corrupt file, so unwrap and
+        // propagate. There are two levels of it -- when the underlying file
+        // read is what failed, the decompressor stashes the placeholder too,
+        // and the real cause is on the file reader.
         const n = decompressor.reader.readSliceShort(&chunk_buffer) catch |err| switch (err) {
-            error.ReadFailed => break,
+            error.ReadFailed => return switch (decompressor.err.?) {
+                error.ReadFailed => file_reader.err.?,
+                else => |cause| cause,
+            },
         };
         if (n == 0) break;
         try result.appendSlice(allocator, chunk_buffer[0..n]);
@@ -5043,8 +5057,17 @@ pub fn readZlibFile(io: std.Io, path: []const u8, allocator: std.mem.Allocator) 
 
     var chunk_buffer: [4096]u8 = undefined;
     while (true) {
+        // `error.ReadFailed` is a placeholder: the decompressor stashes the
+        // real error on `.err`. Breaking on the placeholder would silently
+        // return a truncated result for a corrupt file, so unwrap and
+        // propagate. There are two levels of it -- when the underlying file
+        // read is what failed, the decompressor stashes the placeholder too,
+        // and the real cause is on the file reader.
         const n = decompressor.reader.readSliceShort(&chunk_buffer) catch |err| switch (err) {
-            error.ReadFailed => break,
+            error.ReadFailed => return switch (decompressor.err.?) {
+                error.ReadFailed => file_reader.err.?,
+                else => |cause| cause,
+            },
         };
         if (n == 0) break;
         try result.appendSlice(allocator, chunk_buffer[0..n]);
@@ -5136,6 +5159,9 @@ pub fn safeDecompress(path: []const u8, allocator: std.mem.Allocator) ![]u8 {
             std.debug.print("Truncated gzip file\n", .{});
             return error.TruncatedFile;
         },
+        // Open, allocation and the rest of the flate error set are not
+        // gzip-format problems, so pass them through untranslated.
+        else => |other| return other,
     };
 }
 ```
@@ -5255,8 +5281,17 @@ pub fn readGzipFile(io: std.Io, path: []const u8, allocator: std.mem.Allocator) 
 
     var chunk_buffer: [4096]u8 = undefined;
     while (true) {
+        // `error.ReadFailed` is a placeholder: the decompressor stashes the
+        // real error on `.err`. Breaking on the placeholder would silently
+        // return a truncated result for a corrupt file, so unwrap and
+        // propagate. There are two levels of it -- when the underlying file
+        // read is what failed, the decompressor stashes the placeholder too,
+        // and the real cause is on the file reader.
         const n = decompressor.reader.readSliceShort(&chunk_buffer) catch |err| switch (err) {
-            error.ReadFailed => break,
+            error.ReadFailed => return switch (decompressor.err.?) {
+                error.ReadFailed => file_reader.err.?,
+                else => |cause| cause,
+            },
         };
         if (n == 0) break;
         try result.appendSlice(allocator, chunk_buffer[0..n]);
@@ -5286,8 +5321,17 @@ pub fn readZlibFile(io: std.Io, path: []const u8, allocator: std.mem.Allocator) 
 
     var chunk_buffer: [4096]u8 = undefined;
     while (true) {
+        // `error.ReadFailed` is a placeholder: the decompressor stashes the
+        // real error on `.err`. Breaking on the placeholder would silently
+        // return a truncated result for a corrupt file, so unwrap and
+        // propagate. There are two levels of it -- when the underlying file
+        // read is what failed, the decompressor stashes the placeholder too,
+        // and the real cause is on the file reader.
         const n = decompressor.reader.readSliceShort(&chunk_buffer) catch |err| switch (err) {
-            error.ReadFailed => break,
+            error.ReadFailed => return switch (decompressor.err.?) {
+                error.ReadFailed => file_reader.err.?,
+                else => |cause| cause,
+            },
         };
         if (n == 0) break;
         try result.appendSlice(allocator, chunk_buffer[0..n]);
@@ -5344,6 +5388,9 @@ pub fn safeDecompress(io: std.Io, path: []const u8, allocator: std.mem.Allocator
             std.debug.print("Truncated gzip file\n", .{});
             return error.TruncatedFile;
         },
+        // Open, allocation and the rest of the flate error set are not
+        // gzip-format problems, so pass them through untranslated.
+        else => |other| return other,
     };
 }
 // ANCHOR_END: error_handling
@@ -15654,8 +15701,8 @@ pub fn wrapAndUse(io: std.Io, fd: std.posix.fd_t) !void {
 - `std.posix.fcntl()` - File control operations
 - `std.posix.pipe()` - Create pipe
 - `std.posix.socketpair()` - Create socket pair
-- `std.io.getStdIn()` - Get stdin file
-- `std.io.getStdOut()` - Get stdout file
+- `std.Io.File.stdin()` - Get stdin file
+- `std.Io.File.stdout()` - Get stdout file
 - `std.io.getStdErr()` - Get stderr file
 
 ### Full Tested Code
@@ -16747,7 +16794,7 @@ defer std.Io.Dir.cwd().deleteFile(io, temp.path) catch {}; // Ignore errors
 - `std.posix.memfd_create()` - Create memory-backed file (Linux)
 - `std.process.getEnvVarOwned()` - Get environment variable
 - `std.Random` - Generate random values
-- `std.time.milliTimestamp()` - Get current timestamp
+- `std.Io.Timestamp.now(io, .real)` - Get current timestamp (`std.time` keeps only unit constants in 0.16)
 
 ### Full Tested Code
 

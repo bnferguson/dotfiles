@@ -51,7 +51,7 @@ const Point = struct {
     x: f32,
     y: f32,
 
-    pub fn format(self: Point, writer: anytype) !void {
+    pub fn format(self: Point, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("Point({d:.2}, {d:.2})", .{ self.x, self.y });
     }
 };
@@ -70,7 +70,7 @@ const Person = struct {
     name: []const u8,
     age: u32,
 
-    pub fn format(self: Person, writer: anytype) !void {
+    pub fn format(self: Person, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{s} (age {d})", .{ self.name, self.age });
     }
 };
@@ -94,7 +94,7 @@ const Rectangle = struct {
     width: f32,
     height: f32,
 
-    pub fn format(self: Rectangle, writer: anytype) !void {
+    pub fn format(self: Rectangle, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("Rectangle({d:.2}x{d:.2})", .{ self.width, self.height });
     }
 
@@ -130,23 +130,19 @@ const User = struct {
     username: []const u8,
     email: []const u8,
 
-    pub fn format(
-        self: User,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = options;
+    /// The default rendering, reached by `{f}`.
+    pub fn format(self: User, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print("{s} ({s})", .{ self.username, self.email });
+    }
 
-        if (std.mem.eql(u8, fmt, "debug")) {
-            try writer.print("User{{ id={d}, username=\"{s}\", email=\"{s}\" }}", .{
-                self.id,
-                self.username,
-                self.email,
-            });
-        } else {
-            try writer.print("{s} ({s})", .{ self.username, self.email });
-        }
+    /// An alternate rendering. Zig 0.16 dropped the format-specifier string, so
+    /// a second rendering is a second method rather than a branch on `fmt`.
+    pub fn formatDebug(self: User, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print("User{{ id={d}, username=\"{s}\", email=\"{s}\" }}", .{
+            self.id,
+            self.username,
+            self.email,
+        });
     }
 };
 
@@ -159,10 +155,12 @@ test "debug vs display" {
 
     var buf: [200]u8 = undefined;
 
-    const display = try std.fmt.bufPrint(&buf, "{}", .{user});
+    // `{f}` is what calls a `format` method. Plain `{}` dumps the fields.
+    const display = try std.fmt.bufPrint(&buf, "{f}", .{user});
     try std.testing.expectEqualStrings("alice (alice@example.com)", display);
 
-    const debug = try std.fmt.bufPrint(&buf, "{debug}", .{user});
+    var debug_buf: [200]u8 = undefined;
+    const debug = try std.fmt.bufPrint(&debug_buf, "{f}", .{std.fmt.alt(user, .formatDebug)});
     try std.testing.expectEqualStrings(
         "User{ id=12345, username=\"alice\", email=\"alice@example.com\" }",
         debug,
@@ -179,14 +177,7 @@ const Address = struct {
     street: []const u8,
     city: []const u8,
 
-    pub fn format(
-        self: Address,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
+    pub fn format(self: Address, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{s}, {s}", .{ self.street, self.city });
     }
 };
@@ -195,15 +186,10 @@ const Employee = struct {
     name: []const u8,
     address: Address,
 
-    pub fn format(
-        self: Employee,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
-        try writer.print("{s} @ {}", .{ self.name, self.address });
+    pub fn format(self: Employee, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        // `{f}` nests too: it is what reaches `Address.format`. `{}` here would
+        // print Address's raw fields inside an otherwise correct string.
+        try writer.print("{s} @ {f}", .{ self.name, self.address });
     }
 };
 
@@ -214,7 +200,7 @@ test "nested formatting" {
     };
 
     var buf: [200]u8 = undefined;
-    const result = try std.fmt.bufPrint(&buf, "{}", .{emp});
+    const result = try std.fmt.bufPrint(&buf, "{f}", .{emp});
 
     try std.testing.expectEqualStrings("Bob @ 123 Main St, Springfield", result);
 }
@@ -228,14 +214,7 @@ Format collections of items:
 const Vector3 = struct {
     data: [3]f32,
 
-    pub fn format(
-        self: Vector3,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
+    pub fn format(self: Vector3, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("({d:.2}, {d:.2}, {d:.2})", .{
             self.data[0],
             self.data[1],
@@ -248,7 +227,7 @@ test "array formatting" {
     const v = Vector3{ .data = .{ 1.5, 2.5, 3.5 } };
 
     var buf: [100]u8 = undefined;
-    const result = try std.fmt.bufPrint(&buf, "{}", .{v});
+    const result = try std.fmt.bufPrint(&buf, "{f}", .{v});
 
     try std.testing.expectEqualStrings("(1.50, 2.50, 3.50)", result);
 }
@@ -264,14 +243,7 @@ const Shape = union(enum) {
     rectangle: struct { width: f32, height: f32 },
     triangle: struct { base: f32, height: f32 },
 
-    pub fn format(
-        self: Shape,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
+    pub fn format(self: Shape, writer: *std.Io.Writer) std.Io.Writer.Error!void {
 
         switch (self) {
             .circle => |c| try writer.print("Circle(r={d:.2})", .{c.radius}),
@@ -287,10 +259,10 @@ test "union formatting" {
 
     var buf: [100]u8 = undefined;
 
-    const c_str = try std.fmt.bufPrint(&buf, "{}", .{circle});
+    const c_str = try std.fmt.bufPrint(&buf, "{f}", .{circle});
     try std.testing.expectEqualStrings("Circle(r=5.00)", c_str);
 
-    const r_str = try std.fmt.bufPrint(&buf, "{}", .{rect});
+    const r_str = try std.fmt.bufPrint(&buf, "{f}", .{rect});
     try std.testing.expectEqualStrings("Rectangle(10.00x5.00)", r_str);
 }
 ```
@@ -305,27 +277,20 @@ const Config = struct {
     port: u16,
     timeout_ms: u32,
 
-    pub fn format(
-        self: Config,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = options;
+    pub fn format(self: Config, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print("Config{{ host=\"{s}\", port={d}, timeout_ms={d} }}", .{
+            self.host,
+            self.port,
+            self.timeout_ms,
+        });
+    }
 
-        if (std.mem.eql(u8, fmt, "pretty")) {
-            try writer.writeAll("Config {\n");
-            try writer.print("  host: \"{s}\"\n", .{self.host});
-            try writer.print("  port: {d}\n", .{self.port});
-            try writer.print("  timeout_ms: {d}\n", .{self.timeout_ms});
-            try writer.writeAll("}");
-        } else {
-            try writer.print("Config{{ host=\"{s}\", port={d}, timeout_ms={d} }}", .{
-                self.host,
-                self.port,
-                self.timeout_ms,
-            });
-        }
+    pub fn formatPretty(self: Config, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.writeAll("Config {\n");
+        try writer.print("  host: \"{s}\"\n", .{self.host});
+        try writer.print("  port: {d}\n", .{self.port});
+        try writer.print("  timeout_ms: {d}\n", .{self.timeout_ms});
+        try writer.writeAll("}");
     }
 };
 
@@ -338,13 +303,14 @@ test "multiline formatting" {
 
     var buf: [200]u8 = undefined;
 
-    const compact = try std.fmt.bufPrint(&buf, "{}", .{cfg});
+    const compact = try std.fmt.bufPrint(&buf, "{f}", .{cfg});
     try std.testing.expectEqualStrings(
         "Config{ host=\"localhost\", port=8080, timeout_ms=5000 }",
         compact,
     );
 
-    const pretty = try std.fmt.bufPrint(&buf, "{pretty}", .{cfg});
+    var pretty_buf: [200]u8 = undefined;
+    const pretty = try std.fmt.bufPrint(&pretty_buf, "{f}", .{std.fmt.alt(cfg, .formatPretty)});
     const expected =
         \\Config {
         \\  host: "localhost"
@@ -368,14 +334,7 @@ const Account = struct {
     status: Status,
     login_count: u32,
 
-    pub fn format(
-        self: Account,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
+    pub fn format(self: Account, writer: *std.Io.Writer) std.Io.Writer.Error!void {
 
         try writer.print("{s} [", .{self.username});
 
@@ -408,37 +367,29 @@ test "conditional formatting" {
 
     var buf: [100]u8 = undefined;
 
-    const active_str = try std.fmt.bufPrint(&buf, "{}", .{active_acc});
+    const active_str = try std.fmt.bufPrint(&buf, "{f}", .{active_acc});
     try std.testing.expectEqualStrings("alice [ACTIVE] (logins: 42)", active_str);
 
-    const inactive_str = try std.fmt.bufPrint(&buf, "{}", .{inactive_acc});
+    const inactive_str = try std.fmt.bufPrint(&buf, "{f}", .{inactive_acc});
     try std.testing.expectEqualStrings("bob [INACTIVE]", inactive_str);
 }
 ```
 
-### Using Format Options
+### Choosing a Precision
 
-Respect width and precision:
+Zig 0.16 removed `std.fmt.FormatOptions`, so `format` can no longer read a width or
+precision out of the format string. A second rendering is a second method:
 
 ```zig
 const Temperature = struct {
     celsius: f32,
 
-    pub fn format(
-        self: Temperature,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
+    pub fn format(self: Temperature, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print("{d:.1}°C", .{self.celsius});
+    }
 
-        const precision = options.precision orelse 1;
-
-        switch (precision) {
-            0 => try writer.print("{d}°C", .{@as(i32, @intFromFloat(self.celsius))}),
-            1 => try writer.print("{d:.1}°C", .{self.celsius}),
-            else => try writer.print("{d:.2}°C", .{self.celsius}),
-        }
+    pub fn formatPrecise(self: Temperature, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print("{d:.2}°C", .{self.celsius});
     }
 };
 
@@ -447,10 +398,11 @@ test "format options" {
 
     var buf: [100]u8 = undefined;
 
-    const default_fmt = try std.fmt.bufPrint(&buf, "{}", .{temp});
+    const default_fmt = try std.fmt.bufPrint(&buf, "{f}", .{temp});
     try std.testing.expectEqualStrings("23.5°C", default_fmt);
 
-    const precise = try std.fmt.bufPrint(&buf, "{.2}", .{temp});
+    var precise_buf: [100]u8 = undefined;
+    const precise = try std.fmt.bufPrint(&precise_buf, "{f}", .{std.fmt.alt(temp, .formatPrecise)});
     try std.testing.expectEqualStrings("23.46°C", precise);
 }
 ```
@@ -459,15 +411,19 @@ test "format options" {
 
 **Zig 0.16.0 Format Signature:**
 ```zig
-// Correct signature for Zig 0.16.0
-pub fn format(self: @This(), writer: anytype) !void {
+// Correct signature for Zig 0.16.0. Take a concrete `*std.Io.Writer` rather
+// than `anytype`, and narrow the error set -- the 0.15 shape took a format
+// string and a `std.fmt.FormatOptions` that almost every implementation
+// immediately discarded, and both are gone.
+pub fn format(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void {
     try writer.print("...", .{...});
 }
 
-// Call with {f} format specifier
+// `{f}` is what calls a `format` method. Plain `{}` does NOT: it falls through
+// to the built-in field dump, which is a silent wrong answer rather than an error.
 const result = try std.fmt.bufPrint(&buf, "{f}", .{instance});
 
-// Use {any} for default struct debug representation
+// Use {any} for the default struct debug representation
 const debug = try std.fmt.bufPrint(&buf, "{any}", .{instance});
 ```
 
@@ -489,28 +445,37 @@ defer allocator.free(str);
 try writer.writeAll(str);
 ```
 
-**Format Specifiers:**
-- Document custom format specifiers
-- Use empty string `""` for default formatting
-- Check with `std.mem.eql(u8, fmt, "specifier")`
+**Alternate Renderings:**
+
+There is no format specifier to branch on any more. A second rendering is a second
+method, reached through `std.fmt.alt`:
+
+```zig
+pub fn formatDebug(self: @This(), writer: *std.Io.Writer) std.Io.Writer.Error!void { ... }
+
+const debug = try std.fmt.bufPrint(&buf, "{f}", .{std.fmt.alt(instance, .formatDebug)});
+```
+
+A rendering that needs a parameter -- a precision, a width -- is a plain method you
+call yourself, not something the format string can smuggle in.
 
 **Testing:**
 ```zig
 // Always test formatting
 test "format" {
     var buf: [100]u8 = undefined;
-    const result = try std.fmt.bufPrint(&buf, "{}", .{instance});
+    const result = try std.fmt.bufPrint(&buf, "{f}", .{instance});
     try std.testing.expectEqualStrings("expected", result);
 }
 ```
 
 ### Related Functions
 
-- `std.fmt.format()` - Core formatting function
+- `writer.print()` - Core formatting function (0.16 removed `std.fmt.format`)
 - `std.fmt.bufPrint()` - Format to fixed buffer
 - `std.fmt.allocPrint()` - Format with allocation
-- `std.fmt.FormatOptions` - Formatting options struct
-- `std.io.Writer` - Generic writer interface
+- `std.Io.Writer` - Generic writer interface, and the single argument a custom
+  `format` hook now takes (`std.fmt.FormatOptions` is gone)
 
 ### Full Tested Code
 
@@ -523,7 +488,7 @@ const Point = struct {
     x: f32,
     y: f32,
 
-    pub fn format(self: Point, writer: anytype) !void {
+    pub fn format(self: Point, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("Point({d:.2}, {d:.2})", .{ self.x, self.y });
     }
 };
@@ -534,7 +499,7 @@ const Person = struct {
     name: []const u8,
     age: u32,
 
-    pub fn format(self: Person, writer: anytype) !void {
+    pub fn format(self: Person, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{s} (age {d})", .{ self.name, self.age });
     }
 };
@@ -544,7 +509,7 @@ const Rectangle = struct {
     width: f32,
     height: f32,
 
-    pub fn format(self: Rectangle, writer: anytype) !void {
+    pub fn format(self: Rectangle, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("Rectangle({d:.2}x{d:.2})", .{ self.width, self.height });
     }
 
@@ -564,11 +529,11 @@ const User = struct {
     username: []const u8,
     email: []const u8,
 
-    pub fn format(self: User, writer: anytype) !void {
+    pub fn format(self: User, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{s} ({s})", .{ self.username, self.email });
     }
 
-    pub fn formatDebug(self: User, writer: anytype) !void {
+    pub fn formatDebug(self: User, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("User{{ id={d}, username=\"{s}\", email=\"{s}\" }}", .{
             self.id,
             self.username,
@@ -583,7 +548,7 @@ const Address = struct {
     street: []const u8,
     city: []const u8,
 
-    pub fn format(self: Address, writer: anytype) !void {
+    pub fn format(self: Address, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{s}, {s}", .{ self.street, self.city });
     }
 };
@@ -592,7 +557,7 @@ const Employee = struct {
     name: []const u8,
     address: Address,
 
-    pub fn format(self: Employee, writer: anytype) !void {
+    pub fn format(self: Employee, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{s} @ {f}", .{ self.name, self.address });
     }
 };
@@ -601,7 +566,7 @@ const Employee = struct {
 const Vector3 = struct {
     data: [3]f32,
 
-    pub fn format(self: Vector3, writer: anytype) !void {
+    pub fn format(self: Vector3, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("({d:.2}, {d:.2}, {d:.2})", .{
             self.data[0],
             self.data[1],
@@ -617,7 +582,7 @@ const Shape = union(enum) {
     rectangle: struct { width: f32, height: f32 },
     triangle: struct { base: f32, height: f32 },
 
-    pub fn format(self: Shape, writer: anytype) !void {
+    pub fn format(self: Shape, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self) {
             .circle => |c| try writer.print("Circle(r={d:.2})", .{c.radius}),
             .rectangle => |r| try writer.print("Rectangle({d:.2}x{d:.2})", .{ r.width, r.height }),
@@ -633,7 +598,7 @@ const Config = struct {
     port: u16,
     timeout_ms: u32,
 
-    pub fn format(self: Config, writer: anytype) !void {
+    pub fn format(self: Config, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("Config{{ host=\"{s}\", port={d}, timeout_ms={d} }}", .{
             self.host,
             self.port,
@@ -641,7 +606,7 @@ const Config = struct {
         });
     }
 
-    pub fn formatPretty(self: Config, writer: anytype) !void {
+    pub fn formatPretty(self: Config, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.writeAll("Config {\n");
         try writer.print("  host: \"{s}\"\n", .{self.host});
         try writer.print("  port: {d}\n", .{self.port});
@@ -659,7 +624,7 @@ const Account = struct {
     status: Status,
     login_count: u32,
 
-    pub fn format(self: Account, writer: anytype) !void {
+    pub fn format(self: Account, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{s} [", .{self.username});
 
         switch (self.status) {
@@ -680,11 +645,11 @@ const Account = struct {
 const Temperature = struct {
     celsius: f32,
 
-    pub fn format(self: Temperature, writer: anytype) !void {
+    pub fn format(self: Temperature, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{d:.1}°C", .{self.celsius});
     }
 
-    pub fn formatPrecise(self: Temperature, writer: anytype) !void {
+    pub fn formatPrecise(self: Temperature, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{d:.2}°C", .{self.celsius});
     }
 };
@@ -895,7 +860,7 @@ const Person = struct {
     age: u32,
     title: ?[]const u8,
 
-    pub fn format(self: Person, writer: anytype) !void {
+    pub fn format(self: Person, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         if (self.title) |t| {
             try writer.print("{s} {s}, age {d}", .{ t, self.name, self.age });
         } else {
@@ -914,7 +879,7 @@ const PersonFormatter = struct {
     person: Person,
     fmt_type: FormatType,
 
-    pub fn format(self: PersonFormatter, writer: anytype) !void {
+    pub fn format(self: PersonFormatter, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self.fmt_type) {
             .short => try writer.print("{s}", .{self.person.name}),
             .long => try writer.print("{s} ({d} years old)", .{
@@ -992,7 +957,7 @@ const Article = struct {
     status: Status,
     views: usize,
 
-    pub fn format(self: Article, writer: anytype) !void {
+    pub fn format(self: Article, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("\"{s}\" by {s} [", .{ self.title, self.author });
 
         switch (self.status) {
@@ -1017,7 +982,7 @@ const PaddedFormatter = struct {
     width: usize,
     align_left: bool,
 
-    pub fn format(self: PaddedFormatter, writer: anytype) !void {
+    pub fn format(self: PaddedFormatter, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         const value_len = self.value.len;
 
         if (value_len >= self.width) {
@@ -1062,7 +1027,7 @@ const TableFormatter = struct {
     headers: []const []const u8,
     rows: []const []const []const u8,
 
-    pub fn format(self: TableFormatter, writer: anytype) !void {
+    pub fn format(self: TableFormatter, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         // Calculate column widths
         var widths = [_]usize{0} ** 10;
         for (self.headers, 0..) |header, i| {
@@ -1201,7 +1166,7 @@ const ColoredText = struct {
     text: []const u8,
     color: Color,
 
-    pub fn format(self: ColoredText, writer: anytype) !void {
+    pub fn format(self: ColoredText, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.writeAll(self.color.code());
         try writer.writeAll(self.text);
         try writer.writeAll(Color.reset.code());
@@ -1225,7 +1190,7 @@ const ListFormatter = struct {
     prefix: []const u8,
     suffix: []const u8,
 
-    pub fn format(self: ListFormatter, writer: anytype) !void {
+    pub fn format(self: ListFormatter, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.writeAll(self.prefix);
 
         for (self.items, 0..) |item, i| {
@@ -1300,7 +1265,7 @@ const Person = struct {
     age: u32,
     title: ?[]const u8,
 
-    pub fn format(self: Person, writer: anytype) !void {
+    pub fn format(self: Person, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         if (self.title) |t| {
             try writer.print("{s} {s}, age {d}", .{ t, self.name, self.age });
         } else {
@@ -1319,7 +1284,7 @@ const PersonFormatter = struct {
     person: Person,
     fmt_type: FormatType,
 
-    pub fn format(self: PersonFormatter, writer: anytype) !void {
+    pub fn format(self: PersonFormatter, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         switch (self.fmt_type) {
             .short => try writer.print("{s}", .{self.person.name}),
             .long => try writer.print("{s} ({d} years old)", .{
@@ -1387,7 +1352,7 @@ const Article = struct {
     status: Status,
     views: usize,
 
-    pub fn format(self: Article, writer: anytype) !void {
+    pub fn format(self: Article, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("\"{s}\" by {s} [", .{ self.title, self.author });
 
         switch (self.status) {
@@ -1408,7 +1373,7 @@ const PaddedFormatter = struct {
     width: usize,
     align_left: bool,
 
-    pub fn format(self: PaddedFormatter, writer: anytype) !void {
+    pub fn format(self: PaddedFormatter, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         const value_len = self.value.len;
 
         if (value_len >= self.width) {
@@ -1449,7 +1414,7 @@ const TableFormatter = struct {
     headers: []const []const u8,
     rows: []const []const []const u8,
 
-    pub fn format(self: TableFormatter, writer: anytype) !void {
+    pub fn format(self: TableFormatter, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         // Calculate column widths
         var widths = [_]usize{0} ** 10;
         for (self.headers, 0..) |header, i| {
@@ -1580,7 +1545,7 @@ const ColoredText = struct {
     text: []const u8,
     color: Color,
 
-    pub fn format(self: ColoredText, writer: anytype) !void {
+    pub fn format(self: ColoredText, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.writeAll(self.color.code());
         try writer.writeAll(self.text);
         try writer.writeAll(Color.reset.code());
@@ -1600,7 +1565,7 @@ const ListFormatter = struct {
     prefix: []const u8,
     suffix: []const u8,
 
-    pub fn format(self: ListFormatter, writer: anytype) !void {
+    pub fn format(self: ListFormatter, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.writeAll(self.prefix);
 
         for (self.items, 0..) |item, i| {
@@ -8919,7 +8884,7 @@ For allocated lazy values:
 
 The patterns shown are not thread-safe. For concurrent access:
 
-- Use a `std.Thread.Mutex` to protect the cache
+- Use a `std.Io.Mutex` to protect the cache
 - Consider atomic operations for simple types
 - Or use read-write locks for better read performance
 
@@ -14614,11 +14579,15 @@ const Email = struct {
         return Email{ .address = address };
     }
 
-    pub fn anonymous(allocator: std.mem.Allocator) !Email {
+    /// Entropy is I/O in 0.16, so this takes an `io` where the 0.15 version
+    /// reached for the ambient `std.crypto.random`.
+    pub fn anonymous(allocator: std.mem.Allocator, io: std.Io) !Email {
+        var bytes: [4]u8 = undefined;
+        io.random(&bytes);
         const address = try std.fmt.allocPrint(
             allocator,
             "user{d}@example.com",
-            .{std.crypto.random.int(u32)}
+            .{std.mem.readInt(u32, &bytes, .little)},
         );
         return Email{ .address = address };
     }
@@ -15041,8 +15010,16 @@ const Email = struct {
         return Email{ .address = address };
     }
 
-    pub fn anonymous(allocator: std.mem.Allocator) !Email {
-        const address = try std.fmt.allocPrint(allocator, "user{d}@example.com", .{std.crypto.random.int(u32)});
+    /// Entropy is I/O in 0.16, so this takes an `io` where the 0.15 version
+    /// reached for the ambient `std.crypto.random`.
+    pub fn anonymous(allocator: std.mem.Allocator, io: std.Io) !Email {
+        var bytes: [4]u8 = undefined;
+        io.random(&bytes);
+        const address = try std.fmt.allocPrint(
+            allocator,
+            "user{d}@example.com",
+            .{std.mem.readInt(u32, &bytes, .little)},
+        );
         return Email{ .address = address };
     }
 };

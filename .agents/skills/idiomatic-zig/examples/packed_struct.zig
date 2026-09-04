@@ -81,7 +81,7 @@ test "zero cell is empty" {
     try std.testing.expectEqual(.narrow, cell.wide);
     try std.testing.expectEqual(false, cell.protected);
     try std.testing.expectEqual(false, cell.hyperlink);
-    try std.testing.expectEqual(@as(u21, 0), cell.content.codepoint);
+    try std.testing.expectEqual(0, cell.content.codepoint);
 }
 
 test "clearCells produces empty cells" {
@@ -91,6 +91,16 @@ test "clearCells produces empty cells" {
     clearCells(&cells);
 
     for (cells) |c| {
-        try std.testing.expectEqual(@as(u64, 0), @as(u64, @bitCast(c)));
+        try std.testing.expectEqual(0, @as(u64, @bitCast(c)));
     }
+}
+
+// Zig only analyses a function something references, so an untested method can
+// keep calling a deleted stdlib API for releases without anyone noticing.
+// `refAllDecls` is shallow and `@typeInfo().decls` lists only public
+// declarations, so name the file-scope types too.
+test "every declaration compiles" {
+    std.testing.refAllDecls(@This());
+    _ = Cell;
+    _ = Row;
 }

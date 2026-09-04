@@ -7,9 +7,24 @@ resolving the sibling modules the recipe defines, writing the fixtures it embeds
 and linking the C libraries it binds -- then compiles them all and reports what
 fails.
 
+Compiling is not the same as checking. Zig only analyses a function that
+something references, so a recipe can compile cleanly while a method no test
+calls uses an API that was deleted two releases ago -- which is how a call to
+`std.crypto.random` survived the 0.16 migration inside a *passing* block. By
+default this script appends a walker that touches every reachable public
+declaration, so those get analysed too. `--shallow` turns that off.
+
+It also only sees the "Full Tested Code" block: roughly 218 of the ~3360 Zig
+blocks in `recipes/`. The illustrative snippets are fragments that cannot
+compile standalone -- `lint_snippets.py` scans those for removed APIs instead.
+
 Usage:
     python scripts/verify_recipes.py [--recipes DIR] [--zig ZIG] [--work DIR]
-                                     [--filter PREFIX] [--verbose]
+                                     [--filter PREFIX] [--verbose] [--shallow]
+
+Note that --work defaults to /tmp, which is a tmpfs on many Linux systems; a
+full run writes several gigabytes of build artifacts there. Point --work at
+real disk if /tmp is small.
 
 Exit status is non-zero when any recipe fails to compile.
 """
@@ -17,6 +32,7 @@ import argparse
 import collections
 import concurrent.futures
 import json
+import os
 import pathlib
 import re
 import shutil
@@ -51,7 +67,83 @@ def joinable(block):
             return False
     return True
 
-def build_projects(recipes, work):
+# Zig only analyses a function something references, so a recipe can "compile"
+# while a method nobody calls uses an API that no longer exists -- that is how
+# `std.crypto.random` survived the 0.16 migration inside a passing block.
+# `--deep` appends a walker that touches every public declaration.
+#
+# `@typeInfo().decls` lists only *public* declarations, and recipes normally
+# write `const Thing = struct { pub fn ... }` at file scope, so the walker
+# cannot find `Thing` by reflection alone. Name the file-scope types explicitly
+# and let reflection reach their public methods from there.
+DEEP_TYPE = re.compile(
+    r"^(?:pub )?const (\w+) = (?:packed |extern )?(?:struct|union|enum|opaque)\b", re.M)
+
+DEEP_WALKER = """
+// --- appended by verify_recipes.py --deep ---
+fn __refAll(comptime T: type) void {
+    const decls = switch (@typeInfo(T)) {
+        .@"struct" => |x| x.decls,
+        .@"union" => |x| x.decls,
+        .@"enum" => |x| x.decls,
+        .@"opaque" => |x| x.decls,
+        else => return,
+    };
+    inline for (decls) |decl| {
+        const value = @field(T, decl.name);
+        if (@TypeOf(value) == type) {
+            switch (@typeInfo(value)) {
+                .@"struct", .@"union", .@"enum", .@"opaque" => __refAll(value),
+                else => {},
+            }
+        } else if (@typeInfo(@TypeOf(value)) == .@"fn") {
+            _ = &value;
+        }
+    }
+}
+test "__refAll" {
+__BODY__
+}
+"""
+
+
+def deep_suffix(code):
+    """Zig source that forces analysis of every reachable public declaration."""
+    names = []
+    for name in DEEP_TYPE.findall(code):
+        if name not in names:
+            names.append(name)
+    body = "    __refAll(@This());\n" + "".join(
+        f"    __refAll({n});\n" for n in names)
+    return DEEP_WALKER.replace("__BODY__", body.rstrip("\n"))
+
+
+def claim_work_dir(work):
+    """Refuse to share a scratch directory with another live run.
+
+    `build_projects` deletes and rebuilds the whole tree, so a second run
+    started against the same `--work` pulls the projects out from under the
+    first one. The first then reports failures for recipes that are fine, which
+    is a very confusing way to lose an afternoon.
+    """
+    work.parent.mkdir(parents=True, exist_ok=True)
+    lock = work.parent / "verify.lock"
+    if lock.exists():
+        try:
+            other = int(lock.read_text().strip())
+            os.kill(other, 0)
+        except (ValueError, ProcessLookupError, PermissionError, OSError):
+            pass  # Stale lock from a run that died; take it over.
+        else:
+            raise SystemExit(
+                f"another verify_recipes run (pid {other}) is using {work.parent}.\n"
+                f"Wait for it, or pass a different --work directory."
+            )
+    lock.write_text(str(os.getpid()))
+    return lock
+
+
+def build_projects(recipes, work, deep=False):
     if work.exists():
         shutil.rmtree(work)
     entries = []
@@ -70,7 +162,8 @@ def build_projects(recipes, work):
             slug = f"{md.stem}__{h.group(1).replace('.', '_')}"
             proj = work / slug
             proj.mkdir(parents=True, exist_ok=True)
-            (proj / "main.zig").write_text(main)
+            (proj / "main.zig").write_text(
+                main + deep_suffix(main) if deep else main)
 
             # Sibling modules the recipe defines in its own blocks, keyed by the
             # `// name.zig` header line and looked up by basename, because a
@@ -192,6 +285,9 @@ def main(argv=None):
                     help="only check recipes whose slug starts with this prefix")
     ap.add_argument("--jobs", type=int, default=8, help="parallel compilations")
     ap.add_argument("--verbose", action="store_true", help="print each failure's errors")
+    ap.add_argument("--shallow", action="store_true",
+                    help="only analyse what the recipe's own tests reference; "
+                         "faster, but misses rot in functions nothing calls")
     args = ap.parse_args(argv)
 
     zig = args.zig.split()
@@ -204,15 +300,23 @@ def main(argv=None):
         return 2
     zig_version = version.stdout.strip()
 
-    entries = build_projects(args.recipes, work)
+    lock = claim_work_dir(work)
+    try:
+        entries = build_projects(args.recipes, work, deep=not args.shallow)
+    except BaseException:
+        lock.unlink(missing_ok=True)
+        raise
     if args.filter:
         entries = [e for e in entries if e["slug"].startswith(args.filter)]
     if not entries:
         print(f"no recipes found under {args.recipes}", file=sys.stderr)
         return 2
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        results = list(pool.map(lambda e: check(e, zig, work, cache), entries))
+    try:
+        with concurrent.futures.ThreadPoolExecutor(max_workers=args.jobs) as pool:
+            results = list(pool.map(lambda e: check(e, zig, work, cache), entries))
+    finally:
+        lock.unlink(missing_ok=True)
 
     passed = [r for r in results if r["pass"]]
     failed = [r for r in results if not r["pass"]]

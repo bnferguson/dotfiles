@@ -101,11 +101,20 @@ test "sorted array insert and find" {
     try arr.insert(.{ .id = 20, .amount = 300, .timestamp = 3 });
 
     // Sorted by id.
-    try std.testing.expectEqual(@as(u64, 10), arr.items[0].id);
-    try std.testing.expectEqual(@as(u64, 20), arr.items[1].id);
-    try std.testing.expectEqual(@as(u64, 30), arr.items[2].id);
+    try std.testing.expectEqual(10, arr.items[0].id);
+    try std.testing.expectEqual(20, arr.items[1].id);
+    try std.testing.expectEqual(30, arr.items[2].id);
 
     // Find works.
-    try std.testing.expectEqual(@as(?usize, 1), arr.find(20));
-    try std.testing.expectEqual(@as(?usize, null), arr.find(99));
+    try std.testing.expectEqual(1, arr.find(20));
+    try std.testing.expectEqual(null, arr.find(99));
+}
+
+// Zig only analyses a function something references, so an untested method can
+// keep calling a deleted stdlib API for releases without anyone noticing.
+// `refAllDecls` is shallow and `@typeInfo().decls` lists only public
+// declarations, so name the file-scope types too.
+test "every declaration compiles" {
+    std.testing.refAllDecls(@This());
+    _ = Transfer;
 }

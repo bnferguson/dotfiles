@@ -6484,14 +6484,10 @@ pub const Version = struct {
     minor: u32,
     patch: u32,
 
-    pub fn format(
-        self: Version,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
+    /// Zig 0.16 reduced the custom-format hook to one writer argument -- the
+    /// format string and `std.fmt.FormatOptions` are gone, so a type no longer
+    /// has to accept and discard them.
+    pub fn format(self: Version, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{d}.{d}.{d}", .{ self.major, self.minor, self.patch });
     }
 };
@@ -7229,14 +7225,10 @@ pub const Version = struct {
     minor: u32,
     patch: u32,
 
-    pub fn format(
-        self: Version,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
+    /// Zig 0.16 reduced the custom-format hook to one writer argument -- the
+    /// format string and `std.fmt.FormatOptions` are gone, so a type no longer
+    /// has to accept and discard them.
+    pub fn format(self: Version, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{d}.{d}.{d}", .{ self.major, self.minor, self.patch });
     }
 };
@@ -10145,15 +10137,8 @@ pub const PackageMetadata = struct {
     repository: ?[]const u8,
     homepage: ?[]const u8,
 
-    pub fn format(
-        self: PackageMetadata,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
-        try writer.print("{s} v{}", .{ self.name, self.version });
+    pub fn format(self: PackageMetadata, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print("{s} v{f}", .{ self.name, self.version });
     }
 };
 
@@ -10594,15 +10579,8 @@ pub const PackageMetadata = struct {
     repository: ?[]const u8,
     homepage: ?[]const u8,
 
-    pub fn format(
-        self: PackageMetadata,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
-        try writer.print("{s} v{}", .{ self.name, self.version });
+    pub fn format(self: PackageMetadata, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print("{s} v{f}", .{ self.name, self.version });
     }
 };
 
@@ -10630,14 +10608,7 @@ pub const SemanticVersion = struct {
     prerelease: ?[]const u8 = null,
     build: ?[]const u8 = null,
 
-    pub fn format(
-        self: SemanticVersion,
-        comptime fmt: []const u8,
-        options: std.fmt.FormatOptions,
-        writer: anytype,
-    ) !void {
-        _ = fmt;
-        _ = options;
+    pub fn format(self: SemanticVersion, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         try writer.print("{d}.{d}.{d}", .{ self.major, self.minor, self.patch });
         if (self.prerelease) |pre| {
             try writer.print("-{s}", .{pre});
@@ -11667,7 +11638,8 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
 
     // Build a library
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
+        .linkage = .static,
         .name = "mylib",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/lib.zig"),
@@ -11712,7 +11684,8 @@ pub fn build(b: *std.Build) void {
     run_app2_step.dependOn(&run_app2.step);
 
     // Build a shared library
-    const shared_lib = b.addSharedLibrary(.{
+    const shared_lib = b.addLibrary(.{
+        .linkage = .dynamic,
         .name = "shared",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/shared.zig"),
@@ -11740,7 +11713,8 @@ zig build run-app2           # Run second application
 Static libraries are linked at compile time:
 
 ```zig
-const lib = b.addStaticLibrary(.{
+const lib = b.addLibrary(.{
+    .linkage = .static,
     .name = "mylib",
     .root_module = b.createModule(.{
         .root_source_file = b.path("src/lib.zig"),
@@ -11758,7 +11732,8 @@ Output: `zig-out/lib/libmylib.a` (Linux/macOS) or `mylib.lib` (Windows)
 Shared libraries are loaded at runtime:
 
 ```zig
-const shared_lib = b.addSharedLibrary(.{
+const shared_lib = b.addLibrary(.{
+    .linkage = .dynamic,
     .name = "shared",
     .root_module = b.createModule(.{
         .root_source_file = b.path("src/shared.zig"),
@@ -15364,7 +15339,8 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
 
     // Create library
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
+        .linkage = .static,
         .name = "mylib",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/lib.zig"),

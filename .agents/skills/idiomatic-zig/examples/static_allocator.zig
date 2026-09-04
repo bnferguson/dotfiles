@@ -82,10 +82,17 @@ const Database = struct {
     index: []u64,
 
     fn init(alloc: Allocator) !Database {
-        return .{
-            .buffer_pool = try alloc.alloc(u8, 4096 * 1024), // 4MB buffer pool.
-            .index = try alloc.alloc(u64, 1024),
-        };
+        // Struct-literal fields are evaluated in order, so a failure on the
+        // second allocation would leak the first. Split them out and register
+        // the `errdefer` while ownership is still in flight -- the caller does
+        // not have a `Database` to `deinit` yet.
+        const buffer_pool = try alloc.alloc(u8, 4096 * 1024); // 4MB buffer pool.
+        errdefer alloc.free(buffer_pool);
+
+        const index = try alloc.alloc(u64, 1024);
+        errdefer comptime unreachable;
+
+        return .{ .buffer_pool = buffer_pool, .index = index };
     }
 
     fn deinit(self: *Database, alloc: Allocator) void {
@@ -111,4 +118,14 @@ test "static allocator lifecycle" {
     // Shutdown: free is permitted.
     static.transition_from_static_to_deinit();
     db.deinit(alloc);
+}
+
+// Zig only analyses a function something references, so an untested method can
+// keep calling a deleted stdlib API for releases without anyone noticing.
+// `refAllDecls` is shallow and `@typeInfo().decls` lists only public
+// declarations, so name the file-scope types too.
+test "every declaration compiles" {
+    std.testing.refAllDecls(@This());
+    _ = StaticAllocator;
+    _ = Database;
 }

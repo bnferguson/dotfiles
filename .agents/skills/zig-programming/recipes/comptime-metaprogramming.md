@@ -20134,7 +20134,7 @@ The `@typeInfo()` builtin returns a `std.builtin.Type` union that describes the 
 
 **Recursive Type Analysis**: Many type properties require recursion, like calculating nesting depth or unwrapping nested containers. These functions call themselves with child types until reaching a base case.
 
-**Type Construction**: Use `@Type()` to build new types based on patterns you've matched. This is how `toggleSignedness()` creates unsigned versions of signed integers.
+**Type Construction**: Build new types from the patterns you've matched. Zig 0.16 split the old `@Type()` into one builtin per kind -- `@Int(signedness, bits)`, `@Struct`, `@Enum`, `@Union`, `@Pointer` -- so `toggleSignedness()` is now a single `@Int` call rather than a `std.builtin.Type` literal.
 
 **Field Iteration**: When inspecting struct fields, use `inline for` to iterate at compile time. The compiler unrolls the loop and each iteration can access comptime-only information like field types.
 
@@ -20930,12 +20930,14 @@ Domain-specific languages become practical when you can parse and validate them 
 
 ### Type Generation
 
-Combine string processing with `@Type()` to create types programmatically. The `makeEnum` example shows how to:
+Combine string processing with the type-construction builtins to create types programmatically. The `makeEnum` example shows how to:
 
 1. Process string lists at compile time
-2. Build type metadata (field names, values)
-3. Construct a complete type with `@Type()`
+2. Build parallel arrays of field names and values
+3. Construct a complete type with `@Enum(Tag, .exhaustive, &names, &values)`
 4. Use the generated type like any hand-written code
+
+Note the shape change from 0.15: the builtins take parallel slices (names, types, attributes) rather than one slice of `std.builtin.Type.StructField` records. Values passed to `@Enum` must already be narrowed to the tag type.
 
 This is powerful for code generation from external specifications, configuration files, or data schemas.
 
@@ -22927,13 +22929,15 @@ pub fn map(self: Self, comptime U: type, f: fn (T) U) Maybe(U)
 
 This creates higher-order functions that transform container types while maintaining type safety.
 
-### Building Types with @Type
+### Building Types from Metadata
 
-For advanced cases, use `@Type()` to construct types from metadata:
+For advanced cases, construct types from metadata:
 
-1. Create field arrays with proper types and names
-2. Build enum or struct definitions
-3. Pass to `@Type()` to generate the actual type
+1. Create parallel arrays of field names, field types and field attributes
+2. Pick the builtin for the kind you want: `@Struct(layout, backing_int, names, types, attrs)`, `@Enum(Tag, exhaustiveness, names, values)`, `@Union`, `@Int`, `@Pointer`
+3. Call it to generate the actual type
+
+Watch the type of defaults: `StructField.Attributes.default_value_ptr` is a type-erased `*const anyopaque`, so nothing checks that the pointee matches the field. Point it at a value of exactly the field's type or the default is reinterpreted as garbage. Comptime storage is not a concern -- a pointer to a loop-local copy is fine.
 
 The `TaggedUnion` example shows this process: generating both an enum tag and union fields from a type list.
 

@@ -22,10 +22,10 @@ pub const Config = struct {
     /// Maximum buffer size
     max_buffer_size: usize = 4096,
 
-    /// Default initialization
-    pub fn init() Config {
-        return .{};
-    }
+    /// Default configuration. Spelled as a decl literal so callers can write
+    /// `const config: Config = .init;` -- the same shape as `std.Io.Mutex.init`
+    /// and `std.ArrayList(T).empty`.
+    pub const init: Config = .{};
 };
 
 /// Main library context
@@ -43,13 +43,15 @@ pub const Context = struct {
 
     /// Initialize with default configuration
     pub fn initDefault(allocator: std.mem.Allocator) Context {
-        return init(allocator, Config.init());
+        return .init(allocator, .init);
     }
 
     /// Cleanup resources (if needed)
     pub fn deinit(self: *Context) void {
-        _ = self;
-        // TODO: Add cleanup logic if your library allocates resources
+        // TODO: Add cleanup logic if your library allocates resources.
+        // Poisoning the struct afterwards turns a use-after-free into a loud
+        // failure in Debug instead of a silent read of stale fields.
+        self.* = undefined;
     }
 };
 
@@ -92,14 +94,15 @@ pub const Builder = struct {
     pub fn init(allocator: std.mem.Allocator) Builder {
         return .{
             .allocator = allocator,
-            .items = std.ArrayList(u8).empty,
-            .config = Config.init(),
+            .items = .empty,
+            .config = .init,
         };
     }
 
     /// Clean up builder resources
     pub fn deinit(self: *Builder) void {
         self.items.deinit(self.allocator);
+        self.* = undefined;
     }
 
     /// Add data to builder
@@ -164,9 +167,9 @@ pub const Iterator = struct {
 // =============================================================================
 
 test "version info" {
-    try testing.expectEqual(@as(u32, 1), version.major);
-    try testing.expectEqual(@as(u32, 0), version.minor);
-    try testing.expectEqual(@as(u32, 0), version.patch);
+    try testing.expectEqual(1, version.major);
+    try testing.expectEqual(0, version.minor);
+    try testing.expectEqual(0, version.patch);
 }
 
 test "Context initialization" {
@@ -176,7 +179,7 @@ test "Context initialization" {
     defer ctx.deinit();
 
     try testing.expect(!ctx.config.debug);
-    try testing.expectEqual(@as(usize, 4096), ctx.config.max_buffer_size);
+    try testing.expectEqual(4096, ctx.config.max_buffer_size);
 }
 
 test "process function" {
@@ -206,7 +209,7 @@ test "transform function" {
     try transform(&ctx, data);
 
     // Each byte should be incremented by 1
-    try testing.expectEqual(@as(u8, 'h' + 1), data[0]);
+    try testing.expectEqual('h' + 1, data[0]);
 }
 
 test "Builder pattern" {
@@ -236,24 +239,32 @@ test "Iterator pattern" {
     const data = "abc";
     var iter = Iterator.init(data);
 
-    try testing.expectEqual(@as(u8, 'a'), iter.next().?);
-    try testing.expectEqual(@as(u8, 'b'), iter.next().?);
-    try testing.expectEqual(@as(u8, 'c'), iter.next().?);
+    try testing.expectEqual('a', iter.next().?);
+    try testing.expectEqual('b', iter.next().?);
+    try testing.expectEqual('c', iter.next().?);
     try testing.expect(iter.next() == null);
 
     // Reset and iterate again
     iter.reset();
-    try testing.expectEqual(@as(u8, 'a'), iter.next().?);
+    try testing.expectEqual('a', iter.next().?);
 }
 
 test "debug config" {
     const allocator = testing.allocator;
 
-    var config = Config.init();
+    var config: Config = .init;
     config.debug = true;
 
     var ctx = Context.init(allocator, config);
     defer ctx.deinit();
 
     try testing.expect(ctx.config.debug);
+}
+
+test "every declaration compiles" {
+    // `refAllDecls` is shallow, so it reaches `Context` but not `Context.process`.
+    // Name anything without a test of its own -- Zig never analyses a function
+    // nothing references, so untested code rots silently across a release.
+    testing.refAllDecls(@This());
+    _ = &validate;
 }

@@ -20,8 +20,8 @@ pub fn main(init: std.process.Init) !void {
     try stdout.print("Hello, Zig!\n", .{});
 
     // A write reports the placeholder `error.WriteFailed` and stashes the real
-    // error on the writer, so unwrap it rather than losing why the write failed.
-    stdout.flush() catch |err| switch (err) {
-        error.WriteFailed => return stdout_writer.err.?,
-    };
+    // error on the writer. `File.Writer.flush` does that unwrapping for you --
+    // call it on the file writer, not `stdout.flush()` on the interface, which
+    // would surface the placeholder and lose why the write failed.
+    try stdout_writer.flush();
 }

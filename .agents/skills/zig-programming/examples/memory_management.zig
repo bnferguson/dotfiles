@@ -15,6 +15,9 @@ const DynamicArray = struct {
 
     pub fn deinit(self: *DynamicArray) void {
         self.allocator.free(self.items);
+        // Poisoning turns a use-after-free into a loud failure in Debug rather
+        // than a silent read of a dangling slice.
+        self.* = undefined;
     }
 
     pub fn fill(self: *DynamicArray, value: i32) void {
@@ -152,19 +155,30 @@ fn demonstrateErrdefer() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    // Simulate a function that might fail after allocation.
-    const data = try allocator.alloc(i32, 100);
-    // Registering `errdefer` and `defer` on the same allocation would free it
-    // twice on an error path: both run, in reverse registration order. Use
-    // `errdefer` only while ownership is still in flight; once this scope keeps
-    // the value, `defer` is the whole cleanup story.
+    // `errdefer` is for the window where ownership is still in flight: the
+    // callee has allocated, but the caller has nothing to clean up yet.
+    // `makeRange` below is that window.
+    const data = try makeRange(allocator, 100);
+    // Here the scope owns the value, so `defer` is the whole cleanup story.
+    // Registering `errdefer` as well would free it twice on an error path,
+    // because both run, in reverse registration order.
     defer allocator.free(data);
+
+    std.debug.print("Successfully allocated and filled {d} items\n", .{data.len});
+}
+
+/// Allocates and fills a slice, returning ownership to the caller.
+fn makeRange(allocator: std.mem.Allocator, len: usize) ![]i32 {
+    const data = try allocator.alloc(i32, len);
+    // If anything below fails, the caller never receives `data`, so this scope
+    // is the only one that can free it.
+    errdefer allocator.free(data);
 
     for (data, 0..) |*item, i| {
         item.* = @intCast(i);
     }
 
-    std.debug.print("Successfully allocated and filled {d} items\n", .{data.len});
+    return data;
 }
 
 pub fn main() !void {
@@ -194,7 +208,7 @@ test "DynamicArray with GPA" {
     array.fill(99);
 
     for (array.items) |item| {
-        try testing.expectEqual(@as(i32, 99), item);
+        try testing.expectEqual(99, item);
     }
 }
 
@@ -222,11 +236,11 @@ test "FixedBufferAllocator bounds" {
 
     // Should succeed
     const array1 = try allocator.alloc(u8, 50);
-    try testing.expectEqual(@as(usize, 50), array1.len);
+    try testing.expectEqual(50, array1.len);
 
     // Should succeed
     const array2 = try allocator.alloc(u8, 50);
-    try testing.expectEqual(@as(usize, 50), array2.len);
+    try testing.expectEqual(50, array2.len);
 
     // Next allocation would fail (out of memory)
     const result = allocator.alloc(u8, 1);
@@ -245,7 +259,7 @@ test "defer and errdefer behavior" {
         // This block exits normally
     }
 
-    try testing.expectEqual(@as(u32, 1), cleanup_count);
+    try testing.expectEqual(1, cleanup_count);
 
     // errdefer only runs on error
     const result = blk: {
@@ -254,5 +268,5 @@ test "defer and errdefer behavior" {
         break :blk data.len;
     };
 
-    try testing.expectEqual(@as(usize, 10), result);
+    try testing.expectEqual(10, result);
 }

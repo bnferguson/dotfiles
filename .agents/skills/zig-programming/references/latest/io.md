@@ -67,7 +67,8 @@ Environment variables and process arguments are no longer global. Pass the value
 | `std.time.Instant` | `std.Io.Timestamp` |
 | `std.time.Timer` | `std.Io.Timestamp` |
 | `std.time.timestamp` | `std.Io.Timestamp.now` |
-| `std.crypto.random.bytes(&buffer)` | `io.random(&buffer)` |
+| `std.crypto.random.bytes(&buffer)` | `try io.randomSecure(&buffer)` for keys, tokens and IDs |
+| `std.crypto.random.bytes(&buffer)` | `io.random(&buffer)` where a fallback is acceptable |
 | `std.Thread.ResetEvent` | `std.Io.Event` |
 | `std.Thread.WaitGroup` | `std.Io.Group` |
 | `std.Thread.Futex` | `std.Io.Futex` |
