@@ -188,6 +188,26 @@
             "command": "bash ~/.claude/hooks/log-sandbox-bypass.sh"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/code-intel-watch.sh",
+            "async": true
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/hooks/code-intel-watch.sh"
+          }
+        ]
       }
     ]
   },
