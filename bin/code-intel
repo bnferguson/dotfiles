@@ -123,6 +123,225 @@ ci_warm() {
   par_wait
 }
 
+# --- watch: keep the vera index fresh in the background -------------------
+# Only vera needs this. codegraph runs its own file watcher for as long as its
+# MCP server is up, and graphify is deliberately commit-cadence — its full graph
+# needs in-agent LLM extraction, so rebuilding per keystroke would be both slow
+# and lossy (`graphify update` can drop nodes; hence its --force guard).
+#
+# One supervisor per worktree, keyed by a pidfile under $watch_state_dir. The
+# supervisor owns a `vera watch` child and reaps it once the index has gone
+# quiet, so watchers don't pile up across every repo visited this month.
+# Reaping is deliberately gentle: SIGINT is vera's documented shutdown path,
+# and a hard kill mid-update corrupts its content-hash bookkeeping — see the
+# re-embedding warning under `help`.
+
+watch_state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/code-intel/watch"
+watch_idle_min="${CODE_INTEL_WATCH_IDLE_MIN:-120}"
+watch_check_sec="${CODE_INTEL_WATCH_CHECK_SEC:-300}"
+
+# Re-exec needs an absolute path; $0 is a bare name when found on PATH.
+self_path() {
+  case "$0" in
+    */*) printf '%s\n' "$0" ;;
+    *)   command -v "$0" 2>/dev/null || printf '%s\n' "$0" ;;
+  esac
+}
+
+# A worktree, not the common git dir — each worktree carries its own .vera/.
+watch_root() { git rev-parse --show-toplevel 2>/dev/null || pwd -P; }
+
+# cksum keys the pidfile; the path is stored inside it and re-checked on every
+# read, so a collision costs a redundant restart rather than a wrong kill.
+watch_slug()    { printf '%s' "$1" | cksum | awk '{print $1"-"$2}'; }
+watch_pidfile() { printf '%s/%s.pid\n' "$watch_state_dir" "$(watch_slug "$1")"; }
+watch_logfile() { printf '%s/%s.log\n' "$watch_state_dir" "$(watch_slug "$1")"; }
+
+mtime_of() { stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null; }
+
+# watch_alive <pidfile> <root> — echo the supervisor pid if it is running for root.
+watch_alive() {
+  [ -f "$1" ] || return 1
+  _sup=$(sed -n 1p "$1" 2>/dev/null)
+  _rp=$(sed -n 3p "$1" 2>/dev/null)
+  [ -n "$_sup" ] && [ "$_rp" = "$2" ] || return 1
+  kill -0 "$_sup" 2>/dev/null || return 1
+  printf '%s\n' "$_sup"
+}
+
+# watch_reap <pid> — SIGINT is the graceful path. TERM and KILL below are both
+# hard kills for vera, so they are a last resort for a wedged process only.
+watch_reap() {
+  kill -INT "$1" 2>/dev/null || return 0
+  _n=0
+  while [ "$_n" -lt 10 ]; do
+    kill -0 "$1" 2>/dev/null || return 0
+    sleep 1
+    _n=$((_n + 1))
+  done
+  kill -TERM "$1" 2>/dev/null
+  sleep 2
+  kill -0 "$1" 2>/dev/null && kill -KILL "$1" 2>/dev/null
+  return 0
+}
+
+# watch_reap_orphan <pidfile> — the supervisor is gone, but a reboot or a
+# SIGKILL can leave its vera child running untracked. Reap it before starting a
+# replacement, or watchers accumulate. The ps check guards against pid reuse; if
+# ps is unavailable the pattern cannot match and nothing is killed.
+watch_reap_orphan() {
+  _vp=$(sed -n 2p "$1" 2>/dev/null)
+  [ -n "$_vp" ] || return 0
+  kill -0 "$_vp" 2>/dev/null || return 0
+  case "$(ps -o command= -p "$_vp" 2>/dev/null)" in
+    *vera*watch*) watch_reap "$_vp" ;;
+  esac
+  return 0
+}
+
+# ci_supervise <root> — internal. Runs detached; owns one `vera watch` child.
+ci_supervise() {
+  root=$1
+  cd "$root" || exit 1
+  pf=$(watch_pidfile "$root")
+
+  # Start vera so that SIGINT can actually reach it, and so that $! is vera's
+  # own pid. Two traps here:
+  #
+  # 1. A background job of a non-interactive shell inherits SIGINT as SIG_IGN,
+  #    and a process that starts with SIGINT ignored cannot install a handler
+  #    for it. SIGINT is vera's *only* graceful stop — it installs a ctrl-c
+  #    handler but nothing for SIGTERM, so a TERM is a hard kill by the default
+  #    disposition, which is what corrupts its content-hash bookkeeping. perl
+  #    resets the disposition to SIG_DFL and execs, and that survives into vera.
+  #    (bootstrap already leans on perl for relative symlinks.)
+  # 2. This must stay inline rather than wrapped in a function. `fn &` forks a
+  #    subshell, so $! would be the subshell and every signal would land there
+  #    instead of on vera, leaving it orphaned. perl execs in place, so the pid
+  #    recorded below is vera's.
+  perl -e '$SIG{INT} = "DEFAULT"; exec { $ARGV[0] } @ARGV or die "exec: $!"' \
+    vera watch . &
+  vera_pid=$!
+  printf '%s\n%s\n%s\n' "$$" "$vera_pid" "$root" > "$pf"
+  trap 'watch_reap "$vera_pid"; rm -f "$pf"; exit 0' INT TERM
+
+  # Seed from now so a fresh watcher survives its first check, then track the
+  # index files: vera stamps them on every incremental update, which makes them
+  # an O(1) proxy for "has anything changed?" — no tree walk per check.
+  last=$(date +%s)
+  while kill -0 "$vera_pid" 2>/dev/null; do
+    # `sleep &` + `wait` so a --stop lands immediately; a foreground sleep would
+    # defer the trap until the full check interval elapsed.
+    sleep "$watch_check_sec" & wait $! 2>/dev/null
+    # The worktree, or just its index, can vanish underneath us: a removed git
+    # worktree, a deleted clone, a `vera` index blown away by hand. Stop
+    # promptly rather than watching a path that no longer exists until the idle
+    # timeout happens to expire. Absolute path on purpose — cwd may be gone.
+    if [ ! -d "$root/.vera" ]; then
+      printf '[%s] %s is gone — stopping watcher\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$root"
+      watch_reap "$vera_pid"
+      break
+    fi
+    for m in .vera/metadata.db .vera/vectors.db; do
+      t=$(mtime_of "$m") || continue
+      [ -n "$t" ] && [ "$t" -gt "$last" ] && last=$t
+    done
+    if [ $(( $(date +%s) - last )) -ge $(( watch_idle_min * 60 )) ]; then
+      printf '[%s] idle %sm — stopping watcher\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$watch_idle_min"
+      watch_reap "$vera_pid"
+      break
+    fi
+  done
+  rm -f "$pf"
+}
+
+ci_watch_fg() {
+  have vera || { skip vera; return 0; }
+  root=$(watch_root)
+  [ -d "$root/.vera" ] || { note "no .vera/ index here — run: code-intel init"; return 1; }
+  step "vera — watching $root (Ctrl-C to stop)"
+  note "codegraph auto-syncs while its MCP server runs; graphify rebuilds on commit"
+  cd "$root" && vera watch .
+}
+
+# Idempotent and silent by design: this runs from a Claude Code hook on every
+# session start and every file edit, so it must cost a kill -0 and nothing more.
+ci_watch_ensure() {
+  have vera || return 0
+  root=$(watch_root)
+  [ -d "$root/.vera" ] || return 0
+  pf=$(watch_pidfile "$root")
+  watch_alive "$pf" "$root" >/dev/null && return 0
+  mkdir -p "$watch_state_dir" || return 0
+  [ -f "$pf" ] && watch_reap_orphan "$pf"
+  rm -f "$pf"
+  nohup "$(self_path)" __supervise "$root" >>"$(watch_logfile "$root")" 2>&1 </dev/null &
+  [ -t 1 ] && note "started vera watcher for $root"
+  return 0
+}
+
+ci_watch_status() {
+  found=0
+  for pf in "$watch_state_dir"/*.pid; do
+    [ -f "$pf" ] || continue
+    sup=$(sed -n 1p "$pf"); rp=$(sed -n 3p "$pf")
+    if kill -0 "$sup" 2>/dev/null; then
+      found=$((found + 1))
+      t=$(mtime_of "$rp/.vera/metadata.db")
+      if [ -n "$t" ]; then
+        note "watching $rp (pid $sup) — index touched $(( ($(date +%s) - t) / 60 ))m ago"
+      elif [ ! -d "$rp/.vera" ]; then
+        note "watching $rp (pid $sup) — GONE, stopping within one check"
+      else
+        note "watching $rp (pid $sup)"
+      fi
+    else
+      rm -f "$pf" 2>/dev/null   # reap the record of a watcher that died
+    fi
+  done
+  [ "$found" -eq 0 ] && note "no watchers running"
+  return 0
+}
+
+# TERM the supervisor; its trap SIGINTs vera, so an in-flight update finishes.
+ci_watch_stop() {
+  if [ "$1" = 1 ]; then
+    stopped=0
+    for pf in "$watch_state_dir"/*.pid; do
+      [ -f "$pf" ] || continue
+      sup=$(sed -n 1p "$pf"); rp=$(sed -n 3p "$pf")
+      if kill -TERM "$sup" 2>/dev/null; then note "stopping $rp"; stopped=$((stopped + 1)); fi
+    done
+    [ "$stopped" -eq 0 ] && note "no watchers running"
+    return 0
+  fi
+  root=$(watch_root)
+  sup=$(watch_alive "$(watch_pidfile "$root")" "$root") \
+    || { note "no watcher running for $root"; return 0; }
+  kill -TERM "$sup" 2>/dev/null && note "stopping $root"
+  return 0
+}
+
+ci_watch() {
+  mode=fg; all=0
+  while [ $# -gt 0 ]; do
+    case $1 in
+      --ensure) mode=ensure ;;
+      --status) mode=status ;;
+      --stop)   mode=stop ;;
+      --all)    all=1 ;;
+      *) printf 'Unknown watch option: %s\n' "$1" >&2; return 1 ;;
+    esac
+    shift
+  done
+  case $mode in
+    fg)     ci_watch_fg ;;
+    ensure) ci_watch_ensure ;;
+    status) ci_watch_status ;;
+    stop)   ci_watch_stop "$all" ;;
+  esac
+}
+
 show_help() {
   cat << 'EOF'
 Usage: code-intel <command>
@@ -135,7 +354,14 @@ Commands:
   refresh   Update all three after edits
   warm      Seed indexes from the main worktree + reconcile (for new worktrees)
   status    Show index state for each tool
+  watch     Keep the vera index fresh as files change (see below)
   help      Show this help
+
+Watch options:
+  watch              Watch this repo in the foreground (Ctrl-C to stop)
+  watch --ensure     Start a detached watcher unless one is already running
+  watch --status     List every running watcher
+  watch --stop       Stop this repo's watcher (--all for every repo)
 
 Notes:
   - Missing tools are skipped; graphify's build needs a model backend.
@@ -145,10 +371,16 @@ Notes:
     CPU on a 6k-file repo, from a single timeout kill). Incremental updates are
     otherwise sub-second, so if vera seems pathologically slow, suspect an
     earlier interrupted run.
-  - For live freshness during a session, run `vera watch .` (codegraph
-    auto-syncs while its MCP server is up; graphify rebuilds on git commit
-    once `graphify hook install` has run). In pi this is unnecessary — the
-    code-intel extension syncs before each query.
+  - `refresh` is only needed if you are not watching. `code-intel watch
+    --ensure` starts one detached `vera watch` per worktree and is what the
+    Claude Code SessionStart hook calls, so the index stays fresh without
+    being asked. The watcher exits itself after CODE_INTEL_WATCH_IDLE_MIN
+    minutes (default 120) with no index activity.
+  - Only vera is watched. codegraph auto-syncs for as long as its MCP server
+    is up, and graphify rebuilds on git commit once `graphify hook install`
+    has run — its full graph needs in-agent LLM extraction, so a per-keystroke
+    rebuild would be slow and would drop the semantic layer. In pi none of
+    this applies: the code-intel extension syncs before each query.
   - Indexing pays off on large/unfamiliar repos — on small or familiar code,
     LSP + grep are faster.
 EOF
@@ -159,6 +391,8 @@ case "${1:-help}" in
   refresh|update)  ci_refresh ;;
   warm)            ci_warm ;;
   status)          ci_status ;;
+  watch)           shift; ci_watch "$@" ;;
+  __supervise)     shift; ci_supervise "$@" ;;
   help|-h|--help)  show_help ;;
   *) printf 'Unknown command: %s\n\n' "${1:-}"; show_help; exit 1 ;;
 esac

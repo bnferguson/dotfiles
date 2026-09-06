@@ -29,7 +29,7 @@ Index when a repo is **large, polyglot, long-lived, or already has a `.codegraph
 ### Two modes
 
 - **Exploring an unfamiliar repo** — work the layers in order: `graphify` to comprehend, `vera` to locate, `codegraph` to traverse.
-- **Daily work in a repo you own** — codegraph runs ambiently (its watcher keeps the graph fresh while the session is open); lead with it for navigation and impact checks. Reach for `vera` when you cross into code you didn't write, and `graphify` only for architecture questions or a refactor. This is the default when the index is present — no special prompt needed.
+- **Daily work in a repo you own** — codegraph and vera both run ambiently (see *Staying fresh without asking*), so lead with codegraph for navigation and impact checks. Reach for `vera` when you cross into code you didn't write, and `graphify` only for architecture questions or a refactor. This is the default when the index is present — no special prompt needed.
 
 ## Routing
 
@@ -50,7 +50,7 @@ When codegraph's MCP tools are available, prefer them over re-deriving structure
 
 ## Per-tool detail
 
-- **vera** — see the `vera` skill for full `search` / `grep` / `references` / `overview` flags. Index with `vera index .`, refresh with `vera update .`, or `vera watch .` for a session.
+- **vera** — see the `vera` skill for full `search` / `grep` / `references` / `overview` flags. Index with `vera index .`; a watcher normally keeps it current, so `vera update .` is only for a repo you are not watching.
 - **codegraph** — MCP tools: `codegraph_context`, `codegraph_search`, `codegraph_callers`, `codegraph_callees`, `codegraph_impact`, `codegraph_node`, `codegraph_files`, `codegraph_status`. Same verbs exist as CLI subcommands. Index with `codegraph init` + `codegraph index`; the file watcher auto-syncs while `serve --mcp` runs. 19+ languages (no shell/zsh).
 - **graphify** — the full graph is built **in-agent** with `/graphify .` (the session supplies the LLM for semantic extraction); the CLI's `graphify update .` does a code-only AST graph with **no LLM**. Both write `graphify-out/` (graph.json, GRAPH_REPORT.md; HTML viz only under ~5k nodes). Query with `graphify query "…"`, `graphify path "A" "B"`, `graphify explain "Symbol"`.
 
@@ -70,7 +70,32 @@ Indexes are built on demand, not at install. The `code-intel` helper drives all 
 code-intel init       # build all three indexes (+ graphify commit hook)
 code-intel refresh    # update them after edits
 code-intel status     # show index state per tool
+code-intel watch      # keep vera fresh as files change (see below)
 ```
+
+### Staying fresh without asking
+
+`refresh` is for the case where nothing is watching. Normally nothing needs to
+run, because each tool has its own cadence:
+
+| Tool | Kept fresh by | Cadence |
+|---|---|---|
+| codegraph | its own file watcher, inside `serve --mcp` | live, whole session |
+| vera | one detached `vera watch` per worktree | live, 2s debounce |
+| graphify | the `graphify hook install` commit hook | per commit |
+
+Only vera needed wiring. A Claude Code SessionStart hook, plus a PostToolUse
+hook on file edits, runs `code-intel watch --ensure`, which starts a watcher
+unless one is already alive — the hot path is a single `kill -0`. The watcher
+outlives the session on purpose: interrupting a running `vera update` corrupts
+its content-hash bookkeeping, so it exits itself after
+`CODE_INTEL_WATCH_IDLE_MIN` minutes (default 120) of no index activity instead
+of being killed at session end. `code-intel watch --status` lists every running
+watcher and `--stop` (or `--stop --all`) ends them.
+
+graphify stays on commits deliberately: its full graph needs in-agent LLM
+extraction, so a per-keystroke rebuild would be slow and would drop the
+semantic layer.
 
 Or per tool: `vera index .` / `vera update .` (or `vera watch .` for live freshness); `codegraph init` + `codegraph index` / `codegraph sync` (auto-syncs while its MCP server runs); `/graphify .` in-agent for the full graph or `graphify update .` for a code-only CLI build (`graphify hook install` rebuilds on each commit).
 
