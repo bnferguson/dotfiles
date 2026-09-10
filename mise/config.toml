@@ -10,7 +10,7 @@
 
 [tools]
 node = "26"
-pnpm = "11"
+pnpm = "12"
 # Rust is owned by rustup, not mise — see the rust/ topic. rustup is the
 # upstream-recommended installer and manages toolchains + per-project overrides
 # (rust-toolchain.toml) itself.
@@ -21,7 +21,7 @@ pnpm = "11"
 "npm:typescript-language-server" = "6"
 "npm:typescript" = "7"
 "npm:pyright" = "latest"
-hadolint = "2.14.0"
+hadolint = "2.15.1"
 pi = "latest"
 
 # gh is deliberately absent from Brewfile / the pacman list — mise owns it.

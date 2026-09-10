@@ -1,6 +1,7 @@
 personality = "pragmatic"
-model = "gpt-5.6-terra"
+model = "gpt-5.6-sol"
 model_reasoning_effort = "medium"
+approvals_reviewer = "auto_review"
 
 [tui]
 # Mirror the Claude status line with the closest native Codex fields.
