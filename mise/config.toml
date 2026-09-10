@@ -22,7 +22,6 @@ pnpm = "11"
 "npm:typescript" = "7"
 "npm:pyright" = "latest"
 hadolint = "2.14.0"
-codex = "latest"
 pi = "latest"
 
 # gh is deliberately absent from Brewfile / the pacman list — mise owns it.
