@@ -42,8 +42,20 @@ export ZSH=$HOME/.dotfiles
 
 # Update the dotfiles before running installers so this invocation uses the
 # latest maintenance scripts regardless of the directory it was launched from.
-echo "› git pull --ff-only origin"
-git -C "$dotfilesDirectory" pull --ff-only origin
+# --autostash because dots gets run mid-edit often enough to matter: with
+# pull.rebase set, any dirty file — even one the pull doesn't touch — makes git
+# bail before the rest of this script runs. Git restores the stash itself, and
+# puts it back untouched when the pull fails outright.
+echo "› git pull --ff-only --autostash origin"
+git -C "$dotfilesDirectory" pull --ff-only --autostash origin
+
+# Reapplying the autostash can conflict, and git reports that on stdout while
+# still exiting 0. Stop rather than symlink and install from a tree full of
+# conflict markers — git's own message above says how to get the changes back.
+if [ -n "$(git -C "$dotfilesDirectory" ls-files --unmerged)" ]; then
+	echo "! Restoring your local changes hit a conflict; skipping the rest of dots." >&2
+	exit 1
+fi
 
 # macOS-specific updates
 if [ "$(uname -s)" = "Darwin" ]; then
