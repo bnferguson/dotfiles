@@ -26,3 +26,6 @@ pi = "latest"
 
 # gh is deliberately absent from Brewfile / the pacman list — mise owns it.
 gh = "latest"
+
+[settings.upgrade]
+auto_prune = false
