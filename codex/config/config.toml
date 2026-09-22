@@ -1,12 +1,13 @@
 personality = "pragmatic"
-model = "gpt-5.6-sol"
-model_reasoning_effort = "medium"
+model = "gpt-6-sol"
+model_reasoning_effort = "low"
 approvals_reviewer = "auto_review"
 
 [tui]
 # Mirror the Claude status line with the closest native Codex fields.
 status_line = ["current-dir", "git-branch", "pull-request-number", "model-with-reasoning", "context-used", "estimated-thread-cost", "branch-changes"]
 status_line_use_colors = true
+screen_reader_detection_done = true
 
 [tui.model_availability_nux]
 gpt-6-astra = 4
