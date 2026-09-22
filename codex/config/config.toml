@@ -1,6 +1,6 @@
 personality = "pragmatic"
 model = "gpt-5.6-sol"
-model_reasoning_effort = "high"
+model_reasoning_effort = "medium"
 approvals_reviewer = "auto_review"
 
 [tui]
@@ -9,7 +9,7 @@ status_line = ["current-dir", "git-branch", "pull-request-number", "model-with-r
 status_line_use_colors = true
 
 [tui.model_availability_nux]
-gpt-6-astra = 3
+gpt-6-astra = 4
 
 [agents]
 max_concurrent_threads_per_session = 8
