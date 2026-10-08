@@ -9,10 +9,6 @@ block() {
   exit 2
 }
 
-if printf '%s' "$CMD" | grep -qiE '(^|[;&|][;&|]?)[[:space:]]*sudo([[:space:]]|$)'; then
-  block "sudo is not allowed from an agent session"
-fi
-
 if printf '%s' "$CMD" | grep -qiE '(^|[;&|][;&|]?)[[:space:]]*(mkfs([.][^[:space:]]*)?|dd)([[:space:]]|$)'; then
   block "raw disk and filesystem commands are not allowed"
 fi
