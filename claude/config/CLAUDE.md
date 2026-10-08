@@ -124,3 +124,7 @@ For finding, navigating, and understanding code, use the **code-intel** skill �
 - **Traverse** structure — callers, callees, impact radius → `codegraph` (MCP) or LSP
 
 Reach for these on large or unfamiliar repos; on small or familiar code, LSP + grep are enough. The skill has the full workflow and per-tool commands.
+
+# graphify
+- **graphify** (`~/.claude/skills/graphify/SKILL.md`) - any input to knowledge graph. Trigger: `/graphify`
+When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.

@@ -154,7 +154,6 @@
     "ask": [],
     "defaultMode": "auto"
   },
-  "model": "opus[1m]",
   "enableAllProjectMcpServers": false,
   "hooks": {
     "PreToolUse": [
