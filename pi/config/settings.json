@@ -32,7 +32,9 @@
     "npm:pi-powerline-footer",
     "npm:pi-lens",
     "npm:@nateberkopec/pi-meridian@0.1.0-beta.1",
-    "git:github.com/nateberkopec/pi-openai-guidance"
+    "git:github.com/nateberkopec/pi-openai-guidance",
+    "npm:pi-intercom",
+    "npm:pi-context-view"
   ],
   "skills": [
     "~/.claude/skills"

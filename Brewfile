@@ -24,6 +24,11 @@ brew "rustup"       # rust toolchain manager
 
 # Third-party taps
 tap "mirendev/tap"  # miren deploy CLI (Linux gets it via the miren/ topic)
+tap "ewhauser/tap"  # shuck shell linter
+
+if OS.mac?
+  brew "ewhauser/tap/shuck-cli" # Linux gets it via the shuck/ topic
+end
 
 # macOS casks
 if OS.mac?
