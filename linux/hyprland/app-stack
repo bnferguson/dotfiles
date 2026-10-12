@@ -6,7 +6,7 @@
 # Hyprland groups stack multiple windows onto one tile footprint. This
 # script makes a "stack" out of any set of apps:
 #
-#   - focused window is in the stack  -> rotate to the next member in place
+#   - focused window is in a complete stack -> rotate to the next member
 #   - otherwise                       -> launch any missing members, gather
 #                                         them into one group, and focus it
 #
@@ -36,6 +36,11 @@ for entry in "$@"; do
   launches+=("${entry#*|}")
 done
 
+# Repeated presses during startup must not launch duplicates or race a build.
+lock_id=$(printf '%s\n' "${patterns[@]}" | cksum | cut -d ' ' -f 1)
+exec 9>"${XDG_RUNTIME_DIR:-/tmp}/app-stack-$UID-$lock_id.lock"
+flock -n 9 || exit 0
+
 # Address of the first window matching $1, or empty. $2 is a clients dump.
 addr_for() {
   jq -r --arg p "${1,,}" \
@@ -48,30 +53,36 @@ geom_for() {
   jq -r --arg a "$1" '.[] | select(.address==$a) | "\(.at[0]) \(.at[1]) \(.size[0]) \(.size[1])"' <<<"$2"
 }
 
-focused=$(hyprctl activewindow -j \
-  | jq -r '((.class // "") + " " + (.title // "")) | ascii_downcase')
-
-# Already on the stack? Rotate the group and we're done.
-for p in "${patterns[@]}"; do
-  if [[ $focused == *"${p,,}"* ]]; then
-    hyprctl dispatch changegroupactive f
-    exit 0
-  fi
-done
+focused=$(hyprctl activewindow -j | jq -r '.address // empty')
 
 # Summon: launch missing members so the workspace-pin rules place them home.
 clients=$(hyprctl clients -j)
+launched=false
 for i in "${!patterns[@]}"; do
-  [[ -z $(addr_for "${patterns[$i]}" "$clients") ]] && eval "${launches[$i]} &"
+  if [[ -z $(addr_for "${patterns[$i]}" "$clients") ]]; then
+    # Do not let the launched app inherit the stack lock.
+    (exec 9>&-; eval "${launches[$i]}") >/dev/null 2>&1 &
+    launched=true
+  fi
 done
 
-# Collect the members that exist right now, in declared order.
-present=()
-for p in "${patterns[@]}"; do
-  a=$(addr_for "$p" "$clients")
-  [[ -n $a ]] && present+=("$a")
+# Apps map their windows asynchronously. Wait up to ten seconds, then use
+# available members so an unavailable app doesn't prevent focusing the stack.
+for ((attempt = 0; attempt < 100; attempt++)); do
+  if $launched; then
+    clients=$(hyprctl clients -j)
+  fi
+  present=()
+  for p in "${patterns[@]}"; do
+    a=$(addr_for "$p" "$clients")
+    [[ -n $a ]] && present+=("$a")
+  done
+  if ! $launched || ((${#present[@]} == ${#patterns[@]})); then
+    break
+  fi
+  sleep 0.1
 done
-(( ${#present[@]} == 0 )) && exit 0   # everything was just launched; rules place it
+(( ${#present[@]} == 0 )) && exit 0
 
 anchor=${present[0]}
 
@@ -82,7 +93,12 @@ if jq -e --argjson members "$(printf '%s\n' "${present[@]}" | jq -R . | jq -s .)
      '(.[] | select(.address==$a) | .grouped) as $g
       | ($members | all(. as $m | $g | index($m)))' \
      <<<"$clients" >/dev/null; then
-  hyprctl dispatch focuswindow "address:$anchor"
+  if ((${#present[@]} == ${#patterns[@]})) && \
+     [[ " ${present[*]} " == *" $focused "* ]]; then
+    hyprctl dispatch 'hl.dsp.group.next()'
+  else
+    hyprctl dispatch "hl.dsp.focus({ window = \"address:$anchor\" })"
+  fi
   exit 0
 fi
 
@@ -94,19 +110,19 @@ ws=$(jq -r --arg a "$anchor" '.[] | select(.address==$a) | .workspace.id' <<<"$c
 # focus between dispatches and togglegroup/moveintogroup hit the wrong
 # window. Restore on any exit.
 prev_follow=$(hyprctl getoption input:follow_mouse -j | jq -r .int)
-trap 'hyprctl keyword input:follow_mouse "$prev_follow" >/dev/null' EXIT
-hyprctl keyword input:follow_mouse 0 >/dev/null
+trap 'hyprctl eval "hl.config({ input = { follow_mouse = $prev_follow } })" >/dev/null' EXIT
+hyprctl eval 'hl.config({ input = { follow_mouse = 0 } })' >/dev/null
 
 for a in "${present[@]}"; do
-  if [[ $(jq -r --arg a "$a" '.[] | select(.address==$a) | (.grouped|length)' <<<"$clients") != 0 ]]; then
-    hyprctl dispatch focuswindow "address:$a"
-    hyprctl dispatch togglegroup
+  fresh=$(hyprctl clients -j)
+  if [[ $(jq -r --arg a "$a" '.[] | select(.address==$a) | (.grouped|length)' <<<"$fresh") != 0 ]]; then
+    hyprctl dispatch "hl.dsp.group.toggle({ window = \"address:$a\" })"
   fi
-  hyprctl dispatch movetoworkspacesilent "$ws,address:$a"
+  hyprctl dispatch "hl.dsp.window.move({ window = \"address:$a\", workspace = \"$ws\", follow = false })"
 done
 
-hyprctl dispatch focuswindow "address:$anchor"
-hyprctl dispatch togglegroup   # anchor becomes a one-member group
+hyprctl dispatch "hl.dsp.focus({ window = \"address:$anchor\" })"
+hyprctl dispatch "hl.dsp.group.toggle({ window = \"address:$anchor\" })"
 
 for a in "${present[@]:1}"; do
   fresh=$(hyprctl clients -j)
@@ -120,8 +136,8 @@ for a in "${present[@]:1}"; do
   else
     (( dy < 0 )) && dir=u || dir=d
   fi
-  hyprctl dispatch focuswindow "address:$a"
-  hyprctl dispatch moveintogroup "$dir"
+  hyprctl dispatch "hl.dsp.focus({ window = \"address:$a\" })"
+  hyprctl dispatch "hl.dsp.window.move({ window = \"address:$a\", into_group = \"$dir\" })"
 done
 
-hyprctl dispatch focuswindow "address:$anchor"
+hyprctl dispatch "hl.dsp.focus({ window = \"address:$anchor\" })"
