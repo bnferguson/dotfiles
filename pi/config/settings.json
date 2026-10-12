@@ -39,6 +39,16 @@
   "skills": [
     "~/.claude/skills"
   ],
+  "powerline": {
+    "disabledSegments": ["git"],
+    "git": { "polling": "off" },
+    "customItems": [
+      { "id": "vcs", "statusKey": "vcs", "position": "left", "selfColorize": true }
+    ],
+    "layout": {
+      "left": ["model", "thinking", "shell_mode", "path", "custom:vcs", "queue", "context_pct", "cache_read", "cost"]
+    }
+  },
   "theme": "dark",
   "defaultThinkingLevel": "medium"
 }
