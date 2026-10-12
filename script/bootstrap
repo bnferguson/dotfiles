@@ -296,6 +296,7 @@ install_larger_paths () {
   link_file "$DOTFILES_ROOT/pi/config/extensions/code-intel" "$HOME/.pi/agent/extensions/code-intel"
   link_file "$DOTFILES_ROOT/pi/config/extensions/lsp" "$HOME/.pi/agent/extensions/lsp"
   link_file "$DOTFILES_ROOT/pi/config/extensions/telemetry" "$HOME/.pi/agent/extensions/telemetry"
+  link_file "$DOTFILES_ROOT/pi/config/extensions/vcs-status" "$HOME/.pi/agent/extensions/vcs-status"
   if [ -d "$DOTFILES_ROOT/pi/config/extensions/node_modules" ]; then
     link_file "$DOTFILES_ROOT/pi/config/extensions/node_modules" "$HOME/.pi/agent/extensions/node_modules"
   fi
