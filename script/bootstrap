@@ -237,9 +237,11 @@ install_larger_paths () {
   link_file "$DOTFILES_ROOT/claude/config/agents" "$HOME/.claude/agents"
   link_file "$DOTFILES_ROOT/claude/config/hooks" "$HOME/.claude/hooks"
 
-  # Portable skills have one source of truth under .agents/skills. Claude uses
-  # per-skill compatibility links because it discovers personal skills under
-  # ~/.claude/skills. Claude-only skills remain under claude/config/skills.
+  # Link the whole canonical directory so future global skills installs write
+  # into dotfiles. Merge existing installs and back up originals first.
+  python3 "$DOTFILES_ROOT/script/migrate-agent-skills" --root "$DOTFILES_ROOT"
+
+  # Claude needs per-skill compatibility links; its own skills stay separate.
   if [ -L "$HOME/.claude/skills" ]; then
     current_skills_path=$(perl -MCwd -e 'print Cwd::realpath($ARGV[0]) // ""' "$HOME/.claude/skills" 2>/dev/null)
     if [ "$current_skills_path" = "$DOTFILES_ROOT/claude/config/skills" ]; then
@@ -250,9 +252,8 @@ install_larger_paths () {
   link_skill_root "$DOTFILES_ROOT/.agents/skills" "$HOME/.claude/skills"
   link_skill_root "$DOTFILES_ROOT/claude/config/skills" "$HOME/.claude/skills"
 
-  # Codex config — keep runtime state under ~/.codex, share the checked-in
-  # guidance and skills with Claude, and leave independently installed skills
-  # under ~/.agents/skills intact.
+  # Codex config — keep runtime state under ~/.codex and share the checked-in
+  # guidance and canonical skills with Claude.
   mkdir -p "$HOME/.codex"
   link_file "$DOTFILES_ROOT/codex/config/config.toml" "$HOME/.codex/config.toml"
   link_file "$DOTFILES_ROOT/codex/config/AGENTS.md" "$HOME/.codex/AGENTS.md"
@@ -263,8 +264,7 @@ install_larger_paths () {
   link_file "$DOTFILES_ROOT/codex/config/agents" "$HOME/.codex/agents"
   link_file "$DOTFILES_ROOT/claude/config/agents" "$HOME/.codex/agent-instructions"
 
-  # Codex and pi both discover this standard user-level location directly.
-  link_skill_root "$DOTFILES_ROOT/.agents/skills" "$HOME/.agents/skills"
+  # Codex and Pi discover the shared ~/.agents/skills directory linked above.
 
   # Agent-specific skills are escape hatches, not parallel copies of the
   # shared catalog. Keep them in each agent's own discovery directory.

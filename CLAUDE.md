@@ -21,7 +21,7 @@ macos/bettertouchtool/export  # Export BTT presets after changing them in BTT
 macos/bettertouchtool/import  # Restore BTT presets on a new machine
 ```
 
-There are no tests or linting. Changes are validated by running `script/bootstrap` or sourcing the shell.
+There is no single test suite. Validate shell changes by sourcing the shell or running bootstrap. Run `python3 script/test-migrate-agent-skills.py` for the shared-skills migration.
 
 ## Loading Conventions
 
@@ -47,6 +47,8 @@ Other conventions:
 - `$PROJECTS` is `~/dev` — the `c` function tab-completes into project dirs there
 - Git author config lives in `git/gitconfig.local.symlink` (created by bootstrap, gitignored)
 - jj user config lives in `~/.config/jj/conf.d/local.toml` (created by bootstrap from template)
+- Shared skills live in `.agents/skills/`. Bootstrap links the whole `~/.agents/skills` directory to it, so `npx skills add <source> -g` writes into the repo. The global `.skill-lock.json` is linked into `.agents/` too.
+- `script/migrate-agent-skills` merges existing global installs without overwriting repo skills, backs up the originals under `~/.agents/`, and creates relative links. Differing repo skills keep their local versions and are excluded from imported upstream update records.
 - Claude Code config files are symlinked individually (not the whole `~/.claude/` dir) to preserve session data
 - pi coding agent config files are symlinked individually (not the whole `~/.pi/agent/` dir) to preserve sessions, caches, and installed packages — see `pi/config/`
 - pi extensions live in `pi/config/extensions/` and are symlinked per-extension into `~/.pi/agent/extensions/`. `code-intel` exposes vera/codegraph/ast-grep as pi tools and can enforce structural-first routing; `lsp` is a direct LSP client (pi has no MCP, so MCP-based tools like serena are unusable). Both are loaded automatically — see `pi/README.md`
