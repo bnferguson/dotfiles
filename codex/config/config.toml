@@ -67,6 +67,9 @@ trust_level = "trusted"
 [projects."/home/bnferguson/dev/soffi-main"]
 trust_level = "trusted"
 
+[projects."/Users/bnferguson/dev/ai-video-studio"]
+trust_level = "trusted"
+
 [hooks.state]
 
 [hooks.state."/home/bnferguson/.codex/hooks.json:pre_tool_use:0:0"]

@@ -1,7 +1,7 @@
 {
-  "lastChangelogVersion": "0.85.1",
-  "defaultProvider": "lmstudio",
-  "defaultModel": "qwen/qwen3.8-27b",
+  "lastChangelogVersion": "1.1.0",
+  "defaultProvider": "openai-codex",
+  "defaultModel": "gpt-6.1-sol",
   "subagents": {
     "agentOverrides": {
       "context-builder": {
@@ -27,11 +27,16 @@
   "packages": [
     "npm:pi-claude-cli",
     "npm:pi-lmstudio",
-    "npm:pi-web-access"
+    "npm:pi-web-access",
+    "npm:@tintinweb/pi-subagents",
+    "npm:pi-powerline-footer",
+    "npm:pi-lens",
+    "npm:@nateberkopec/pi-meridian@0.1.0-beta.1",
+    "git:github.com/nateberkopec/pi-openai-guidance"
   ],
   "skills": [
     "~/.claude/skills"
   ],
   "theme": "dark",
-  "defaultThinkingLevel": "high"
+  "defaultThinkingLevel": "medium"
 }

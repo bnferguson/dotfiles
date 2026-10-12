@@ -22,6 +22,8 @@ pnpm = "12"
 "npm:typescript" = "7"
 "npm:pyright" = "latest"
 hadolint = "2.15.1"
+# Loopback Claude endpoint used by the Pi Meridian provider.
+"npm:@rynfar/meridian" = "1.66.0"
 
 # Pi uses its managed installer. It owns its releases so `pi update` works.
 # See pi/install.sh. Do not add Pi to this mise configuration.
