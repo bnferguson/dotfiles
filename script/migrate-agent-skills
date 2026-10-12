@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Merge global skills without overwriting repo skills, then link the shared root."""
+import argparse
+from datetime import datetime, timezone
+import json
+import os
+from pathlib import Path
+import shutil
+
+
+def same_tree(left, right):
+    def entries(root):
+        result = {}
+        for path in root.rglob("*"):
+            name = str(path.relative_to(root))
+            if path.is_symlink():
+                result[name] = ("link", os.readlink(path))
+            elif path.is_file():
+                result[name] = ("file", path.read_bytes())
+        return result
+    return entries(left) == entries(right)
+
+
+def backup(path):
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+    destination = path.with_name(f"{path.name}.backup-{stamp}")
+    path.rename(destination)
+    print(f"  Backed up {path} to {destination}")
+    return destination
+
+
+def link(source, destination):
+    if destination.is_symlink() and destination.resolve() == source.resolve():
+        return
+    if destination.exists() or destination.is_symlink():
+        backup(destination)
+    destination.symlink_to(os.path.relpath(source, destination.parent))
+    print(f"  Linked {destination} to {source}")
+
+
+def read_lock(path):
+    if not path.exists():
+        return {"version": 3, "skills": {}}
+    value = json.loads(path.read_text())
+    if value.get("version") != 3 or not isinstance(value.get("skills"), dict):
+        raise ValueError(f"Unsupported skills lock file: {path}")
+    return value
+
+
+def migrate(root, home):
+    root, home = root.resolve(), home.resolve()
+    shared = root / ".agents" / "skills"
+    global_root = home / ".agents" / "skills"
+    repo_lock = root / ".agents" / ".skill-lock.json"
+    global_lock = home / ".agents" / ".skill-lock.json"
+    # Validate both locks before changing files. Existing repo records win.
+    local_metadata = read_lock(repo_lock)
+    global_metadata = read_lock(global_lock)
+    shared.mkdir(parents=True, exist_ok=True)
+    global_root.parent.mkdir(parents=True, exist_ok=True)
+    preserved = set()
+    imported = []
+
+    if global_root.resolve() != shared.resolve() and global_root.is_dir():
+        for source in sorted(global_root.iterdir()):
+            destination = shared / source.name
+            if destination.exists() or destination.is_symlink():
+                if source.resolve() == destination.resolve():
+                    continue
+                if source.is_dir() and destination.is_dir() and same_tree(source, destination):
+                    continue
+                preserved.add(source.name)
+                print(f"  Preserved repo version of {source.name}; global copy stays in backup")
+                continue
+            if source.is_symlink():
+                # Keep OS-provided skills as links, even when unavailable on this OS.
+                target = Path(os.path.abspath(source.parent / os.readlink(source)))
+                destination.symlink_to(os.path.relpath(target, destination.parent))
+            elif source.is_dir():
+                shutil.copytree(source, destination, symlinks=True)
+            else:
+                shutil.copy2(source, destination)
+            imported.append(source.name)
+            print(f"  Imported {source.name}")
+
+    # Do not claim an upstream hash for a local override. Explicit 'skills add'
+    # can replace it later, but 'skills update' should leave overrides alone.
+    for name, record in global_metadata["skills"].items():
+        if name not in preserved:
+            local_metadata["skills"].setdefault(name, record)
+    for key, value in global_metadata.items():
+        if key not in ("version", "skills"):
+            local_metadata.setdefault(key, value)
+    content = json.dumps(local_metadata, indent=2) + "\n"
+    if not repo_lock.exists() or repo_lock.read_text() != content:
+        repo_lock.write_text(content)
+    # Moving the whole directory preserves originals and legacy per-skill links.
+    link(shared, global_root)
+    link(repo_lock, global_lock)
+    print(f"  Shared skills ready: {len(imported)} imported, {len(preserved)} repo versions preserved")
+    return imported, preserved
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
+    parser.add_argument("--home", type=Path, default=Path.home())
+    args = parser.parse_args()
+    migrate(args.root.resolve(), args.home.resolve())
