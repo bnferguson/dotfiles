@@ -253,8 +253,11 @@ symbol, `ast_rewrite` only knows which ones look alike.
 
 ## Install
 
-`pi/install.sh` (run by `script/install` and `dots`) installs the extension's
-npm dependency and reports which language servers are visible. The `mise` topic
-installs the shared headless language-server baseline, and the `rust` topic
-installs `rust-analyzer`. `node_modules/` here is a per-machine artifact and is
-gitignored.
+`pi/install.sh` (run by `script/install` and `dots`) installs Pi with its
+managed installer. This installation supports `pi update`. Pi must not be a
+mise-managed tool.
+
+The script also installs the extension npm dependency and reports visible
+language servers. The `mise` topic installs the shared headless language-server
+baseline. The `rust` topic installs `rust-analyzer`. `node_modules/` is a
+per-machine artifact and is gitignored.
