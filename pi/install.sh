@@ -15,23 +15,27 @@ EXT_DIR="$DOTFILES_ROOT/pi/config/extensions"
 PI_MANAGED_BIN="$HOME/.pi/agent/bin/pi"
 MISE_DATA_DIR="${MISE_DATA_DIR:-$HOME/.local/share/mise}"
 
-# Pi's managed installation keeps immutable releases under ~/.pi/agent and
-# lets `pi update` switch between them. Mise's release bundle cannot update
-# itself, so remove any old mise releases before the first managed install.
+# Recognize the old auto-installing mise wrapper, but leave unknown launchers alone.
+legacy_pi_wrapper=""
+if [ -f "$HOME/.local/bin/pi" ] && [ ! -L "$HOME/.local/bin/pi" ] &&
+   grep -Fq 'exec mise x "pi" -- "pi" "$@"' "$HOME/.local/bin/pi"; then
+  legacy_pi_wrapper="$HOME/.local/bin/pi"
+fi
+
+# Skip the interactive upstream installer when managed Pi already works.
+# Install first: deleting mise releases could break an active Pi session or
+# leave the machine without Pi if the download fails.
 if [ -x "$PI_MANAGED_BIN" ] && "$PI_MANAGED_BIN" --version >/dev/null 2>&1; then
   echo "  Pi managed install is available"
 else
-  if command -v mise >/dev/null 2>&1 && [ -d "$MISE_DATA_DIR/installs/pi" ]; then
-    echo "  Migrating Pi from mise to Pi's managed installer..."
-    mise uninstall --all --yes pi
-  else
-    echo "  Installing Pi with Pi's managed installer..."
-  fi
+  echo "  Installing Pi with Pi's managed installer..."
 
-  # Hide mise's direct Pi paths and universal shim. The upstream installer
-  # refuses to replace another package manager's Pi executable.
-  pi_install_path=$(printf '%s' "$PATH" | awk -v RS=: -v ORS=: -v mise_data_dir="$MISE_DATA_DIR" '
-    $0 != "" && $0 != mise_data_dir "/shims" && index($0, mise_data_dir "/installs/pi/") != 1 { print }
+  # Hide mise's direct Pi paths, universal shim, and known legacy wrapper.
+  # The upstream installer refuses to replace another installer's executable.
+  pi_install_path=$(printf '%s' "$PATH" | awk -v RS=: -v ORS=: -v mise_data_dir="$MISE_DATA_DIR" \
+      -v wrapper_dir="${legacy_pi_wrapper%/*}" '
+    $0 != "" && $0 != wrapper_dir && $0 != mise_data_dir "/shims" &&
+      index($0, mise_data_dir "/installs/pi/") != 1 { print }
   ')
   pi_install_path="$HOME/.pi/agent/bin:${pi_install_path%:}"
 
@@ -44,6 +48,21 @@ else
   fi
   rm -f "$pi_installer"
   [ "$pi_install_status" -eq 0 ] || exit "$pi_install_status"
+fi
+
+# Only retire mise's request and wrapper after the managed launcher is verified.
+[ -x "$PI_MANAGED_BIN" ] && "$PI_MANAGED_BIN" --version >/dev/null 2>&1 || exit 1
+if command -v mise >/dev/null 2>&1; then
+  mise unuse --global --no-prune pi || exit 1
+fi
+if [ -n "$legacy_pi_wrapper" ]; then
+  pi_wrapper_backup="$legacy_pi_wrapper.mise-backup.$(date +%s).$$"
+  mv "$legacy_pi_wrapper" "$pi_wrapper_backup" || exit 1
+  ln -s ../../.pi/agent/bin/pi "$legacy_pi_wrapper" || {
+    mv "$pi_wrapper_backup" "$legacy_pi_wrapper"
+    exit 1
+  }
+  echo "  Replaced legacy Pi wrapper (backup: $pi_wrapper_backup)"
 fi
 
 if [ ! -f "$EXT_DIR/package.json" ]; then
