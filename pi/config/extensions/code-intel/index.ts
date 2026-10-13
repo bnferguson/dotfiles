@@ -765,7 +765,10 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 					if (MODES.includes(m as Mode)) return m as Mode;
 				}
 			}
-		} catch {}
+		} catch {
+			// Unavailable session history falls back to index-based mode detection.
+			return undefined;
+		}
 		return undefined;
 	}
 
@@ -849,8 +852,10 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 		};
 	}
 
-	// Text search via the dedicated tools.
+	// Route direct model searches, not nested calls from codemode/tool scripts.
+	// Interrupting a nested call aborts the script and can discard useful work.
 	pi.on("tool_call", async (event, ctx) => {
+		if (event.parentToolCallId) return;
 		if (mode === "off") return;
 
 		// Strict mode removes grep/find from the tool set, but bash can still run
