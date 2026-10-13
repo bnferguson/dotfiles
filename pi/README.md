@@ -62,12 +62,17 @@ stop the query, and `/code-intel-sync` reports failures instead of claiming
 success. Writers never retry automatically, and the extension never removes
 locks or starts a cold build without confirmation.
 
-CodeGraph and Vera sync on their first call and after local edits, including
-staged changes. A changed Git HEAD forces a sync, even during the debounce
-window. This covers clean commits and branch switches. Graphify uses the
-cost-based policy below. A long-running external build can still
-leave an index unavailable. In that case, tools suggest LSP or direct file
-reads instead of treating an empty index as an empty result.
+TUI sessions update existing indexes in the background at startup and after
+workspace changes. Pi edits queue an update after two seconds without another
+edit. External edits and Git HEAD changes are detected by the 30-second poll.
+Background updates wait at least five seconds after the previous successful
+sync. Repeated polls of an unchanged workspace do not repeat the update.
+
+Queries still sync before they run and share active background writers.
+Headless sessions use query-time sync only. Graphify keeps the cost limit below.
+Missing indexes and repairs still require confirmation. A failed background
+update is attempted once per workspace fingerprint. Use `/code-intel-sync` to
+retry after correcting the error.
 
 Measured on a 6,000-file / 49k-chunk monorepo:
 
@@ -89,10 +94,10 @@ re-extracts the whole corpus, so cost tracks repo size rather than the size of
 the change. A no-op costs the same as a full rebuild. Measured at ~0.8 s/MB of
 `graph.json`, consistently across a 12x size range.
 
-So it auto-syncs *adaptively*: before a `gf_*` call the extension estimates the
-rebuild cost from graph size (replacing the estimate with a real measurement
-once it has one) and syncs silently only if it lands under 8s. Otherwise it
-leaves the graph alone and reports the drift. On these repos that works out to:
+Graphify uses the same cost limit for background updates and `gf_*` calls.
+The extension estimates rebuild cost from graph size, then uses measured cost
+after a completed rebuild. Automatic rebuilds run only when the cost is at most
+8 seconds. Larger graphs remain manual and report drift. On these repos:
 
 | repo | graph | estimate | actual | behaviour |
 |---|---|---|---|---|
@@ -150,15 +155,19 @@ idx CG✓ V↻ GF~
 - `✓` ready; `↻` updating; `~` stale or reindex recommended.
 - `!` needs repair; `∅` no index; `×` backend unavailable.
 - `?` unchecked. Vera statistics do not verify its vector format. A successful
-  search, or the helper's verified init/repair, removes this mark.
+  search, or the helper's verified init/repair, removes this mark. Background
+  updates run a small verification search, so Vera can become ready without
+  an agent query.
 
 `/code-intel status` refreshes read-only checks. It shows each backend's state,
 last success, last failure, repair action, and available helper log path.
 The footer uses cached state; rendering never starts a process.
 TUI sessions check health every 30 seconds and notice Pi edits immediately.
-Checks never start index writers, rebuilds, or model calls. They stop on shutdown.
+The checks are read-only. A separate debounced queue updates healthy, existing
+indexes in the background without model calls. Shutdown cancels queued updates
+and waits for active writers and verification searches. It never kills a writer.
 Graphify checks its build commit against HEAD, including on the first check.
-No new daemon is installed; existing watchers, hooks, and query-time sync remain.
+No new daemon is installed. Existing watchers, hooks, and query-time sync remain.
 
 `/code-intel history` summarizes the last seven days of extension-observed activity.
 Records are shared across sessions in the same physical worktree:

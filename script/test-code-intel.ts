@@ -363,11 +363,212 @@ test("queries and shutdown wait for a confirmed repair", async () => {
 	expect(closed).toBe(true);
 });
 
+async function drainBackground() {
+	for (let i = 0; i < 200; i++) await Promise.resolve();
+}
+
+// Time is a system boundary: drive idle callbacks without real waits or indexes.
+function backgroundClock() {
+	let now = Date.now();
+	const timers = new Map<object, { at: number; callback: () => void }>();
+	let poll = () => {};
+	const date = spyOn(Date, "now").mockImplementation(() => now);
+	const timeout = spyOn(globalThis, "setTimeout").mockImplementation(((callback: any, ms?: number) => {
+		const handle = { unref() {} };
+		timers.set(handle, { at: now + (ms ?? 0), callback });
+		return handle as any;
+	}) as typeof setTimeout);
+	const clear = spyOn(globalThis, "clearTimeout").mockImplementation((handle: any) => { timers.delete(handle); });
+	const interval = spyOn(globalThis, "setInterval").mockImplementation((callback: any) => {
+		poll = callback; return { unref() {} } as any;
+	});
+	const clearInterval = spyOn(globalThis, "clearInterval").mockImplementation(() => {});
+	return {
+		async poll() { poll(); await drainBackground(); },
+		async advance(ms: number) {
+			const end = now + ms;
+			for (;;) {
+				const next = [...timers].sort((a, b) => a[1].at - b[1].at)[0];
+				if (!next || next[1].at > end) break;
+				now = next[1].at;
+				timers.delete(next[0]);
+				next[1].callback();
+				await drainBackground();
+			}
+			now = end;
+			await drainBackground();
+		},
+		restore() { date.mockRestore(); timeout.mockRestore(); clear.mockRestore(); interval.mockRestore(); clearInterval.mockRestore(); },
+	};
+}
+
 function liveContext() {
 	const c = commandContext();
 	const published = new Map<string, string | undefined>();
 	return { ...c, published, ctx: { ...c.ctx, mode: "tui", ui: { ...c.ctx.ui, setStatus: (key: string, value: string | undefined) => published.set(key, value) } } };
 }
+
+test("idle sessions update existing indexes and verify Vera without a query", async () => {
+	const clock = backgroundClock();
+	const h = harness();
+	const c = liveContext();
+	try {
+		await h.events.get("session_start")({ reason: "startup" }, c.ctx);
+		expect(h.calls.some(call => ["sync", "update"].includes(call.args[0]))).toBe(false);
+		await clock.advance(6000);
+		expect(h.calls.filter(call => call.bin === "codegraph" && call.args[0] === "sync")).toHaveLength(1);
+		expect(h.calls.filter(call => call.bin === "vera" && call.args[0] === "update")).toHaveLength(1);
+		expect(c.published.get("code-intel-indexes")).toContain("CG✓ V✓");
+	} finally { await h.events.get("session_shutdown")(); clock.restore(); }
+});
+
+test("rapid same-status edits coalesce and unchanged polls do not repeat updates", async () => {
+	const clock = backgroundClock();
+	let dirty = false;
+	const file = join(cwd, "background-edits.ts");
+	const h = harness(false, async call => call.bin === "git" && call.args.includes("--porcelain")
+		? { code: 0, stdout: dirty ? " M background-edits.ts\0" : "", stderr: "" } : undefined);
+	const c = liveContext();
+	try {
+		await h.events.get("session_start")({ reason: "startup" }, c.ctx);
+		await clock.advance(6000);
+		dirty = true;
+		for (let i = 1; i <= 3; i++) {
+			writeFileSync(file, `edit ${i}`); utimesSync(file, i * 100, i * 100);
+			await h.events.get("tool_result")({ toolName: "edit", input: {}, isError: false }, c.ctx);
+			if (i < 3) await clock.advance(1000);
+		}
+		await clock.advance(1999);
+		expect(h.calls.filter(call => call.bin === "vera" && call.args[0] === "update")).toHaveLength(1);
+		await clock.advance(1);
+		expect(h.calls.filter(call => call.bin === "vera" && call.args[0] === "update")).toHaveLength(2);
+		expect(c.published.get("code-intel-indexes")).toContain("CG✓ V✓");
+		await clock.poll(); await clock.advance(6000);
+		expect(h.calls.filter(call => call.bin === "vera" && call.args[0] === "update")).toHaveLength(2);
+	} finally { await h.events.get("session_shutdown")(); clock.restore(); rmSync(file, { force: true }); }
+});
+
+test("edits during a background update get a follow-up update without another query", async () => {
+	const clock = backgroundClock();
+	let dirty = false;
+	let updates = 0;
+	let release!: (result: ExecResult) => void;
+	const pending = new Promise<ExecResult>(resolve => { release = resolve; });
+	const file = join(cwd, "during-update.ts");
+	const h = harness(false, async call => {
+		if (call.bin === "git" && call.args.includes("--porcelain")) return { code: 0, stdout: dirty ? " M during-update.ts\0" : "", stderr: "" };
+		if (call.bin === "vera" && call.args[0] === "update" && updates++ === 0) return pending;
+	});
+	const c = liveContext();
+	try {
+		await h.events.get("session_start")({ reason: "startup" }, c.ctx);
+		await clock.advance(6000);
+		dirty = true;
+		writeFileSync(file, "edited while indexing");
+		await h.events.get("tool_result")({ toolName: "edit", input: {}, isError: false }, c.ctx);
+		release({ code: 0, stdout: "", stderr: "" });
+		await drainBackground();
+		await clock.advance(6000);
+		expect(updates).toBe(2);
+		expect(c.published.get("code-intel-indexes")).toContain("CG✓ V✓");
+	} finally { release({ code: 0, stdout: "", stderr: "" }); await h.events.get("session_shutdown")(); clock.restore(); rmSync(file, { force: true }); }
+});
+
+test("background failures do not retry the same workspace or silently repair it", async () => {
+	const clock = backgroundClock();
+	const h = harness(false, async call => call.bin === "vera" && call.args[0] === "update"
+		? { code: 1, stdout: "", stderr: "Index format version mismatch" } : undefined);
+	const c = liveContext();
+	try {
+		await h.events.get("session_start")({ reason: "startup" }, c.ctx);
+		await clock.advance(6000);
+		expect(c.published.get("code-intel-indexes")).toContain("V!");
+		await clock.poll(); await clock.advance(6000);
+		expect(h.calls.filter(call => call.bin === "vera" && call.args[0] === "update")).toHaveLength(1);
+		expect(h.calls.some(call => ["init", "repair", "index"].includes(call.args[0]))).toBe(false);
+	} finally { await h.events.get("session_shutdown")(); clock.restore(); }
+});
+
+test("expensive Graphify rebuilds stay manual while incremental indexes update", async () => {
+	const clock = backgroundClock();
+	const path = join(cwd, "graphify-out", "graph.json");
+	const original = existsSync(path) ? readFileSync(path) : undefined;
+	mkdirSync(join(cwd, "graphify-out"), { recursive: true });
+	writeFileSync(path, JSON.stringify({ nodes: [], padding: "x".repeat(10_000_000) }));
+	const h = harness(false, async call => call.bin === "graphify" && call.args[0] === "god-nodes"
+		? { code: 0, stdout: JSON.stringify([{ label: "hub" }]), stderr: "" } : undefined);
+	const c = liveContext();
+	try {
+		await h.events.get("session_start")({ reason: "startup" }, c.ctx);
+		await clock.advance(6000);
+		expect(h.calls.some(call => call.bin === "graphify" && call.args[0] === "update")).toBe(false);
+		expect(h.calls.some(call => call.bin === "vera" && call.args[0] === "update")).toBe(true);
+	} finally {
+		await h.events.get("session_shutdown")(); clock.restore();
+		if (original) writeFileSync(path, original); else rmSync(path, { force: true });
+	}
+});
+
+test("small Graphify indexes share the background update path without semantic extraction", async () => {
+	const clock = backgroundClock();
+	const path = join(cwd, "graphify-out", "graph.json");
+	const original = existsSync(path) ? readFileSync(path) : undefined;
+	mkdirSync(join(cwd, "graphify-out"), { recursive: true });
+	writeFileSync(path, JSON.stringify({ nodes: [{ label: "hub" }] }));
+	const h = harness(false, async call => call.bin === "graphify" && call.args[0] === "god-nodes"
+		? { code: 0, stdout: JSON.stringify([{ label: "hub" }]), stderr: "" } : undefined);
+	const c = liveContext();
+	try {
+		await h.events.get("session_start")({ reason: "startup" }, c.ctx);
+		await clock.advance(6000);
+		expect(h.calls.filter(call => call.bin === "graphify" && call.args[0] === "update")).toHaveLength(1);
+		expect(h.calls.some(call => call.args.includes("--semantic"))).toBe(false);
+	} finally {
+		await h.events.get("session_shutdown")(); clock.restore();
+		if (original) writeFileSync(path, original); else rmSync(path, { force: true });
+	}
+});
+
+test("unavailable or incomplete indexes are not automatically built or repaired", async () => {
+	const clock = backgroundClock();
+	const h = harness(false, async call => {
+		if (call.bin === "codegraph" && call.args[0] === "status") return { code: 0, stdout: JSON.stringify({ initialized: false }), stderr: "" };
+		if (call.bin === "vera" && call.args[0] === "--json") return { code: 1, stdout: "", stderr: "index is incomplete" };
+	});
+	const c = liveContext();
+	try {
+		await h.events.get("session_start")({ reason: "startup" }, c.ctx);
+		await clock.advance(6000);
+		await clock.poll(); await clock.advance(6000);
+		expect(h.calls.some(call => ["sync", "update", "init", "repair", "index"].includes(call.args[0]))).toBe(false);
+		expect(c.published.get("code-intel-indexes")).toContain("CG× V!");
+	} finally { await h.events.get("session_shutdown")(); clock.restore(); }
+});
+
+test("headless sessions keep query-time updates without background timers", async () => {
+	const clock = backgroundClock();
+	const h = harness();
+	const c = liveContext();
+	try {
+		await h.events.get("session_start")({ reason: "startup" }, { ...c.ctx, hasUI: false, mode: "print" });
+		await clock.advance(6000);
+		expect(h.calls).toHaveLength(0);
+		await h.execute("vera_search", { query: "updates" });
+		expect(h.calls.filter(call => call.bin === "vera" && call.args[0] === "update")).toHaveLength(1);
+	} finally { await h.events.get("session_shutdown")(); clock.restore(); }
+});
+
+test("shutdown cancels queued updates before any writer starts", async () => {
+	const clock = backgroundClock();
+	const h = harness();
+	const c = liveContext();
+	try {
+		await h.events.get("session_start")({ reason: "startup" }, c.ctx);
+		await h.events.get("session_shutdown")();
+		await clock.advance(6000);
+		expect(h.calls.some(call => ["sync", "update", "index"].includes(call.args[0]))).toBe(false);
+	} finally { await h.events.get("session_shutdown")(); clock.restore(); }
+});
 
 test("footer starts read-only, distinguishes unchecked Vera, and mode rendering uses cached health", async () => {
 	const h = harness();
@@ -467,7 +668,58 @@ test("helper failure keeps its log and last failure visible even when a later re
 	} finally { await h.events.get("session_shutdown")(); }
 });
 
-test("periodic health catches a clean HEAD switch without indexing, and stops on shutdown", async () => {
+test("queries share a background writer and shutdown waits without interrupting it", async () => {
+	const clock = backgroundClock();
+	let release!: (result: ExecResult) => void;
+	const pending = new Promise<ExecResult>(resolve => { release = resolve; });
+	const h = harness(false, async call => call.bin === "vera" && call.args[0] === "update" ? pending : undefined);
+	const c = liveContext();
+	try {
+		await h.events.get("session_start")({ reason: "startup" }, c.ctx);
+		await clock.advance(6000);
+		expect(c.published.get("code-intel-indexes")).toContain("V↻");
+		const query = h.execute("vera_search", { query: "latest edits" });
+		await drainBackground();
+		expect(h.calls.some(call => call.bin === "vera" && call.args[0] === "search")).toBe(false);
+		let closed = false;
+		const shutdown = h.events.get("session_shutdown")().then(() => { closed = true; });
+		await drainBackground();
+		expect(closed).toBe(false);
+		release({ code: 0, stdout: "", stderr: "" });
+		await Promise.all([query, shutdown]);
+		expect(closed).toBe(true);
+		const updates = h.calls.filter(call => call.bin === "vera" && call.args[0] === "update");
+		expect(updates).toHaveLength(1);
+		expect(updates[0].options.signal).toBeUndefined();
+		expect(updates[0].options.timeout).toBeUndefined();
+	} finally { release({ code: 0, stdout: "", stderr: "" }); await h.events.get("session_shutdown")(); clock.restore(); }
+});
+
+test("periodic health refreshes a clean HEAD switch without a query and stops on shutdown", async () => {
+	const clock = backgroundClock();
+	let head = "commit-a";
+	const h = harness(false, async call => call.bin === "git" && call.args.includes("rev-parse")
+		? { code: 0, stdout: head, stderr: "" } : undefined);
+	const c = liveContext();
+	try {
+		await h.events.get("session_start")({ reason: "startup" }, c.ctx);
+		await clock.advance(6000);
+		head = "commit-b";
+		await clock.poll();
+		expect(c.published.get("code-intel-indexes")).toContain("CG~");
+		await clock.advance(6000);
+		expect(h.calls.filter(call => call.bin === "vera" && call.args[0] === "update")).toHaveLength(2);
+		expect(h.history.some(e => e.backend === "vera" && e.event === "update" && e.trigger === "head-changed")).toBe(true);
+		expect(c.published.get("code-intel-indexes")).toContain("CG✓ V✓");
+		await h.events.get("session_shutdown")();
+		const count = h.calls.length;
+		await clock.poll(); await clock.advance(6000);
+		expect(h.calls).toHaveLength(count);
+		expect(c.published.get("code-intel-indexes")).toBeUndefined();
+	} finally { await h.events.get("session_shutdown")(); clock.restore(); }
+});
+
+test("periodic health observes HEAD changes immediately before queued updates run", async () => {
 	let tick!: () => void;
 	let head = "commit-a";
 	const interval = spyOn(globalThis, "setInterval").mockImplementation((callback: any) => {
