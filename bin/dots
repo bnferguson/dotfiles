@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 #
 # dot
 #
@@ -40,20 +40,33 @@ done
 
 export ZSH=$HOME/.dotfiles
 
-# Update the dotfiles before running installers so this invocation uses the
-# latest maintenance scripts regardless of the directory it was launched from.
-# --autostash because dots gets run mid-edit often enough to matter: with
-# pull.rebase set, any dirty file — even one the pull doesn't touch — makes git
-# bail before the rest of this script runs. Git restores the stash itself, and
-# puts it back untouched when the pull fails outright.
-echo "› git pull --ff-only --autostash origin"
-git -C "$dotfilesDirectory" pull --ff-only --autostash origin
-
-# Reapplying the autostash can conflict, and git reports that on stdout while
-# still exiting 0. Stop rather than symlink and install from a tree full of
-# conflict markers — git's own message above says how to get the changes back.
+# Never run installers from an unresolved merge (including an old autostash).
 if [ -n "$(git -C "$dotfilesDirectory" ls-files --unmerged)" ]; then
-	echo "! Restoring your local changes hit a conflict; skipping the rest of dots." >&2
+	echo "! Resolve the existing Git conflicts before running dots." >&2
+	exit 1
+fi
+
+# Update before running installers, regardless of the caller's directory.
+# Only update main; leave feature branches and detached worktrees untouched.
+branch="$(git -C "$dotfilesDirectory" symbolic-ref --quiet --short HEAD || true)"
+case "$branch" in
+	main)
+		# A fast-forward merge allows unrelated edits even with pull.rebase set.
+		# Never stash: overlapping edits block the update without changing them.
+		# Explicit flags also override configured merge/rebase autostashing.
+		echo "› git pull --no-rebase --ff-only --no-autostash origin main"
+		if ! git -C "$dotfilesDirectory" pull --no-rebase --ff-only --no-autostash origin main; then
+			echo "! Repository update failed; continuing maintenance with current dotfiles." >&2
+		fi
+		;;
+	*)
+		echo "! Not on main; skipping repository update and continuing maintenance." >&2
+		;;
+esac
+
+# Retain the safety check if an updater leaves unmerged files behind.
+if [ -n "$(git -C "$dotfilesDirectory" ls-files --unmerged)" ]; then
+	echo "! Repository has unresolved conflicts; skipping the rest of dots." >&2
 	exit 1
 fi
 

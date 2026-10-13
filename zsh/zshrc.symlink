@@ -72,6 +72,3 @@ bindkey "^[[B" down-line-or-beginning-search # Down
 # >>> Codex installer >>>
 export PATH="/home/bnferguson/.local/bin:$PATH"
 # <<< Codex installer <<<
-
-# Added by GitButler installer
-eval "$(but completions zsh)"
