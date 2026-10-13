@@ -1,0 +1,14 @@
+#!/bin/sh
+# Starship custom section: GitButler workspace summary, otherwise native Git modules.
+branch=$(git symbolic-ref --quiet --short HEAD 2>/dev/null) || branch=
+case "$branch" in
+  gitbutler/workspace|gitbutler/integration)
+    # Python 3.11+ parses the local TOML; no GitButler CLI or history traversal.
+    python3 "$(dirname "$0")/prompt-gitbutler.py" 2>/dev/null && exit 0
+    printf '🤵 workspace · unavailable\n'
+    ;;
+  *)
+    output=$(starship module git_branch; starship module git_status)
+    printf '%s' "${output% }"
+    ;;
+esac
