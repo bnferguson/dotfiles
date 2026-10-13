@@ -12,16 +12,18 @@ if ! command -v gh >/dev/null 2>&1; then
   exit 0
 fi
 
-installed="$(gh extension list 2>/dev/null)"
+installed="$(gh extension list)" || exit $?
+failures=0
 
 for repo in github/gh-stack drogers0/gh-image; do
   name="${repo#*/}"
 
   # `extension list` names the repo, not the command, so match on that.
   if echo "$installed" | grep -q "$repo"; then
-    gh extension upgrade "$name" 2>/dev/null || true
+    gh extension upgrade "$name" || failures=$((failures + 1))
   else
     echo "  Installing $name extension..."
-    gh extension install "$repo" || true
+    gh extension install "$repo" || failures=$((failures + 1))
   fi
 done
+[ "$failures" -eq 0 ]

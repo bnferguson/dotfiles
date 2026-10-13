@@ -14,14 +14,29 @@
 # Note: vera's setup wizard needs a TTY; the backend step below is guarded so a
 # non-interactive `dots` run won't abort. It works during `script/bootstrap`.
 
+failures=0
+run() {
+  "$@"
+  status=$?
+  if [ "$status" -ne 0 ]; then
+    echo "  Failed: $* (exit=$status)" >&2
+    failures=$((failures + 1))
+  fi
+}
+
 # --- vera: semantic search (LOCATE) ---------------------------------------
 if command -v uvx >/dev/null 2>&1; then
   if ! command -v vera >/dev/null 2>&1; then
-    echo "  Installing vera..."
-    uvx vera-ai install || true
+    if [ "${DOTFILES_UNATTENDED:-0}" = 1 ]; then
+      echo "  Vera needs initial setup — run code-intel/install.sh interactively." >&2
+      failures=$((failures + 1))
+    else
+      echo "  Installing vera..."
+      run uvx vera-ai install
+    fi
   else
     echo "  vera present — checking for updates..."
-    vera upgrade --apply 2>/dev/null || true
+    run vera upgrade --apply
   fi
   # Potion Code static embeddings everywhere, skipping the interactive wizard.
   # Don't "upgrade" this to an ONNX/Jina backend without measuring first. The
@@ -34,7 +49,9 @@ if command -v uvx >/dev/null 2>&1; then
   # Only worth revisiting on a box with a real NVIDIA GPU, where --onnx-jina-cuda
   # does have kernels for those ops.
   # (Skip vera's agent-install step — the vera skill ships with these dotfiles.)
-  vera backend --potion-code --yes 2>/dev/null || true
+  if command -v vera >/dev/null 2>&1; then
+    run vera backend --potion-code --yes
+  fi
 else
   echo "  Skipping vera — uv not found"
 fi
@@ -45,18 +62,8 @@ fi
 # project pinning a different node version ("No version is set for shim"), and
 # it needs node present at all (not guaranteed on Linux). The launcher resolves
 # symlinks, so a ~/.local/bin symlink into the bundle is the supported install.
-if ! command -v codegraph >/dev/null 2>&1; then
-  echo "  Installing codegraph (standalone)..."
-  cg_os=$(uname -s | tr '[:upper:]' '[:lower:]')
-  cg_arch=$(uname -m); case "$cg_arch" in x86_64|amd64) cg_arch=x64;; aarch64) cg_arch=arm64;; esac
-  cg_dir="codegraph-${cg_os}-${cg_arch}"
-  cg_url="https://github.com/colbymchenry/codegraph/releases/latest/download/${cg_dir}.tar.gz"
-  mkdir -p "$HOME/.local/lib" "$HOME/.local/bin"
-  if curl -fsSL "$cg_url" | tar -xz -C "$HOME/.local/lib"; then
-    ln -sf "$HOME/.local/lib/$cg_dir/bin/codegraph" "$HOME/.local/bin/codegraph"
-  else
-    echo "  codegraph download failed (${cg_dir}.tar.gz)"
-  fi
+if ! command -v codegraph >/dev/null 2>&1 || [ "${DOTFILES_UPDATE:-0}" = 1 ]; then
+  run sh "$(dirname "$0")/update-codegraph.sh"
 fi
 # Register the MCP server ourselves (user scope, machine-local) rather than
 # `codegraph install`, which would append instructions into the
@@ -64,20 +71,23 @@ fi
 if command -v codegraph >/dev/null 2>&1 && command -v claude >/dev/null 2>&1 \
   && ! claude mcp list 2>/dev/null | grep -qi '^codegraph'; then
   echo "  Registering codegraph MCP server..."
-  claude mcp add -s user codegraph -- codegraph serve --mcp || true
+  run claude mcp add -s user codegraph -- codegraph serve --mcp
 fi
 
 # --- graphify: knowledge graph (COMPREHEND) -------------------------------
 if command -v uv >/dev/null 2>&1; then
   if ! command -v graphify >/dev/null 2>&1; then
     echo "  Installing graphify..."
-    uv tool install graphifyy || true
+    run uv tool install graphifyy
   else
-    uv tool upgrade graphifyy 2>/dev/null || true
+    run uv tool upgrade graphifyy
   fi
   # Native /graphify skill for Claude Code. The generated skill dir is
   # gitignored so it doesn't churn the repo (regenerated per-machine).
-  graphify install >/dev/null 2>&1 || true
+  if command -v graphify >/dev/null 2>&1; then
+    run graphify install
+  fi
 else
   echo "  Skipping graphify — uv not found"
 fi
+[ "$failures" -eq 0 ]

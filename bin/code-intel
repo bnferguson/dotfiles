@@ -2,13 +2,14 @@
 # code-intel — manage the code-intelligence indexes (vera, codegraph, graphify)
 # for the project in the current directory.
 #
-# Usage: code-intel <init|refresh|status>
+# Usage: code-intel <init|refresh|warm|repair|status|watch>
 #
 # Each tool is optional — missing ones are skipped. Run from the repo root.
 # Indexing is worth it on large or unfamiliar repos; on small/familiar code,
 # LSP + grep are faster. Install the tools with the code-intel dotfiles topic.
 
 set -u
+set -o pipefail
 
 have() { command -v "$1" >/dev/null 2>&1; }
 step() { printf '\n\033[1m▸ %s\033[0m\n' "$1"; }
@@ -26,40 +27,67 @@ note() { printf '  %s\n' "$1"; }
 par_dir=""
 par_jobs=""   # space-separated "name:pid"
 
-par_start() { par_dir=$(mktemp -d "${TMPDIR:-/tmp}/code-intel.XXXXXX"); par_jobs=""; }
+par_start() {
+  state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/code-intel"
+  mkdir -p "$state_dir" || return 1
+  par_dir=$(umask 077; mktemp -d "$state_dir/run.XXXXXX") || return 1
+  par_jobs=""
+  (umask 077; printf '%s\n' "$par_dir" > "$state_dir/latest-log") || return 1
+  note "logs: $par_dir"
+}
 
 # par_run <name> <fn> [args...] — run job fn in the background, output logged.
 par_run() {
   _name=$1; _fn=$2; shift 2
-  ( "$_fn" "$@" ) >"$par_dir/$_name.log" 2>&1 &
+  ( umask 077; "$_fn" "$@" >"$par_dir/$_name.log" 2>&1 ) &
   par_jobs="$par_jobs $_name:$!"
 }
 
 # par_wait — wait for every launched job, replaying its log in launch order.
 par_wait() {
+  _aggregate=0
   for _job in $par_jobs; do
-    wait "${_job##*:}"
+    _rc=0
+    wait "${_job##*:}" || _rc=$?
     cat "$par_dir/${_job%%:*}.log"
+    note "${_job%%:*}: exit $_rc (log: $par_dir/${_job%%:*}.log)"
+    (umask 077; printf '%s %s\n' "${_job%%:*}" "$_rc" >> "$par_dir/status")
+    [ "$_rc" -eq 0 ] || _aggregate=1
   done
-  rm -rf "$par_dir"
+  return "$_aggregate"
 }
 
-j_vera_index()  { step "vera — semantic index"; vera index .; }
+verify_vera() {
+  # Stats can succeed even when the stored vector format cannot be read.
+  vera search "code" --limit 1 --json
+}
+verify_codegraph() {
+  codegraph status --json | python3 -c 'import json,sys; s=json.load(sys.stdin); sys.exit(0 if s.get("initialized") is True and s.get("lastIndexed") and "worktreeMismatch" in s and s["worktreeMismatch"] is None else 1)'
+}
+verify_graphify() {
+  graphify god-nodes --json | python3 -c 'import json,sys; s=json.load(sys.stdin); sys.exit(0 if isinstance(s,(dict,list)) else 1)'
+}
+j_vera_index() {
+  step "vera — semantic index"
+  j_vera_repair
+}
 j_vera_update() { step "vera — update"; vera update .; }
 j_codegraph_index() {
   step "codegraph — structural graph"
-  [ -d .codegraph ] || codegraph init
-  codegraph index
+  if [ ! -d .codegraph ]; then codegraph init || return $?; fi
+  codegraph index "$(pwd -P)" || return $?
+  verify_codegraph
 }
 j_codegraph_sync() { step "codegraph — sync"; codegraph sync; }
 j_graphify_init() {
   step "graphify — knowledge graph (code structure)"
-  graphify update . || note "graphify extraction skipped"
-  graphify hook install || true
+  GRAPHIFY_FORCE=0 graphify update . || return $?
+  verify_graphify || return $?
+  graphify hook install || return $?
   note "for the full LLM-enriched graph (docs + the 'why'), run /graphify . inside an agent session"
 }
-j_graphify_refresh() { step "graphify — re-extract code"; graphify update . || note "graphify update skipped"; }
-j_graphify_warm()    { step "graphify — update"; graphify update .; }
+j_graphify_refresh() { step "graphify — re-extract code"; GRAPHIFY_FORCE=0 graphify update .; }
+j_graphify_warm()    { step "graphify — update"; GRAPHIFY_FORCE=0 graphify update .; }
 j_warm_copy() {  # $1 = index dir to seed from $warm_src
   idx=$1
   if [ -d "$warm_src/$idx" ] && [ ! -e "$idx" ]; then
@@ -68,7 +96,7 @@ j_warm_copy() {  # $1 = index dir to seed from $warm_src
 }
 
 ci_init() {
-  par_start
+  par_start || return $?
   if have vera;      then par_run vera j_vera_index;           else skip vera;      fi
   if have codegraph; then par_run codegraph j_codegraph_index; else skip codegraph; fi
   if have graphify;  then par_run graphify j_graphify_init;    else skip graphify;  fi
@@ -76,7 +104,7 @@ ci_init() {
 }
 
 ci_refresh() {
-  par_start
+  par_start || return $?
   if have vera;      then par_run vera j_vera_update;          else skip vera;      fi
   if have codegraph; then par_run codegraph j_codegraph_sync;  else skip codegraph; fi
   if have graphify;  then par_run graphify j_graphify_refresh; else skip graphify;  fi
@@ -102,7 +130,7 @@ ci_warm() {
   # Seed this worktree's indexes from the repo's main worktree, then reconcile.
   # Far cheaper than a cold build: vera detects unchanged files by content, so
   # `vera update` after a copy re-embeds only this branch's diffs (seconds).
-  src=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print $2; exit}')
+  src=$(git worktree list --porcelain 2>/dev/null | awk '/^worktree /{print substr($0,10); exit}')
   here=$(pwd -P)
   if [ -z "$src" ] || [ "$src" = "$here" ]; then
     note "no source worktree to warm from — run: code-intel init"
@@ -110,13 +138,13 @@ ci_warm() {
   fi
   step "warming from $src"
   warm_src=$src
-  par_start
+  par_start || return $?
   par_run vera-copy      j_warm_copy .vera
   par_run codegraph-copy j_warm_copy .codegraph
   par_run graphify-copy  j_warm_copy graphify-out
-  par_wait
+  par_wait || return $?
   # Reconcile against this branch only after the copies have landed.
-  par_start
+  par_start || return $?
   if have vera      && [ -d .vera ];        then par_run vera j_vera_update;         fi
   if have codegraph && [ -d .codegraph ];   then par_run codegraph j_codegraph_sync; fi
   if have graphify  && [ -d graphify-out ]; then par_run graphify j_graphify_warm;   fi
@@ -169,19 +197,19 @@ watch_alive() {
   printf '%s\n' "$_sup"
 }
 
-# watch_reap <pid> — SIGINT is the graceful path. TERM and KILL below are both
-# hard kills for vera, so they are a last resort for a wedged process only.
+# watch_reap <pid> — only interrupt a watcher, never an index/update writer.
+# Wait without escalation: a watcher may be finishing an in-flight update.
 watch_reap() {
+  case "$(ps -o command= -p "$1" 2>/dev/null)" in
+    *vera\ watch|*vera\ watch\ *) ;;
+    *) return 0 ;;
+  esac
   kill -INT "$1" 2>/dev/null || return 0
-  _n=0
-  while [ "$_n" -lt 10 ]; do
-    kill -0 "$1" 2>/dev/null || return 0
+  while kill -0 "$1" 2>/dev/null; do
+    # A dead child can remain a zombie until its supervisor reaps it.
+    case "$(ps -o stat= -p "$1" 2>/dev/null)" in *Z*) break ;; esac
     sleep 1
-    _n=$((_n + 1))
   done
-  kill -TERM "$1" 2>/dev/null
-  sleep 2
-  kill -0 "$1" 2>/dev/null && kill -KILL "$1" 2>/dev/null
   return 0
 }
 
@@ -272,7 +300,7 @@ ci_watch_ensure() {
   [ -d "$root/.vera" ] || return 0
   pf=$(watch_pidfile "$root")
   watch_alive "$pf" "$root" >/dev/null && return 0
-  mkdir -p "$watch_state_dir" || return 0
+  mkdir -p "$watch_state_dir" || return 1
   [ -f "$pf" ] && watch_reap_orphan "$pf"
   rm -f "$pf"
   nohup "$(self_path)" __supervise "$root" >>"$(watch_logfile "$root")" 2>&1 </dev/null &
@@ -323,7 +351,7 @@ ci_watch_stop() {
 }
 
 ci_watch() {
-  mode=fg; all=0
+  mode="fg"; all=0
   while [ $# -gt 0 ]; do
     case $1 in
       --ensure) mode=ensure ;;
@@ -342,6 +370,86 @@ ci_watch() {
   esac
 }
 
+# Unlike the hook's best-effort ensure, repair must confirm watcher startup.
+repair_restore() {
+  repair_rc=$1
+  restore_ok=0
+  if have vera && [ -d "$(watch_root)/.vera" ] && ci_watch_ensure; then
+    restore_n=0
+    while [ "$restore_n" -lt 5 ]; do
+      if watch_alive "$repair_pf" "$repair_root" >/dev/null; then
+        restore_child=$(sed -n 2p "$repair_pf")
+        if [ -n "$restore_child" ] && kill -0 "$restore_child" 2>/dev/null; then
+          restore_ok=1
+          break
+        fi
+      fi
+      sleep 1
+      restore_n=$((restore_n + 1))
+    done
+  fi
+  if [ "$restore_ok" -ne 1 ]; then
+    note "watcher restoration failed for $repair_root"
+    [ "$repair_rc" -ne 0 ] || repair_rc=1
+  fi
+  return "$repair_rc"
+}
+
+# Repair is an explicit, single-backend operation. No locks or indexes are
+# removed, and writers are never put under a timeout.
+j_vera_repair() (
+  repair_root=$(watch_root)
+  repair_pf=$(watch_pidfile "$repair_root")
+  repair_sup=$(watch_alive "$repair_pf" "$repair_root") || repair_sup=""
+  if [ -n "$repair_sup" ]; then
+    # Refuse a stale/reused supervisor PID rather than signal another writer.
+    case "$(ps -o command= -p "$repair_sup" 2>/dev/null)" in
+      *code-intel*__supervise*) ;;
+      *) note "cannot verify watcher supervisor; repair aborted"; return 1 ;;
+    esac
+    ci_watch_stop 0 || return $?
+    # The supervisor removes its record only after its child has stopped.
+    while [ -f "$repair_pf" ]; do
+      if ! kill -0 "$repair_sup" 2>/dev/null; then
+        note "watcher exited without cleanup; repair aborted"
+        return 1
+      fi
+      sleep 1
+    done
+    trap 'repair_restore $?; exit $?' EXIT
+  elif [ -f "$repair_pf" ]; then
+    repair_child=$(sed -n 2p "$repair_pf")
+    if [ -n "$repair_child" ] && kill -0 "$repair_child" 2>/dev/null; then
+      case "$(ps -o command= -p "$repair_child" 2>/dev/null)" in
+        *vera\ watch|*vera\ watch\ *) ;;
+        *) note "cannot verify orphan watcher; repair aborted"; return 1 ;;
+      esac
+      watch_reap_orphan "$repair_pf"
+      rm -f "$repair_pf"
+      trap 'repair_restore $?; exit $?' EXIT
+    fi
+  fi
+  vera index "$(pwd -P)" --potion-code --no-progress || return $?
+  verify_vera
+)
+j_codegraph_repair() {
+  if [ ! -d .codegraph ]; then codegraph init || return $?; fi
+  codegraph index "$(pwd -P)" || return $?
+  verify_codegraph
+}
+j_graphify_repair() {
+  GRAPHIFY_FORCE=0 graphify update "$(pwd -P)" || return $?
+  verify_graphify
+}
+ci_repair() {
+  [ "$#" -eq 1 ] || { note "usage: code-intel repair <vera|codegraph|graphify>"; return 1; }
+  case "$1" in vera|codegraph|graphify) ;; *) note "unknown backend: $1"; return 1 ;; esac
+  have "$1" || { note "repair failed: $1 is not installed"; return 1; }
+  par_start || return $?
+  par_run "$1" "j_${1}_repair"
+  par_wait
+}
+
 show_help() {
   cat << 'EOF'
 Usage: code-intel <command>
@@ -353,6 +461,8 @@ Commands:
   init      Build all three indexes from scratch (+ graphify commit hook)
   refresh   Update all three after edits
   warm      Seed indexes from the main worktree + reconcile (for new worktrees)
+  repair <vera|codegraph|graphify>
+            Explicitly rebuild one backend (preserves locks and semantic graph)
   status    Show index state for each tool
   watch     Keep the vera index fresh as files change (see below)
   help      Show this help
@@ -364,7 +474,8 @@ Watch options:
   watch --stop       Stop this repo's watcher (--all for every repo)
 
 Notes:
-  - Missing tools are skipped; graphify's build needs a model backend.
+  - Missing tools are skipped during init/refresh. Explicit repair fails if
+    its backend is missing. Graphify's code-only build needs no model backend.
   - Never interrupt a running `vera update`/`index`. A killed run leaves its
     content-hash bookkeeping inconsistent and the next update re-embeds
     everything it lost track of (measured: 1692 files / 19.5 min wall / 71 min
@@ -391,6 +502,7 @@ case "${1:-help}" in
   refresh|update)  ci_refresh ;;
   warm)            ci_warm ;;
   status)          ci_status ;;
+  repair)          shift; ci_repair "$@" ;;
   watch)           shift; ci_watch "$@" ;;
   __supervise)     shift; ci_supervise "$@" ;;
   help|-h|--help)  show_help ;;

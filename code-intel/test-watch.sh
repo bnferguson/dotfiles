@@ -3,6 +3,8 @@
 # was stopped. Verifies: idempotent ensure, graceful SIGINT stop, no orphans,
 # pidfile hygiene, and the idle self-reap.
 T=$(mktemp -d "${TMPDIR:-/tmp}/ci-test.XXXXXX")
+# Match the helper's physical path on macOS (/var is a /private/var symlink).
+T=$(cd "$T" && pwd -P)
 mkdir -p "$T/repo/.vera" "$T/bin" "$T/state"
 touch "$T/repo/.vera/metadata.db"; cd "$T/repo" || exit 1
 

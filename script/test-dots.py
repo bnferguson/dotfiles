@@ -59,9 +59,10 @@ class DotsTest(unittest.TestCase):
         self.git("commit", "-m", "upstream", cwd=upstream)
         self.git("push", "origin", "main", cwd=upstream)
 
-    def dots(self, **env):
-        return subprocess.run(["bash", str(self.repo / "bin/dots")], cwd=self.root,
+    def dots(self, *args, **env):
+        return subprocess.run(["bash", str(self.repo / "bin/dots"), *args], cwd=self.root,
                               env={**os.environ, "HOME": str(self.root),
+                                   "XDG_STATE_HOME": str(self.root / ".local/state"),
                                    "PATH": f"{self.commands}:/usr/bin:/bin", **env},
                               capture_output=True, text=True)
 
@@ -79,7 +80,7 @@ class DotsTest(unittest.TestCase):
         self.assertEqual((self.repo / "file").read_text(), "local\n")
         self.assertEqual(self.git("ls-files", "--unmerged"), "")
         self.assertEqual(self.git("stash", "list"), "")
-        self.assertIn("!", result.stderr)
+        self.assertIn("!", result.stdout + result.stderr)
 
     def test_unrelated_edits_allow_fast_forward_with_rebase_config(self):
         (self.repo / "other").write_text("base\n")
@@ -104,7 +105,7 @@ class DotsTest(unittest.TestCase):
         result = self.dots()
         self.assert_installed(result)
         self.assertEqual(self.git("rev-parse", "HEAD"), before)
-        self.assertIn("Not on main", result.stderr)
+        self.assertIn("Not on main", result.stdout + result.stderr)
 
     def test_detached_head_skips_update_without_stopping_maintenance(self):
         self.git("checkout", "--detach")
@@ -113,7 +114,7 @@ class DotsTest(unittest.TestCase):
         result = self.dots()
         self.assert_installed(result)
         self.assertEqual(self.git("rev-parse", "HEAD"), before)
-        self.assertIn("Not on main", result.stderr)
+        self.assertIn("Not on main", result.stdout + result.stderr)
 
     def test_divergence_does_not_merge_or_stop_maintenance(self):
         self.advance_remote()
@@ -124,13 +125,89 @@ class DotsTest(unittest.TestCase):
         result = self.dots()
         self.assert_installed(result)
         self.assertEqual(self.git("rev-parse", "HEAD"), before)
-        self.assertIn("!", result.stderr)
+        self.assertIn("!", result.stdout + result.stderr)
 
     def test_fetch_failure_does_not_stop_maintenance(self):
         self.git("remote", "set-url", "origin", str(self.root / "missing.git"))
         result = self.dots()
         self.assert_installed(result)
-        self.assertIn("!", result.stderr)
+        self.assertIn("!", result.stdout + result.stderr)
+
+    def test_unattended_logged_run(self):
+        installer = self.repo / "script/install"
+        installer.write_text('#!/bin/sh\n'
+                             'test "$DOTFILES_UNATTENDED" = 1 || exit 3\n'
+                             'test "$DOTFILES_UPDATE" = 1 || exit 4\n'
+                             'if read answer; then exit 5; fi\n'
+                             'echo installer-output\n')
+        result = self.dots()
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        log = self.root / ".local/state/dots/latest.log"
+        self.assertTrue(log.exists())
+        self.assertIn("installer-output", log.read_text())
+        self.assertIn("exit=0", log.read_text())
+        self.assertEqual(log.stat().st_mode & 0o777, 0o600)
+
+    def test_failed_upgrade_does_not_skip_installers(self):
+        self.stub("mise", "echo upgrade-failed >&2; exit 7")
+        result = self.dots()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue((self.root / "installed").exists())
+        log = self.root / ".local/state/dots/latest.log"
+        self.assertIn("upgrade-failed", log.read_text())
+        self.assertIn("exit=7", log.read_text())
+
+    def test_macos_maintenance_does_not_run_setup(self):
+        self.stub("uname", "echo Darwin")
+        scripts = self.repo / "macos/scripts"
+        scripts.mkdir(parents=True)
+        for name in ["setup-sudoers.sh", "set-hostname.sh", "set-defaults.sh"]:
+            path = scripts / name
+            path.write_text('#!/bin/sh\necho prompted > "$HOME/prompted"\n')
+            path.chmod(0o755)
+        self.assert_installed(self.dots())
+        self.assertFalse((self.root / "prompted").exists())
+
+    def test_sudo_never_requests_a_password(self):
+        self.stub("sudo", 'test "$1" = -n || exit 99; echo sudo-denied >&2; exit 1')
+        installer = self.repo / "script/install"
+        installer.write_text('#!/bin/sh\nsudo some-admin-command\n')
+        result = self.dots()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("sudo-denied", result.stdout)
+        self.assertNotIn("exit=99", result.stdout)
+
+    def test_interactive_mode_restores_setup(self):
+        self.stub("uname", "echo Darwin")
+        scripts = self.repo / "macos/scripts"
+        scripts.mkdir(parents=True)
+        setup = scripts / "set-defaults.sh"
+        setup.write_text('echo setup > "$HOME/setup"\n')
+        result = self.dots("--interactive")
+        self.assert_installed(result)
+        self.assertTrue((self.root / "setup").exists())
+
+    def test_default_run_keeps_logged_output_on_stdout(self):
+        installer = self.repo / "script/install"
+        installer.write_text('#!/bin/sh\necho live-output\necho error-output >&2\n'
+                             'printf installed > "$HOME/installed"\n')
+        result = self.dots()
+        self.assert_installed(result)
+        log = (self.root / ".local/state/dots/latest.log").read_text()
+        for output in ["live-output", "error-output"]:
+            self.assertIn(output, result.stdout)
+            self.assertIn(output, log)
+
+    def test_redundant_log_flag_is_rejected(self):
+        result = self.dots("--log")
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse((self.root / "installed").exists())
+
+    def test_log_path_option_does_not_run_maintenance(self):
+        result = self.dots("--log-path")
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue(result.stdout.strip().endswith("/dots/latest.log"))
+        self.assertFalse((self.root / "installed").exists())
 
     def test_existing_conflicts_stop_before_update_or_install(self):
         blob = self.git("rev-parse", "HEAD:file")

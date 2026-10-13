@@ -1,127 +1,129 @@
 #!/usr/bin/env bash
-#
-# dot
-#
-# `dot` handles installation, updates, things like that. Run it periodically
-# to make sure you're on the latest and greatest.
+# Routine maintenance is unattended; bootstrap remains the first-install path.
 
-set -e
-
-parentDirectory="$(cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd -P)"
-dotfilesDirectory="$(cd "$( dirname "$parentDirectory" )" && pwd -P)"
-
-displayUsageAndExit() {
-	echo "dot -- dotfiles management"
-	echo ""
-	echo "Usage: dot [options]"
-	echo ""
-	echo "Options:"
-	echo "  -e, --edit    Open dotfiles directory for editing"
-	echo "  -h, --help    Show this help message and exit"
-	exit
-}
-
-while test $# -gt 0; do
-	case "$1" in
-		"-h"|"--help")
-			displayUsageAndExit
-			;;
-		"-e"|"--edit")
-			exec "$EDITOR" "$dotfilesDirectory"
-			exit
-			;;
-		*)
-			echo "Invalid option: $1"
-			displayUsageAndExit
-			;;
+set -o pipefail
+parentDirectory="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+dotfilesDirectory="$(cd "$(dirname "$parentDirectory")" && pwd -P)"
+interactive=0
+for option in "$@"; do
+	case "$option" in
+		-h|--help)
+			echo "Usage: dots [-e|--edit] [--interactive] [--log-path]"
+			echo "Default: unattended updates with a persistent log."
+			echo "--interactive: allow prompts and machine setup."
+			echo "--log-path: print the latest log path without running maintenance."
+			exit 0 ;;
+		-e|--edit) exec "${EDITOR:-vi}" "$dotfilesDirectory" ;;
+		--interactive) interactive=1 ;;
+		--log-path) echo "${DOTS_LOG_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/dots}/latest.log"; exit 0 ;;
+		*) echo "Invalid option: $option" >&2; exit 2 ;;
 	esac
-	shift
 done
 
-export ZSH=$HOME/.dotfiles
+# Capture both streams, without shell tracing or environment/credential dumps.
+# The child exit status survives tee. Logs may contain third-party tool output:
+# keep them private and outside the repository.
+if [ "${DOTS_LOGGING:-0}" != 1 ]; then
+	umask 077
+	logDirectory="${DOTS_LOG_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/dots}"
+	mkdir -p "$logDirectory" || exit 1
+	logFile="$logDirectory/run-$(date +%Y%m%d-%H%M%S)-$$.log"
+	: > "$logFile" || exit 1
+	ln -sfn "$(basename "$logFile")" "$logDirectory/latest.log" || exit 1
+	echo "› Log: $logFile"
+	DOTS_LOGGING=1 bash "$0" "$@" 2>&1 | tee "$logFile"
+	statuses=("${PIPESTATUS[@]}")
+	[ "${statuses[1]}" -eq 0 ] || exit 1
+	exit "${statuses[0]}"
+fi
 
-# Never run installers from an unresolved merge (including an old autostash).
+export ZSH="$dotfilesDirectory"
+export DOTFILES_UPDATE=1
+failures=0
+sudoShim=""
+finish() {
+	status=$?
+	[ -z "$sudoShim" ] || rm -rf "$sudoShim"
+	echo "› dots finished: exit=$status; failed steps=$failures; $(date -u +%FT%TZ)"
+}
+trap finish EXIT
+
+if [ "$interactive" -eq 0 ]; then
+	export DOTFILES_UNATTENDED=1 NONINTERACTIVE=1 MISE_YES=1 GIT_TERMINAL_PROMPT=0
+	export GIT_SSH_COMMAND="${GIT_SSH_COMMAND:-ssh} -oBatchMode=yes"
+	# EOF handles ordinary confirmations. sudo can read /dev/tty even at EOF,
+	# so give every child a wrapper that requires existing authorization.
+	exec </dev/null
+	realSudo="$(command -v sudo || true)"
+	if [ -n "$realSudo" ]; then
+		sudoShim="$(mktemp -d "${TMPDIR:-/tmp}/dots-sudo.XXXXXX")" || exit 1
+		printf '#!/bin/sh\nexec "%s" -n "$@"\n' "$realSudo" > "$sudoShim/sudo"
+		chmod 700 "$sudoShim/sudo"
+		export PATH="$sudoShim:$PATH"
+	fi
+else
+	export DOTFILES_UNATTENDED=0
+fi
+
+# Each external step keeps its own failure semantics. Do not call installers
+# in an `if` condition: that disables errexit inside shell functions/scripts.
+run() {
+	local status
+	echo "› START: $*"
+	"$@"
+	status=$?
+	echo "› END: $* (exit=$status)"
+	if [ "$status" -ne 0 ]; then
+		failures=$((failures + 1))
+		echo "! Failed: $*; continuing independent maintenance steps." >&2
+	fi
+}
+
 if [ -n "$(git -C "$dotfilesDirectory" ls-files --unmerged)" ]; then
 	echo "! Resolve the existing Git conflicts before running dots." >&2
 	exit 1
 fi
-
-# Update before running installers, regardless of the caller's directory.
-# Only update main; leave feature branches and detached worktrees untouched.
 branch="$(git -C "$dotfilesDirectory" symbolic-ref --quiet --short HEAD || true)"
 case "$branch" in
 	main)
-		# A fast-forward merge allows unrelated edits even with pull.rebase set.
-		# Never stash: overlapping edits block the update without changing them.
-		# Explicit flags also override configured merge/rebase autostashing.
+		# Preserve the existing best-effort pull policy: no stash or merge.
 		echo "› git pull --no-rebase --ff-only --no-autostash origin main"
 		if ! git -C "$dotfilesDirectory" pull --no-rebase --ff-only --no-autostash origin main; then
 			echo "! Repository update failed; continuing maintenance with current dotfiles." >&2
-		fi
-		;;
-	*)
-		echo "! Not on main; skipping repository update and continuing maintenance." >&2
-		;;
+		fi ;;
+	*) echo "! Not on main; skipping repository update and continuing maintenance." >&2 ;;
 esac
-
-# Retain the safety check if an updater leaves unmerged files behind.
 if [ -n "$(git -C "$dotfilesDirectory" ls-files --unmerged)" ]; then
 	echo "! Repository has unresolved conflicts; skipping the rest of dots." >&2
 	exit 1
 fi
 
-# macOS-specific updates
-if [ "$(uname -s)" = "Darwin" ]; then
-	# Ensure passwordless sudo for softwareupdate is in place (idempotent) so the
-	# `sudo softwareupdate` in macos/scripts/install.sh doesn't prompt. Run it as a
-	# subprocess — it `exit 0`s when the rule already exists, which would otherwise
-	# abort the rest of this script when sourced.
-	if [ -x "$ZSH/macos/scripts/setup-sudoers.sh" ]; then
-		"$ZSH/macos/scripts/setup-sudoers.sh"
-	fi
+case "$(uname -s)" in
+	Darwin)
+		if [ "$interactive" -eq 1 ]; then
+			for setup in setup-sudoers.sh set-defaults.sh set-hostname.sh; do
+				[ ! -f "$ZSH/macos/scripts/$setup" ] || run bash "$ZSH/macos/scripts/$setup"
+			done
+		else
+			echo "› SKIP: macOS machine setup (use dots --interactive or script/bootstrap)."
+		fi
+		if command -v brew >/dev/null 2>&1; then
+			run brew update
+			run brew upgrade
+		fi ;;
+	Linux)
+		if command -v omarchy >/dev/null 2>&1; then
+			if [ "$interactive" -eq 1 ]; then
+				run omarchy update
+			else
+				echo "› SKIP: interactive Omarchy system update (use dots --interactive)."
+			fi
+		fi ;;
+esac
 
-	if [ -f "$ZSH/macos/scripts/set-defaults.sh" ]; then
-		"$ZSH/macos/scripts/set-defaults.sh"
-	fi
-
-	if [ -f "$ZSH/macos/scripts/set-hostname.sh" ]; then
-		"$ZSH/macos/scripts/set-hostname.sh"
-	fi
-
-	if command -v brew >/dev/null 2>&1; then
-		echo "› brew update"
-		brew update
-		echo "› brew upgrade"
-		brew upgrade
-	fi
-fi
-
-# Linux-specific updates
-if [ "$(uname -s)" = "Linux" ]; then
-	if command -v omarchy >/dev/null 2>&1; then
-		echo "› omarchy update"
-		omarchy update
-	fi
-fi
-
-# Update mise-managed tools.
-#
-# `mise install` (run by mise/install.sh during script/install below) only
-# fetches what's missing. A `latest` pin that already resolved to some version
-# is a no-op for it, so without this the mise half of the toolchain silently
-# freezes while the brew/pacman half keeps moving.
-#
-# Run from / so only the global config applies. `dots` can be invoked from any
-# directory, and mise resolves configs from the working directory upward — so
-# without this, running dots inside a project would upgrade that project's
-# pinned tools too. `upgrade` has a --local flag but no --global inverse, and /
-# is the one directory guaranteed never to hold a mise.toml. Don't "simplify"
-# this to $ZSH: the dotfiles root is a plausible home for one.
+# Only upgrade the global mise toolchain, never the invoking project's pins.
 if command -v mise >/dev/null 2>&1; then
-	echo "› mise upgrade"
-	mise -C / upgrade --yes
+	run mise -C / upgrade --yes
 fi
-
-# Run topic installers
-echo "› $ZSH/script/install"
-$ZSH/script/install
+run "$ZSH/script/install"
+[ "$failures" -eq 0 ]

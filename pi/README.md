@@ -38,13 +38,23 @@ init`" when the project has no index.
 and does not apply a limit. CodeGraph has no `context` command or node-limit
 flag. Index sync uses `codegraph sync <path>`, not `sync -p <path>`.
 
-Run the CLI mapping regression tests with `bun test ./script/test-code-intel.ts`.
+Run the extension tests with:
+
+```sh
+npx --yes bun test ./script/test-code-intel.ts ./script/test-index-health.ts ./script/test-index-observability.ts
+pi/config/extensions/node_modules/.bin/tsc -p script/tsconfig.json
+```
+
+Install the extension dependencies first to run the type check.
+Run the helper lifecycle tests with `python3 script/test-code-intel-lifecycle.py`.
+Run the watcher signal tests with `bash code-intel/test-watch.sh`.
 
 **Readiness is separate from directory presence.** Before `cg_*` and
 `vera_search` calls, the extension probes the backend and waits for its pending
 sync. CodeGraph must report an initialized index and a completed build.
-Vera must return valid index statistics. Its search command can still report
-an incomplete index, which stops the query with repair guidance.
+Vera must return valid index statistics. Statistics alone do not prove format
+compatibility: updates and searches can still reject an old or incomplete index.
+The extension records those failures and stops repeated failed updates.
 
 Read-only probes and queries retry known lock errors at most three times,
 with 250 ms and 1 s delays. Other errors do not trigger retries. Sync failures
@@ -52,8 +62,10 @@ stop the query, and `/code-intel-sync` reports failures instead of claiming
 success. Writers never retry automatically, and the extension never removes
 locks or starts a cold build without confirmation.
 
-CodeGraph and Vera sync on their first call and after local edits. Graphify
-uses the cost-based policy below. A long-running external build can still
+CodeGraph and Vera sync on their first call and after local edits, including
+staged changes. A changed Git HEAD forces a sync, even during the debounce
+window. This covers clean commits and branch switches. Graphify uses the
+cost-based policy below. A long-running external build can still
 leave an index unavailable. In that case, tools suggest LSP or direct file
 reads instead of treating an empty index as an empty result.
 
@@ -61,15 +73,16 @@ Measured on a 6,000-file / 49k-chunk monorepo:
 
 | operation | time |
 |---|---|
-| `git ls-files -m -o` (dirty check) | 0.10s |
+| `git ls-files -m -o` (previous dirty probe) | 0.10s |
 | `codegraph sync`, no-op | 0.29s |
 | `vera update`, one file changed | 0.47s |
 | `vera update`, no-op | 0.96s |
 | `graphify update`, 8MB graph | 2.2s |
 | `graphify update`, 55MB graph | 41.6s |
 
-The first three are cheap enough to run inline, which is why there's no watcher
-process and no background daemon here.
+The extension now uses `git status --porcelain` and Git HEAD for freshness.
+It shares one pending writer per backend and workspace. Queries and session
+shutdown wait for that writer.
 
 graphify is the awkward one, because **it has no incremental path** — every run
 re-extracts the whole corpus, so cost tracks repo size rather than the size of
@@ -120,9 +133,77 @@ Two traps worth remembering:
 its content-hash bookkeeping inconsistent, and the next update re-embeds
 everything it lost track of — measured at 1,692 files, 19.5 minutes wall, 71
 minutes CPU, from one `timeout` kill. So syncs never receive a tool's
-`AbortSignal`, and `session_shutdown` waits for an in-flight sync instead of
-killing it. If vera ever seems pathologically slow, suspect a previous
+`AbortSignal` or a timeout, and `session_shutdown` waits for pending writes
+instead of killing them. If vera ever seems pathologically slow, suspect a previous
 interrupted run rather than the tool.
+
+### Index health and history
+
+The Powerline footer shows a separate index item, even when routing mode is off:
+
+```text
+idx CG✓ V↻ GF~
+```
+
+`CG`, `V`, and `GF` mean Codegraph, Vera, and Graphify. The marks mean:
+
+- `✓` ready; `↻` updating; `~` stale or reindex recommended.
+- `!` needs repair; `∅` no index; `×` backend unavailable.
+- `?` unchecked. Vera statistics do not verify its vector format. A successful
+  search, or the helper's verified init/repair, removes this mark.
+
+`/code-intel status` refreshes read-only checks. It shows each backend's state,
+last success, last failure, repair action, and available helper log path.
+The footer uses cached state; rendering never starts a process.
+TUI sessions check health every 30 seconds and notice Pi edits immediately.
+Checks never start index writers, rebuilds, or model calls. They stop on shutdown.
+Graphify checks its build commit against HEAD, including on the first check.
+No new daemon is installed; existing watchers, hooks, and query-time sync remain.
+
+`/code-intel history` summarizes the last seven days of extension-observed activity.
+Records are shared across sessions in the same physical worktree:
+
+```text
+${XDG_STATE_HOME:-~/.local/state}/code-intel/maintenance/<worktree-hash>/events.jsonl
+```
+
+Directories use mode `0700`; files use `0600`. Records contain only timestamps,
+writer IDs, backend, trigger, outcome, and timings. They contain no source,
+search text, tool arguments, output, or error text. Failure reasons stay in memory.
+Logging failures do not block index tools; status reports unavailable history.
+
+The summary counts updates, repairs, waits, blocked queries, and debounce skips.
+It also reports unchanged-workspace updates, observed-to-ready latency, and
+cross-writer overlaps. Unchanged-workspace updates are an estimate of no-ops.
+Overlaps describe command intervals, not proof of conflicting writes.
+External watcher builds are observed through health checks, not timed directly.
+External-edit latency includes the polling delay. History reads use at most a
+2 MB / 2,000-line tail and report when that clips the seven-day window.
+
+After a week, compare waits and overlaps with stale-state observations before
+adding shared coordination. Health checks record transitions, not every poll.
+
+### Index repair
+
+A format mismatch needs a full rebuild, not another incremental update.
+`/code-intel-repair vera` asks for confirmation, then calls `code-intel repair vera`.
+The same command accepts `codegraph` or `graphify`. It shows a rebuild status
+and runs without a timeout. Headless sessions get the explicit shell command
+instead of an automatic rebuild.
+
+The helper pauses the repository's Vera watcher, waits for it to finish, and
+restores it after the rebuild. It never escalates to a forced kill. Repair
+verifies actual search or graph readiness before it reports success. Graphify
+repair keeps the shrink guard and does not request semantic extraction.
+
+Helper runs retain private per-backend logs and exit codes under
+`${XDG_STATE_HOME:-~/.local/state}/code-intel/`. The `latest-log` file contains
+the latest run directory. `init`, `refresh`, and `warm` return failure if any
+backend fails. `/code-intel-init` uses this helper and tracks its pending writes.
+
+After an external repair, `/code-intel-sync` clears the remembered failure and
+checks the backend again. `/code-intel status` lists remembered repair needs.
+Codegraph's reindex recommendation appears as an advisory, not a forced rebuild.
 
 **Modes** — `/code-intel`, `Ctrl+Alt+I`, or `--code-intel <mode>`:
 
@@ -275,7 +356,17 @@ symbol, `ast_rewrite` only knows which ones look alike.
 managed installer. This installation supports `pi update`. Pi must not be a
 mise-managed tool.
 
+During `dots`, the script runs `pi update --all --no-approve` from `/`.
+This updates Pi and its global packages without loading project settings.
+Pinned package versions stay unchanged. Initial Pi setup still requires an
+interactive run of `pi/install.sh`.
+
 The script also installs the extension npm dependency and reports visible
-language servers. The `mise` topic installs the shared headless language-server
-baseline. The `rust` topic installs `rust-analyzer`. `node_modules/` is a
+language servers. During `dots`, `npm update` advances local extension
+dependencies within their declared version ranges. Both npm commands disable
+lifecycle scripts. Pi's SDK and the runtime dependency support script-free
+installation. The script checks their imports after installation.
+
+Errors reach the `dots` log and produce a nonzero exit status. The `mise` topic
+installs the shared headless language-server baseline. The `rust` topic installs `rust-analyzer`. `node_modules/` is a
 per-machine artifact and is gitignored.

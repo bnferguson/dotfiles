@@ -2,15 +2,22 @@
 #
 # Run all dotfiles installers.
 
+cd "$(dirname "$0")"/.. || exit 1
+failures=0
+
+# Run package setup in its own fail-fast subshell, then continue topics even
+# if a package manager fails. The caller can inspect the aggregate exit code.
+install_packages() (
 set -e
-
-cd "$(dirname $0)"/..
-
 # Install packages
 if command -v brew >/dev/null 2>&1; then
   echo "› brew bundle"
   brew bundle --file=Brewfile
 elif command -v omarchy >/dev/null 2>&1; then
+  if [ "${DOTFILES_UNATTENDED:-0}" = 1 ]; then
+    echo "› SKIP: Omarchy package/service setup (use dots --interactive)."
+    exit 0
+  fi
   echo "› installing packages via Omarchy"
 
   # The standalone `rust` package conflicts with `rustup`. Omarchy's drop
@@ -80,10 +87,17 @@ elif command -v apt-get >/dev/null 2>&1; then
   # gh comes from mise once it is installed — see mise/config.toml.
   echo "  Note: starship and mise need manual install on Ubuntu — see README"
 fi
+)
+install_packages
+package_status=$?
+echo "› END: packages (exit=$package_status)"
+[ "$package_status" -eq 0 ] || failures=$((failures + 1))
 
 # Switch default shell to whatever shell.env declares, if it isn't already.
 # shell.env is the single source of truth for the shell path.
-if [ -f shell.env ]; then
+if [ "${DOTFILES_UNATTENDED:-0}" = 1 ]; then
+  echo "› SKIP: default-shell setup (use script/bootstrap)."
+elif [ -f shell.env ]; then
   desired_shell="$(. ./shell.env && echo "$SHELL")"
   if [ -x "$desired_shell" ]; then
     if command -v getent >/dev/null 2>&1; then
@@ -110,7 +124,22 @@ fi
 # (the terminal). Piping find into `while read` would leave stdin as the pipe,
 # and any password prompt (e.g. `sudo softwareupdate`) couldn't disable echo —
 # your typed password would be visible.
+case "$(uname -s)" in
+  Darwin) excluded_os='./linux' ;;
+  Linux) excluded_os='./macos' ;;
+  *) excluded_os='./no-os-bucket' ;;
+esac
 while IFS= read -r installer <&3 ; do
-  echo "› running $installer"
-  sh -c "${installer}"
-done 3< <(find . -name install.sh -not -path './.git/*' -not -path './script/*')
+  echo "› START: $installer"
+  "$installer"
+  status=$?
+  echo "› END: $installer (exit=$status)"
+  if [ "$status" -ne 0 ]; then
+    echo "! Installer failed: $installer; continuing." >&2
+    failures=$((failures + 1))
+  fi
+done 3< <(find . \( -name .git -o -name .cache -o -name node_modules \
+  -o -path './.agents' -o -path './script' -o -path "$excluded_os" \) -prune \
+  -o -name install.sh -type f -print | LC_ALL=C sort)
+echo "› Installer summary: failed=$failures"
+[ "$failures" -eq 0 ]

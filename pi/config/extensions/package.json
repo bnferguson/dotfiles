@@ -3,8 +3,10 @@
   "private": true,
   "description": "Deps for the code-intel and lsp pi extensions. pi loads extensions via jiti, which resolves node_modules from a parent directory, so one install here covers both.",
   "devDependencies": {
-    "@earendil-works/pi-coding-agent": "1.1.0",
-    "@types/node": "^22.0.0"
+    "@earendil-works/pi-coding-agent": "^1.2.0",
+    "@types/node": "^22.0.0",
+    "@types/bun": "^1.3.0",
+    "typescript": "^5.9.3"
   },
   "dependencies": {
     "vscode-jsonrpc": "^8.2.1"
