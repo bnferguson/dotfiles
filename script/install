@@ -139,7 +139,21 @@ while IFS= read -r installer <&3 ; do
     failures=$((failures + 1))
   fi
 done 3< <(find . \( -name .git -o -name .cache -o -name node_modules \
-  -o -path './.agents' -o -path './script' -o -path "$excluded_os" \) -prune \
+  -o -path './.agents' -o -path './script' -o -path './claude/config/skills' \
+  -o -path './codex/config/skills' -o -path './pi/config/skills' -o -path "$excluded_os" \) -prune \
   -o -name install.sh -type f -print | LC_ALL=C sort)
+# Direct native installs are tracked immediately; consolidate portable copies
+# after installers finish. This does not bootstrap global directory links.
+if [ -f script/migrate-agent-directories ]; then
+  echo "› START: shared skill consolidation"
+  python3 script/migrate-agent-directories --root "$PWD" --skills-only
+  status=$?
+  echo "› END: shared skill consolidation (exit=$status)"
+  if [ "$status" -ne 0 ]; then
+    echo "! Shared skill consolidation failed; originals remain backed up or intact." >&2
+    failures=$((failures + 1))
+  fi
+fi
+
 echo "› Installer summary: failed=$failures"
 [ "$failures" -eq 0 ]

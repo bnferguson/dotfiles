@@ -136,34 +136,6 @@ link_file () {
 }
 
 
-link_skill_root () {
-  local src_root=$1 dst_root=$2
-  local skill_dir skill_name skill_link
-
-  [ -d "$src_root" ] || return
-  mkdir -p "$dst_root"
-
-  for skill_dir in "$src_root"/*; do
-    [ -f "$skill_dir/SKILL.md" ] || continue
-    skill_name="$(basename "$skill_dir")"
-    skill_link="$dst_root/$skill_name"
-
-    # Migrate links created before shared skills moved from
-    # claude/config/skills to .agents/skills.
-    if [ "$src_root" = "$DOTFILES_ROOT/.agents/skills" ] && [ -L "$skill_link" ]; then
-      case "$(readlink "$skill_link")" in
-        *claude/config/skills/"$skill_name")
-          unlink "$skill_link"
-          success "migrated $skill_link to the shared skill root"
-          ;;
-      esac
-    fi
-
-    link_file "$skill_dir" "$skill_link"
-  done
-}
-
-
 install_dotfiles () {
   info 'installing dotfiles'
 
@@ -188,7 +160,7 @@ install_larger_paths () {
   info 'adding paths that do not live in root'
 
   local overwrite_all=false backup_all=false skip_all=false
-  local current_skills_path legacy_codex_skill legacy_codex_target
+  local legacy_codex_skill legacy_codex_target
 
   mkdir -p "$HOME/.config"
   mkdir -p "$HOME/.claude"
@@ -241,17 +213,6 @@ install_larger_paths () {
   # into dotfiles. Merge existing installs and back up originals first.
   python3 "$DOTFILES_ROOT/script/migrate-agent-skills" --root "$DOTFILES_ROOT"
 
-  # Claude needs per-skill compatibility links; its own skills stay separate.
-  if [ -L "$HOME/.claude/skills" ]; then
-    current_skills_path=$(perl -MCwd -e 'print Cwd::realpath($ARGV[0]) // ""' "$HOME/.claude/skills" 2>/dev/null)
-    if [ "$current_skills_path" = "$DOTFILES_ROOT/claude/config/skills" ]; then
-      unlink "$HOME/.claude/skills"
-      success "migrated $HOME/.claude/skills to per-skill links"
-    fi
-  fi
-  link_skill_root "$DOTFILES_ROOT/.agents/skills" "$HOME/.claude/skills"
-  link_skill_root "$DOTFILES_ROOT/claude/config/skills" "$HOME/.claude/skills"
-
   # Codex config — keep runtime state under ~/.codex and share the checked-in
   # guidance and canonical skills with Claude.
   mkdir -p "$HOME/.codex"
@@ -266,8 +227,8 @@ install_larger_paths () {
 
   # Codex and Pi discover the shared ~/.agents/skills directory linked above.
 
-  # Agent-specific skills are escape hatches, not parallel copies of the
-  # shared catalog. Keep them in each agent's own discovery directory.
+  # Remove the old shared alias before linking the native directory roots.
+  # Agent-specific skills remain separate from the shared catalog.
   legacy_codex_skill="$HOME/.agents/skills/deep-research"
   if [ -L "$legacy_codex_skill" ]; then
     legacy_codex_target=$(perl -MCwd -e 'print Cwd::realpath($ARGV[0]) // ""' "$legacy_codex_skill" 2>/dev/null)
@@ -276,8 +237,10 @@ install_larger_paths () {
       success "moved deep-research to Codex's agent-specific skill root"
     fi
   fi
-  link_skill_root "$DOTFILES_ROOT/codex/config/skills" "$HOME/.codex/skills"
-  link_skill_root "$DOTFILES_ROOT/pi/config/skills" "$HOME/.pi/agent/skills"
+  # Whole native roots make future direct installs visible to Git too. The
+  # migration merges safely, backs up originals, and retains Claude's shared
+  # compatibility links without following them into the canonical catalog.
+  python3 "$DOTFILES_ROOT/script/migrate-agent-directories" --root "$DOTFILES_ROOT"
 
   mkdir -p "$HOME/.config/jj"
   link_file "$DOTFILES_ROOT/jj/config.toml" "$HOME/.config/jj/config.toml"

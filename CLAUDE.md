@@ -21,7 +21,7 @@ macos/bettertouchtool/export  # Export BTT presets after changing them in BTT
 macos/bettertouchtool/import  # Restore BTT presets on a new machine
 ```
 
-There is no single test suite. Validate shell changes by sourcing the shell or running bootstrap. Run `python3 script/test-migrate-agent-skills.py` for the shared-skills migration.
+There is no single test suite. Validate shell changes by sourcing the shell or running bootstrap. Run `python3 script/test-migrate-agent-skills.py` and `python3 script/test-migrate-agent-directories.py` for the shared and native directory migrations.
 
 ## Loading Conventions
 
@@ -49,8 +49,10 @@ Other conventions:
 - jj user config lives in `~/.config/jj/conf.d/local.toml` (created by bootstrap from template)
 - Shared skills live in `.agents/skills/`. Bootstrap links the whole `~/.agents/skills` directory to it, so `npx skills add <source> -g` writes into the repo. The global `.skill-lock.json` is linked into `.agents/` too.
 - `script/migrate-agent-skills` merges existing global installs without overwriting repo skills, backs up the originals under `~/.agents/`, and creates relative links. Differing repo skills keep their local versions and are excluded from imported upstream update records.
-- Claude Code config files are symlinked individually (not the whole `~/.claude/` dir) to preserve session data
-- pi coding agent config files are symlinked individually (not the whole `~/.pi/agent/` dir) to preserve sessions, caches, and installed packages — see `pi/config/`
+- Portable skills are shared by default. Native skill directories contain links to `.agents/skills`, with agent-only exceptions declared in `.agents/agent-specific-skills.json`. Register exceptions before installing agent-specific skills. Use `npx skills add <source> -g` for shared installs; direct native copies are consolidated by `dots` or `script/migrate-agent-directories --skills-only`.
+- Native skill roots and Claude rules use whole-directory links into each agent's `config/` directory. `script/migrate-agent-directories` preserves shared versions on conflict and backs up originals under `~/.local/state/dotfiles/migrations/`. Installs become Git-visible, not automatically committed. Claude's generated `skills/synced` catalog and `.trash`, and Codex's bundled `.system` skills, are ignored.
+- Claude/Codex agents and hooks already use whole-directory links. Agent home directories remain separate to preserve auth, sessions, and runtime state.
+- pi coding agent config files and extensions are linked individually, while native skills use a directory link. Sessions, caches, and installed packages remain outside the repo — see `pi/config/`
 - pi extensions live in `pi/config/extensions/` and are symlinked per-extension into `~/.pi/agent/extensions/`. `code-intel` exposes vera/codegraph/ast-grep as pi tools and can enforce structural-first routing; `lsp` is a direct LSP client (pi has no MCP, so MCP-based tools like serena are unusable). Both are loaded automatically — see `pi/README.md`
 - The `script/install` script supports macOS (brew), Arch (pacman), and Ubuntu (apt) with graceful fallbacks
 
