@@ -1,0 +1,320 @@
+#!/usr/bin/env python3
+"""Move agent-native directories into dotfiles, keeping private originals."""
+import argparse
+import json
+import os
+import shutil
+import stat
+import tempfile
+from pathlib import Path
+
+
+ROOTS = (
+    (".claude/rules", "claude/config/rules"),
+    (".claude/skills", "claude/config/skills"),
+    (".codex/skills", "codex/config/skills"),
+    (".pi/agent/skills", "pi/config/skills"),
+)
+
+
+def present(path):
+    return path.exists() or path.is_symlink()
+
+
+def resolved(path):
+    try:
+        try:
+            return path.resolve(strict=True)
+        except FileNotFoundError:
+            return path.resolve()
+    except (OSError, RuntimeError) as error:
+        raise ValueError(f"Unsafe symlink: {path}") from error
+
+
+def directory_path(path, boundary):
+    """Reject aliases and non-directories along a path we will write."""
+    for part in (boundary, *reversed(path.relative_to(boundary).parents)):
+        candidate = part if part == boundary else boundary / part
+        if present(candidate) and (candidate.is_symlink() or not candidate.is_dir()):
+            raise ValueError(f"Unsafe directory path: {candidate}")
+    if present(path) and (path.is_symlink() or not path.is_dir()):
+        raise ValueError(f"Unsafe directory path: {path}")
+
+
+def validate_tree(path):
+    """Check without traversing directory aliases (including broken aliases)."""
+    if path.is_symlink():
+        target = resolved(path)
+        parent = resolved(path.parent)
+        if target == parent or target in parent.parents:
+            raise ValueError(f"Directory symlink cycle: {path}")
+    elif path.is_dir():
+        for child in path.iterdir():
+            validate_tree(child)
+    elif present(path) and not path.is_file():
+        raise ValueError(f"Unsupported filesystem entry: {path}")
+
+
+def relative_link(target, path):
+    path.symlink_to(os.path.relpath(target, path.parent))
+
+
+def link_target(source, root, home):
+    target = resolved(source)
+    # Old compatibility aliases can predate the shared-directory migration.
+    shared_home = home / ".agents/skills"
+    try:
+        suffix = target.relative_to(shared_home)
+    except ValueError:
+        return target
+    return resolved(root / ".agents/skills" / suffix)
+
+
+def merge(source, destination, root, home, generated=False):
+    """Import only absent entries; never traverse a destination alias."""
+    if source.name == ".DS_Store":
+        return
+    exists = present(destination)
+    if generated and exists:
+        return  # Generated catalogs are indivisible snapshots.
+    if source.is_symlink():
+        target = link_target(source, root, home)
+        if not exists and target != destination.absolute():
+            relative_link(target, destination)
+    elif source.is_dir():
+        if exists and (destination.is_symlink() or not destination.is_dir()):
+            return
+        destination.mkdir(exist_ok=True)
+        for child in source.iterdir():
+            merge(child, destination / child.name, root, home)
+    elif not exists:
+        shutil.copy2(source, destination)
+
+
+AGENTS = ("claude", "codex", "pi")
+GENERATED = {"synced", ".trash", ".system"}
+
+
+def exceptions(root):
+    manifest = root / ".agents/agent-specific-skills.json"
+    if not present(manifest):
+        return {agent: set() for agent in AGENTS}
+    try:
+        data = json.loads(manifest.read_text())
+    except (OSError, ValueError) as error:
+        raise ValueError(f"Invalid exception manifest: {manifest}") from error
+    if not isinstance(data, dict) or set(data) - set(AGENTS):
+        raise ValueError("Exception manifest must map known agents to skill names")
+    for names in data.values():
+        if not isinstance(names, list) or any(
+            not isinstance(name, str) or not name or name.startswith(".")
+            or name in GENERATED or "/" in name or "\\" in name
+            for name in names
+        ):
+            raise ValueError("Invalid agent-specific skill names")
+    return {agent: set(data.get(agent, [])) for agent in AGENTS}
+
+
+def real_skill(path):
+    return (not path.name.startswith(".") and path.name not in GENERATED
+            and not path.is_symlink() and path.is_dir()
+            and (path / "SKILL.md").is_file())
+
+
+def preflight_skills(plans, shared, excluded):
+    """Check current and incoming skills before any discovery root is moved."""
+    for live, repo, replace in plans[1:]:
+        agent = repo.parts[-3]
+        sources = [repo] + ([live] if replace else [])
+        for source in sources:
+            if not source.is_dir():
+                continue
+            for skill in source.iterdir():
+                if not real_skill(skill):
+                    continue
+                destination = repo / skill.name
+                if (source == live and present(destination)
+                        and not destination.is_symlink() and not real_skill(destination)):
+                    raise ValueError(f"Occupied native skill destination: {destination}")
+                if skill.name in excluded[agent]:
+                    continue
+                canonical = shared / skill.name
+                if present(canonical) and not real_skill(canonical):
+                    raise ValueError(f"Occupied shared skill destination: {canonical}")
+
+
+def private_backup(state):
+    state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    backup = Path(tempfile.mkdtemp(prefix="agent-directories-", dir=state))
+    backup.chmod(stat.S_IRWXU)
+    return backup
+
+
+def copy_skill(source, destination):
+    """Publish a complete tree, preserving link targets across the move."""
+    with tempfile.TemporaryDirectory(prefix=".incoming-", dir=destination.parent) as temporary:
+        staged = Path(temporary) / "skill"
+        shutil.copytree(source, staged, symlinks=True)
+        for link in source.rglob("*"):
+            if not link.is_symlink():
+                continue
+            target = Path(os.path.abspath(link.parent / os.readlink(link)))
+            try:
+                target = destination / target.relative_to(source)
+            except ValueError:
+                pass
+            final = destination / link.relative_to(source)
+            copied = staged / link.relative_to(source)
+            copied.unlink()
+            # Compute links relative to the final location, not the staging dir.
+            copied.symlink_to(os.path.relpath(target, final.parent))
+        staged.rename(destination)
+
+
+def claude_aliases(root, shared):
+    native = root / "claude/config/skills"
+    if not native.is_dir() or not shared.is_dir():
+        return
+    for skill in sorted(shared.iterdir()):
+        destination = native / skill.name
+        if (not skill.name.startswith(".") and (skill / "SKILL.md").is_file()
+                and not present(destination)):
+            relative_link(skill, destination)
+
+
+def consolidate(root, shared, excluded, state, backup):
+    for agent in AGENTS:
+        native = root / agent / "config/skills"
+        if not native.is_dir():
+            continue
+        for skill in sorted(native.iterdir()):
+            canonical = shared / skill.name
+            # Old moves can leave empty folders (or just Finder metadata),
+            # which otherwise block a valid shared compatibility link.
+            vacant = (not skill.is_symlink() and skill.is_dir()
+                      and not skill.name.startswith(".") and skill.name not in GENERATED
+                      and all(child.name == ".DS_Store" for child in skill.iterdir())
+                      and (canonical / "SKILL.md").is_file())
+            if skill.name in excluded[agent] or not (real_skill(skill) or vacant):
+                continue
+            if not present(canonical):
+                shared.mkdir(parents=True, exist_ok=True)
+                copy_skill(skill, canonical)
+            if backup is None:
+                backup = private_backup(state)
+            original = backup / "repo" / skill.relative_to(root)
+            original.parent.mkdir(parents=True, exist_ok=True)
+            skill.rename(original)
+            try:
+                relative_link(canonical, skill)
+            except OSError:
+                if not present(skill):
+                    original.rename(skill)
+                raise
+    return backup
+
+
+def migrate(root, home):
+    """Preflight all four roots, then merge, back up, and link them.
+
+    Returns the private backup directory, or None when no originals existed.
+    Unsafe root aliases are refused rather than modifying their referents.
+    """
+    root, home = Path(os.path.abspath(root)), Path(os.path.abspath(home))
+    directory_path(root, root)
+    directory_path(home, home)
+    root, home = resolved(root), resolved(home)
+    excluded = exceptions(root)
+    state = home / ".local/state/dotfiles/migrations"
+    plans = []
+    for live_name, repo_name in ROOTS:
+        live, repo = home / live_name, root / repo_name
+        directory_path(repo, root)
+        directory_path(live.parent, home)
+        validate_tree(repo)
+        if live.is_symlink():
+            if resolved(live) != repo or not repo.is_dir():
+                raise ValueError(f"Unrelated root symlink: {live}")
+            plans.append((live, repo, False))
+            continue
+        if present(live) and not live.is_dir():
+            raise ValueError(f"Expected directory: {live}")
+        validate_tree(live)
+        plans.append((live, repo, True))
+    directory_path(state, home)
+    shared = root / ".agents/skills"
+    directory_path(shared, root)
+    validate_tree(shared)
+    preflight_skills(plans, shared, excluded)
+
+    backup = None
+    for live, repo, replace in plans:
+        repo.mkdir(parents=True, exist_ok=True)
+        if not replace:
+            continue
+        original = None
+        if live.is_dir():
+            for child in live.iterdir():
+                merge(child, repo / child.name, root, home,
+                      generated=(live != home / ".claude/rules" and child.name in GENERATED))
+            if backup is None:
+                backup = private_backup(state)
+            original = backup / live.relative_to(home)
+            original.parent.mkdir(parents=True, exist_ok=True)
+            live.rename(original)
+        live.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            relative_link(repo, live)
+        except OSError:
+            # A failed link must not leave an original discovery root missing.
+            if original is not None and not present(live):
+                original.rename(live)
+            raise
+
+    backup = consolidate(root, shared, excluded, state, backup)
+    claude_aliases(root, shared)
+    return backup
+
+
+def skills_only(root, home):
+    """Consolidate repo installs without changing global discovery roots."""
+    root, home = Path(os.path.abspath(root)), Path(os.path.abspath(home))
+    directory_path(root, root)
+    directory_path(home, home)
+    root, home = resolved(root), resolved(home)
+    excluded = exceptions(root)
+    shared = root / ".agents/skills"
+    state = home / ".local/state/dotfiles/migrations"
+    directory_path(shared, root)
+    directory_path(state, home)
+    validate_tree(shared)
+    plans = [(None, None, False)]
+    for agent in AGENTS:
+        native = root / agent / "config/skills"
+        directory_path(native, root)
+        validate_tree(native)
+        plans.append((None, native, False))
+    preflight_skills(plans, shared, excluded)
+    backup = consolidate(root, shared, excluded, state, None)
+    claude_aliases(root, shared)
+    return backup
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent.parent)
+    parser.add_argument("--home", type=Path, default=Path.home())
+    parser.add_argument("--skills-only", action="store_true",
+                        help="Consolidate repo skills only; leave discovery roots unchanged")
+    args = parser.parse_args()
+    try:
+        operation = skills_only if args.skills_only else migrate
+        backup = operation(args.root, args.home)
+    except (ValueError, OSError) as error:
+        parser.exit(1, f"Migration refused: {error}\n")
+    if backup:
+        print(f"Original agent directories saved in {backup}")
+
+
+if __name__ == "__main__":
+    main()

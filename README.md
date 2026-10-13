@@ -101,11 +101,36 @@ python3 script/test-maintenance.py
 
 ## coding agents
 
-Claude Code, Codex, and pi use one shared skill catalog: `.agents/skills`. Codex and pi load its links from `~/.agents/skills`. Claude loads matching links from `~/.claude/skills`. Store a skill under `claude/config/skills`, `codex/config/skills`, or `pi/config/skills` only when it works with one agent.
+Claude Code, Codex, and pi use one shared skill catalog: `.agents/skills`. Codex and pi load its links from `~/.agents/skills`. Claude loads matching links from `~/.claude/skills`. Portable skills belong in `.agents/skills`. Native skill directories contain compatibility links and explicit agent-only exceptions listed in `.agents/agent-specific-skills.json`. Register an exception before installing a genuinely agent-specific skill.
 
-Both custom and downloaded skills live in the shared catalog. The [skills CLI](https://skills.sh/) records source and hash details for downloaded skills in `skills-lock.json`. It leaves custom entries alone. `script/bootstrap` creates each link on its own, so local skills can stay beside the dotfiles catalog.
+Both custom and downloaded skills live in the shared catalog. The [skills CLI](https://skills.sh/) records source and hash details for downloaded skills in `skills-lock.json`. It leaves custom entries alone. Global installs through `npx skills add <source> -g` write through the `~/.agents/skills` directory link. The global `.skill-lock.json` also links into `.agents/`.
 
-Run `npx skills@latest update -p` from the dotfiles root to refresh package-managed skills, then review and commit the resulting `.agents/skills` and `skills-lock.json` changes.
+Bootstrap links the native skill and instruction directories too:
+
+| Install location | Repository directory |
+|------------------|----------------------|
+| `~/.claude/rules` | `claude/config/rules` |
+| `~/.claude/skills` | `claude/config/skills` |
+| `~/.codex/skills` | `codex/config/skills` |
+| `~/.pi/agent/skills` | `pi/config/skills` |
+
+New files installed in these locations appear in `git status`. Portable native copies move into `.agents/skills`, with relative links left in the native directories. An existing shared skill wins on conflict; the complete native copy stays in a private backup. The migration does not invent upstream update records.
+
+Use `npx skills add <source> -g` for an immediate shared install. Direct native installs are consolidated at the end of `dots` or `script/install`. To consolidate sooner, run `script/migrate-agent-directories --skills-only`. This mode leaves global directory links unchanged.
+
+Review changes before committing; installation does not commit anything. Claude's generated `skills/synced` catalog and skill trash are ignored, as are Codex's bundled `.system` skills. Declared agent-only skills stay native even when a shared skill has the same name.
+
+`script/migrate-agent-directories` merges existing directories without overwriting repository files, then consolidates portable skills. It saves originals under `~/.local/state/dotfiles/migrations/` and creates relative directory links. Bootstrap runs the shared migration first. To apply only these migrations, without package updates or machine setup:
+
+```sh
+script/migrate-agent-skills
+script/migrate-agent-directories
+git status --short
+```
+
+Claude/Codex agent definitions and hooks already use directory links. Pi extensions stay linked per entry so package installs can coexist. Plugins, dependencies, auth, sessions, and caches remain separate. Use the same directory-link pattern for custom commands, prompts, or themes if you add them later.
+
+Run `npx skills@latest update -p` from the dotfiles root to refresh package-managed skills, then review and commit the resulting `.agents/skills` and `skills-lock.json` changes. Run `python3 script/test-migrate-agent-skills.py` and `python3 script/test-migrate-agent-directories.py` to test the migrations without changing your installed skills.
 
 Use `claude-yolo` or `codex-yolo` for an unrestricted session. `codex-auto` keeps Codex's workspace sandbox and sends approval requests to its automatic reviewer. Use `claude-review` or `codex-review` to review a PR or branch in an isolated worktree. Use `claude-work` or `codex-work` to start new work on a branch in an isolated worktree.
 

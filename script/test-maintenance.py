@@ -3,6 +3,7 @@
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -103,7 +104,8 @@ class MaintenanceTest(unittest.TestCase):
         script = self.copy("script/install")
         self.topic("a-fails", "exit 7")
         self.topic("b-succeeds", 'echo ran > "$HOME/ran"')
-        for name in ["linux/wrong-os", ".agents/skills/example", "topic/node_modules/pkg", ".cache/generated"]:
+        for name in ["linux/wrong-os", ".agents/skills/example", "topic/node_modules/pkg", ".cache/generated",
+                     "claude/config/skills/example", "codex/config/skills/example", "pi/config/skills/example"]:
             self.topic(name, 'echo unexpected > "$HOME/unexpected"')
         result = self.run_script(script)
         self.assertNotEqual(result.returncode, 0)
@@ -119,6 +121,33 @@ class MaintenanceTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertTrue((self.home / "ran").exists())
         self.assertIn("packages (exit=9)", result.stdout)
+
+    def test_maintenance_consolidates_direct_installs_after_topics(self):
+        script = self.copy("script/install")
+        self.copy("script/migrate-agent-directories")
+        self.stub("python3", f'exec "{sys.executable}" "$@"')
+        self.topic("example", '''mkdir -p "$HOME/dotfiles/pi/config/skills/new-portable"
+printf portable > "$HOME/dotfiles/pi/config/skills/new-portable/SKILL.md"''')
+        result = self.run_script(script)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        native = self.repo / "pi/config/skills/new-portable"
+        shared = self.repo / ".agents/skills/new-portable"
+        self.assertTrue(native.is_symlink())
+        self.assertEqual(native.resolve(), shared.resolve())
+        self.assertEqual((shared / "SKILL.md").read_text(), "portable")
+        self.assertFalse((self.home / ".claude").exists())
+        self.assertFalse((self.home / ".pi").exists())
+
+    def test_consolidation_failure_is_reported_after_topics(self):
+        script = self.copy("script/install")
+        self.copy("script/migrate-agent-directories")
+        self.stub("python3", "exit 8")
+        self.topic("example", 'echo ran > "$HOME/ran"')
+        result = self.run_script(script)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue((self.home / "ran").exists())
+        self.assertIn("shared skill consolidation (exit=8)", result.stdout)
+        self.assertIn("Shared skill consolidation failed", result.stderr)
 
     def rust_setup(self, update_status=0, component="rust-analyzer-aarch64-apple-darwin"):
         self.stub("rustup", f'''echo "rustup:$*:$PWD" >> "$HOME/calls"

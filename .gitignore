@@ -12,12 +12,19 @@ __pycache__/
 # worktrees (real git worktrees checked out under the repo, not content to track)
 .claude/
 
+# Claude's account-synced skill catalog is generated/private, not source config.
+/claude/config/skills/synced
+/claude/config/skills/.trash
+
 # Codex — local project config/state and isolated worktrees.
 .codex/
+# Codex refreshes its bundled system skills independently of user installs.
+/codex/config/skills/.system
 
 # code-intel — graphify installs its own skill per-machine (code-intel/install.sh);
 # the router skill (code-intel/) is the committed layer.
 .agents/skills/graphify/
+/claude/config/skills/graphify
 
 # pi extensions — npm deps for the lsp extension (vscode-jsonrpc), installed
 # per-machine by pi/install.sh
