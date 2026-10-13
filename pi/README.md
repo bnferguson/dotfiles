@@ -16,14 +16,13 @@ model rather than behind a skill's suggestion, so the difference is measurable.
 ### `code-intel`
 
 Wraps the indexers from the `code-intel` topic — plus `ast-grep` — as native pi
-tools. pi ships no MCP client by design, so codegraph's MCP server is
-unreachable here; every verb has a CLI equivalent, and registering those
-directly is actually better than MCP because they get `promptSnippet` and
-`promptGuidelines` entries in the system prompt, right next to `grep`.
+tools. The extension calls their CLIs directly, without an MCP server.
+Native tools get `promptSnippet` and `promptGuidelines` entries in the system
+prompt, beside `grep`.
 
 | tool | backed by | replaces |
 |---|---|---|
-| `cg_context` | `codegraph context` | hunting for where to start |
+| `cg_context` | `codegraph explore` | hunting for where to start |
 | `cg_query` | `codegraph query` | grepping for a declaration |
 | `cg_callers` / `cg_callees` | `codegraph callers/callees` | grepping for call sites |
 | `cg_impact` | `codegraph impact` | guessing at blast radius |
@@ -34,10 +33,29 @@ directly is actually better than MCP because they get `promptSnippet` and
 Tools only register when their binary exists, and fail with "run `code-intel
 init`" when the project has no index.
 
-**Index freshness is handled automatically.** Every index-backed tool syncs
-before it answers, because a stale index doesn't error — it lies. This matters
-more in pi than in Claude Code: there, codegraph is kept current by the watcher
-inside its MCP server, and pi has no MCP, so nothing would sync it at all.
+`cg_context` uses `maxFiles` to limit source files (`--max-files` in CodeGraph
+1.0.1). The old `maxNodes` parameter remains accepted but produces a warning
+and does not apply a limit. CodeGraph has no `context` command or node-limit
+flag. Index sync uses `codegraph sync <path>`, not `sync -p <path>`.
+
+Run the CLI mapping regression tests with `bun test ./script/test-code-intel.ts`.
+
+**Readiness is separate from directory presence.** Before `cg_*` and
+`vera_search` calls, the extension probes the backend and waits for its pending
+sync. CodeGraph must report an initialized index and a completed build.
+Vera must return valid index statistics. Its search command can still report
+an incomplete index, which stops the query with repair guidance.
+
+Read-only probes and queries retry known lock errors at most three times,
+with 250 ms and 1 s delays. Other errors do not trigger retries. Sync failures
+stop the query, and `/code-intel-sync` reports failures instead of claiming
+success. Writers never retry automatically, and the extension never removes
+locks or starts a cold build without confirmation.
+
+CodeGraph and Vera sync on their first call and after local edits. Graphify
+uses the cost-based policy below. A long-running external build can still
+leave an index unavailable. In that case, tools suggest LSP or direct file
+reads instead of treating an empty index as an empty result.
 
 Measured on a 6,000-file / 49k-chunk monorepo:
 

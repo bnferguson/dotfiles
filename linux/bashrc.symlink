@@ -6,7 +6,3 @@
 # still work, they just don't carry omarchy's bundle.
 
 [[ $- != *i* ]] && return
-
-# Added by GitButler installer
-export PATH="$HOME/.local/bin:$PATH"
-eval "$(but completions bash)"

@@ -1,6 +1,6 @@
 # Prompt: newline, then directory + VCS info, then prompt char on next line
 format = """
-$battery$directory${custom.vcs}$cmd_duration
+$battery$directory$git_branch$git_status$cmd_duration
 $character"""
 
 add_newline = true
@@ -47,15 +47,6 @@ format = "[$symbol($version)]($style) "
 [python]
 detect_files = ["requirements.txt", "pyproject.toml", ".python-version"]
 format = "[$symbol($version)]($style) "
-
-# Keep native Git modules configured for prompt-vcs's fallback.
-# Starship runs this custom command alongside other modules with a bounded timeout.
-[custom.vcs]
-when = 'git rev-parse --is-inside-work-tree >/dev/null 2>&1'
-command = 'sh "$HOME/.dotfiles/bin/prompt-vcs"'
-shell = ["sh"]
-format = "[$output]($style) "
-style = "bold purple"
 
 [git_branch]
 format = "[$symbol$branch(:$remote_branch)]($style) "

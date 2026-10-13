@@ -1,32 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { butStatus, gitStatus, readStatus, type Run } from "../config/extensions/vcs-status/status.ts";
-
-const workspace = {
-  stacks: [{
-    assignedChanges: [{ filePath: "one.ts" }],
-    branches: [
-      { name: "base", commits: [] },
-      { name: "feature", commits: [{ conflicted: false }] },
-    ],
-  }],
-  uncommittedChanges: [{ filePath: "one.ts" }, { filePath: "two.ts" }],
-};
-
-test("GitButler displays applied stack branches and deduplicates changed files", () => {
-  assert.deepEqual(butStatus(workspace), { text: "base → feature *2", dirty: true, warning: false });
-});
-
-test("empty workspace is not mistaken for an unavailable CLI", () => {
-  assert.equal(butStatus({ stacks: [], uncommittedChanges: [] }).text, "no branches");
-});
-
-test("multiple stacks are bounded and conflicts stay visible", () => {
-  const stack = { branches: [{ name: "worker", commits: [{ conflicted: true }] }] };
-  const result = butStatus({ stacks: [stack, stack, stack], uncommittedChanges: [] });
-  assert.equal(result.text, "worker | worker +1 stacks !conflicts");
-  assert.equal(result.warning, true);
-});
+import { gitStatus, readStatus, type Run } from "../config/extensions/vcs-status/status.ts";
 
 test("branch labels cannot inject terminal controls", () => {
   assert.equal(gitStatus("hello\n\x1b[31m", "").text, "hello[31m");
@@ -38,7 +12,7 @@ test("normal git preserves staged, unstaged, and untracked counts", () => {
   });
 });
 
-test("ordinary repositories never invoke but", async () => {
+test("repositories only invoke git", async () => {
   const calls: string[] = [];
   const execute: Run = async (command, args) => {
     calls.push(command);
@@ -50,29 +24,24 @@ test("ordinary repositories never invoke but", async () => {
   assert.ok(calls.every(command => command === "git"));
 });
 
-test("workspace detection queries GitButler JSON instead of git status", async () => {
+test("branch names with slashes use normal git status", async () => {
   const execute: Run = async (command, args) => {
-    if (command === "but") {
-      assert.deepEqual(args, ["status", "--json"]);
-      return JSON.stringify(workspace);
-    }
-    assert.notEqual(args[0], "status");
-    return args[0] === "symbolic-ref" ? "gitbutler/workspace" : ".git";
+    assert.equal(command, "git");
+    if (args[0] === "symbolic-ref") return "feature/workspace";
+    if (args[0] === "status") return " M changed";
+    return ".git";
   };
-  assert.equal((await readStatus("/repo", execute))?.text, "base → feature *2");
+  assert.equal((await readStatus("/repo", execute))?.text, "feature/workspace *1");
 });
 
-test("missing but, malformed JSON, and schema changes show unavailable", async () => {
-  for (const result of [null, "invalid json", "{}", JSON.stringify({ stacks: [{}], uncommittedChanges: [] })]) {
-    const execute: Run = async (command, args) => {
-      if (command === "but") {
-        if (result === null) throw new Error("ENOENT");
-        return result;
-      }
-      return args[0] === "symbolic-ref" ? "gitbutler/workspace" : ".git";
-    };
-    assert.deepEqual(await readStatus("/repo", execute), { text: "GitButler unavailable", dirty: false, warning: true });
-  }
+test("failed git status is visible", async () => {
+  const execute: Run = async (_command, args) => {
+    if (args[0] === "status") throw new Error("unavailable");
+    return args[0] === "symbolic-ref" ? "main" : ".git";
+  };
+  assert.deepEqual(await readStatus("/repo", execute), {
+    text: "main (status unavailable)", dirty: false, warning: true,
+  });
 });
 
 test("non-repositories hide the segment", async () => {

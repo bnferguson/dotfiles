@@ -34,27 +34,6 @@ export function gitStatus(branch: string, porcelain: string): Status {
   return { text: [label(branch), ...counts].join(" "), dirty: counts.length > 0 };
 }
 
-export function butStatus(value: unknown): Status {
-  const data = value as {
-    stacks?: { assignedChanges?: { filePath: string }[]; branches: { name: string; commits: { conflicted?: boolean }[] }[] }[];
-    uncommittedChanges?: { filePath: string }[];
-  };
-  if (!data || !Array.isArray(data.stacks) || !Array.isArray(data.uncommittedChanges)) {
-    throw new Error("Unsupported GitButler status schema");
-  }
-  const stacks = data.stacks.map(stack => stack.branches.map(branch => label(branch.name)).join(" → ")).filter(Boolean);
-  const names = stacks.slice(0, 2).join(" | ") || "no branches";
-  const overflow = stacks.length > 2 ? ` +${stacks.length - 2} stacks` : "";
-  const files = new Set([...data.uncommittedChanges, ...data.stacks.flatMap(stack => stack.assignedChanges ?? [])].map(change => change.filePath));
-  const conflicted = data.stacks.some(stack => stack.branches.some(branch => branch.commits.some(commit => commit.conflicted)));
-  return {
-    text: `${names}${overflow}${files.size ? ` *${files.size}` : ""}${conflicted ? " !conflicts" : ""}`,
-    dirty: files.size > 0,
-    warning: conflicted,
-  };
-}
-
-/** Only invoke GitButler in its synthetic workspace, never in ordinary repos. */
 export async function readStatus(cwd: string, execute: Run = run): Promise<Status | undefined> {
   let branch: string;
   try {
@@ -69,13 +48,6 @@ export async function readStatus(cwd: string, execute: Run = run): Promise<Statu
       branch = `${await execute("git", ["rev-parse", "--short", "HEAD"], cwd)} (detached)`;
     } catch {
       return undefined;
-    }
-  }
-  if (branch === "gitbutler/workspace") {
-    try {
-      return butStatus(JSON.parse(await execute("but", ["status", "--json"], cwd)));
-    } catch {
-      return { text: "GitButler unavailable", dirty: false, warning: true };
     }
   }
   try {

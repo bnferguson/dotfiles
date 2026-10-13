@@ -25,6 +25,7 @@
 
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { setTimeout as delay } from "node:timers/promises";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { StringEnum } from "@earendil-works/pi-ai";
 import { Key } from "@earendil-works/pi-tui";
@@ -104,6 +105,43 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 		default: "",
 	});
 
+	/** Only read operations retry: never start competing writers or clear locks. */
+	async function readIndex(bin: string, args: string[], cwd?: string, signal?: AbortSignal) {
+		const deadline = Date.now() + 15_000;
+		for (let attempt = 0; ; attempt++) {
+			signal?.throwIfAborted();
+			const probe = args[0] === "status" || args[0] === "--json";
+			const result = await pi.exec(bin, args, { cwd, signal, timeout: probe ? Math.max(1, deadline - Date.now()) : EXEC_TIMEOUT });
+			const detail = `${result.stderr}\n${result.stdout}`;
+			const busy = /database is locked|SQLITE_BUSY|SQLITE_LOCKED|database is locked by another process|could not acquire file lock|failed to acquire index lock|failed to acquire Lockfile:/i.test(detail);
+			if (result.code === 0 || !busy || attempt >= 2) return result;
+			const wait = attempt === 0 ? 250 : 1000;
+			if (Date.now() + wait >= deadline) return result;
+			await delay(wait, undefined, { signal });
+		}
+	}
+
+	/** Directory presence is not readiness, especially during the first build. */
+	async function probeReady(which: "codegraph" | "vera", cwd: string): Promise<void> {
+		const args = which === "codegraph" ? ["status", "--json", cwd] : ["--json", "stats"];
+		const result = await readIndex(which, args, cwd);
+		if (result.code !== 0) {
+			throw new Error(`${which} index is unavailable: ${(result.stderr || result.stdout).trim()}\nUse lsp_* or read/grep for now; retry after indexing completes.`);
+		}
+		let status: { initialized?: boolean; lastIndexed?: string; worktreeMismatch?: unknown; file_count?: number };
+		try {
+			status = JSON.parse(result.stdout);
+		} catch {
+			throw new Error(`${which} readiness probe returned invalid JSON; use lsp_* or read/grep for now.`);
+		}
+		if (which === "codegraph" && (status?.initialized !== true || typeof status.lastIndexed !== "string" || !status.lastIndexed || status.worktreeMismatch)) {
+			throw new Error("codegraph index has no completed build for this workspace. Wait for indexing to finish; if no build is running, explicitly repair the index. Use lsp_* or read/grep for now.");
+		}
+		if (which === "vera" && (!Number.isInteger(status?.file_count) || (status.file_count ?? -1) < 0)) {
+			throw new Error("vera readiness probe returned invalid index statistics; use lsp_* or read/grep for now.");
+		}
+	}
+
 	// ------------------------------------------------------------ index sync
 
 	/**
@@ -154,14 +192,17 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 		const job = (async () => {
 			try {
 				// Deliberately no `signal`: aborting mid-write is the expensive failure.
-				if (which === "codegraph") await pi.exec("codegraph", ["sync", "-p", cwd], { timeout: 120_000 });
-				else if (which === "graphify") await pi.exec("graphify", ["update", cwd], { timeout: 900_000 });
-				else await pi.exec("vera", ["update", cwd], { timeout: 900_000 });
+				let result: Awaited<ReturnType<ExtensionAPI["exec"]>>;
+				if (which === "codegraph") result = await pi.exec("codegraph", ["sync", cwd], { timeout: 120_000 });
+				else if (which === "graphify") result = await pi.exec("graphify", ["update", cwd], { timeout: 900_000 });
+				else result = await pi.exec("vera", ["update", cwd], { timeout: 900_000 });
+				// pi.exec returns non-zero exits; it doesn't throw for them.
+				if (result.code !== 0) throw new Error(result.stderr || result.stdout || `${which} sync failed`);
+				if (which !== "graphify") await probeReady(which, cwd);
 				syncCostMs.set(key, Date.now() - startedAt);
 				lastSync.set(key, Date.now());
-			} catch {
-				// A failed sync shouldn't fail the query; the tool still answers, just
-				// from a possibly older index.
+			} catch (err) {
+				throw new Error(`${which} index could not be made ready: ${err instanceof Error ? err.message : String(err)}\nUse lsp_* or read/grep for now; retry after indexing completes. Cold indexing requires confirmation.`);
 			} finally {
 				inFlight.delete(key);
 			}
@@ -173,6 +214,10 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 	/** Called at the top of every index-backed tool. */
 	async function freshen(which: "codegraph" | "vera", cwd: string): Promise<void> {
 		const key = `${which}:${cwd}`;
+		// Even a clean probe must not bypass an updater already writing this index.
+		const running = inFlight.get(key);
+		if (running) await running;
+		await probeReady(which, cwd);
 		if (!lastSync.has(key) || (await dirtyCount(cwd)) > 0) await sync(which, cwd);
 	}
 
@@ -208,11 +253,14 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 	 * thrown so pi flags the tool result as an error rather than feeding the
 	 * model an empty success.
 	 */
-	async function run(bin: string, args: string[], signal?: AbortSignal, hint?: string) {
-		const result = await pi.exec(bin, args, { signal, timeout: EXEC_TIMEOUT });
+	async function run(bin: string, args: string[], signal?: AbortSignal, hint?: string, cwd?: string) {
+		const indexed = bin === "codegraph" || bin === "vera" || bin === "graphify";
+		const result = indexed
+			? await readIndex(bin, args, cwd, signal)
+			: await pi.exec(bin, args, { cwd, signal, timeout: EXEC_TIMEOUT });
 		if (result.code !== 0) {
 			const detail = (result.stderr || result.stdout || "").trim();
-			throw new Error(`${bin} ${args[0]} failed (exit ${result.code})${hint ? `\n${hint}` : ""}\n${detail}`);
+			throw new Error(`${bin} ${args[0]} failed (exit ${result.code})${hint ? `\n${hint}` : ""}\n${detail}${indexed ? "\nIndex may be unavailable. Use lsp_* or read/grep for now; missing or incomplete indexes require /code-intel-init or a confirmed repair. In strict mode, use /code-intel on to allow text searches." : ""}`);
 		}
 		const out = result.stdout.trim();
 		return {
@@ -244,14 +292,19 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 			],
 			parameters: Type.Object({
 				task: Type.String({ description: "Natural-language description of the task or question" }),
-				maxNodes: Type.Optional(Type.Number({ description: "Max graph nodes to include (default 50)" })),
+				maxFiles: Type.Optional(Type.Integer({ minimum: 1, description: "Maximum files to include source from" })),
+				maxNodes: Type.Optional(Type.Number({ description: "Deprecated, ignored: explore limits files, not nodes. Use maxFiles." })),
 			}),
 			async execute(_id, params, signal, _onUpdate, ctx) {
 				requireIndex(ctx.cwd, ".codegraph", "codegraph");
 				await freshen("codegraph", ctx.cwd);
-				const args = ["context", params.task, "-p", ctx.cwd];
-				if (params.maxNodes) args.push("-n", String(params.maxNodes));
-				return run("codegraph", args, signal);
+				const args = ["explore", params.task, "-p", ctx.cwd];
+				if (params.maxFiles !== undefined) args.push("--max-files", String(params.maxFiles));
+				const result = await run("codegraph", args, signal, undefined, ctx.cwd);
+				if (params.maxNodes !== undefined) {
+					result.content.push({ type: "text", text: "[maxNodes is deprecated and was ignored; use maxFiles to limit source files.]" });
+				}
+				return result;
 			},
 		});
 
@@ -275,7 +328,7 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 				const args = ["query", params.search, "-p", ctx.cwd];
 				if (params.kind) args.push("-k", params.kind);
 				if (params.limit) args.push("-l", String(params.limit));
-				return run("codegraph", args, signal);
+				return run("codegraph", args, signal, undefined, ctx.cwd);
 			},
 		});
 
@@ -300,7 +353,7 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 				await freshen("codegraph", ctx.cwd);
 					const args = [verb, params.symbol, "-p", ctx.cwd];
 					if (params.limit) args.push("-l", String(params.limit));
-					return run("codegraph", args, signal);
+					return run("codegraph", args, signal, undefined, ctx.cwd);
 				},
 			});
 		}
@@ -323,7 +376,7 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 				await freshen("codegraph", ctx.cwd);
 				const args = ["impact", params.symbol, "-p", ctx.cwd];
 				if (params.depth) args.push("-d", String(params.depth));
-				return run("codegraph", args, signal);
+				return run("codegraph", args, signal, undefined, ctx.cwd);
 			},
 		});
 	}
@@ -353,7 +406,7 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 				if (params.scope) args.push("--scope", params.scope);
 				if (params.lang) args.push("--lang", params.lang);
 				if (params.limit) args.push("--limit", String(params.limit));
-				return run("vera", args, signal);
+				return run("vera", args, signal, undefined, ctx.cwd);
 			},
 		});
 	}
@@ -489,8 +542,10 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 
 		async function graphRun(cwd: string, args: string[], signal?: AbortSignal) {
 			requireGraph(cwd);
+			const running = inFlight.get(`graphify:${cwd}`);
+			if (running) await running;
 			if (rebuildCostMs(cwd) <= GRAPHIFY_AUTOSYNC_BUDGET_MS) await sync("graphify", cwd);
-			const res = await run("graphify", args, signal);
+			const res = await run("graphify", args, signal, undefined, cwd);
 			const note = await staleness(cwd);
 			if (note) res.content.push({ type: "text" as const, text: note });
 			return res;
@@ -731,12 +786,22 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 				return;
 			}
 			ctx.ui.setStatus("code-intel-sync", ctx.ui.theme.fg("muted", "↻ syncing"));
-			for (const which of idx as ("codegraph" | "vera" | "graphify")[]) {
-				lastSync.delete(`${which}:${ctx.cwd}`);
-				await sync(which, ctx.cwd);
+			const synced: string[] = [];
+			const failures: string[] = [];
+			try {
+				for (const which of idx as ("codegraph" | "vera" | "graphify")[]) {
+					lastSync.delete(`${which}:${ctx.cwd}`);
+					try {
+						await sync(which, ctx.cwd);
+						synced.push(which);
+					} catch (err) {
+						failures.push(err instanceof Error ? err.message : String(err));
+					}
+				}
+			} finally {
+				ctx.ui.setStatus("code-intel-sync", undefined);
 			}
-			ctx.ui.setStatus("code-intel-sync", undefined);
-			ctx.ui.notify(`Synced: ${idx.join(", ")}`, "info");
+			ctx.ui.notify([synced.length ? `Synced: ${synced.join(", ")}` : "", ...failures].filter(Boolean).join("\n"), failures.length ? "warning" : "info");
 		},
 	});
 
