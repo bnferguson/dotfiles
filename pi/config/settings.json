@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "1.1.0",
+  "lastChangelogVersion": "1.2.0",
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-6.1-sol",
   "subagents": {
@@ -40,13 +40,32 @@
     "~/.claude/skills"
   ],
   "powerline": {
-    "disabledSegments": ["git"],
-    "git": { "polling": "off" },
+    "disabledSegments": [
+      "git"
+    ],
+    "git": {
+      "polling": "off"
+    },
     "customItems": [
-      { "id": "vcs", "statusKey": "vcs", "position": "left", "selfColorize": true }
+      {
+        "id": "vcs",
+        "statusKey": "vcs",
+        "position": "left",
+        "selfColorize": true
+      }
     ],
     "layout": {
-      "left": ["model", "thinking", "shell_mode", "path", "custom:vcs", "queue", "context_pct", "cache_read", "cost"]
+      "left": [
+        "model",
+        "thinking",
+        "shell_mode",
+        "path",
+        "custom:vcs",
+        "queue",
+        "context_pct",
+        "cache_read",
+        "cost"
+      ]
     }
   },
   "theme": "dark",
