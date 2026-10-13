@@ -19,11 +19,14 @@
  * Toggle with /code-intel, Ctrl+Alt+I, or --code-intel <mode>. Auto-enables
  * `on` when a repo already has .codegraph/ or .vera/.
  *
- * Index management stays in the `code-intel` shell helper (code-intel init |
- * refresh | warm | status) — this extension only consumes indexes.
+ * Routine synchronization happens before queries. Confirmed initialization and
+ * repair use the `code-intel` helper, which coordinates watchers and keeps logs.
  */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { IndexObservability, type Trigger } from "./observability.ts";
+import { readIndexHealth, workspaceSnapshot, type WorkspaceSnapshot, type IndexHealth } from "./health.ts";
 import { join } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -32,6 +35,7 @@ import { Key } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
 
 type Mode = "off" | "on" | "strict";
+type IndexBackend = "codegraph" | "vera" | "graphify";
 
 const MODES: Mode[] = ["off", "on", "strict"];
 const TEXT_TOOLS = ["grep", "find"];
@@ -98,12 +102,183 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 	const hasVera = have("vera");
 	const hasAstGrep = have("ast-grep");
 	const hasGraphify = have("graphify");
+	const hasHelper = have("code-intel");
 
 	pi.registerFlag("code-intel", {
 		description: "Start in a code-intel mode: off | on | strict",
 		type: "string",
 		default: "",
 	});
+
+	// A schema mismatch cannot be fixed by another incremental update. Remember
+	// it until explicit sync/repair, rather than starting a doomed writer on every
+	// query. Ordinary lock contention and CLI argument errors are not repairs.
+	const repairNeeded = new Map<string, string>();
+	const indexAdvisories = new Map<string, string>();
+	const stateHome = process.env.XDG_STATE_HOME ?? join(homedir(), ".local", "state");
+	const monitors = new Map<string, IndexObservability>();
+	const verified = new Set<string>();
+	const syncedFingerprint = new Map<string, string>();
+	const lastWrittenFingerprint = new Map<string, string>();
+	const observedFingerprint = new Map<string, string>();
+	const changedAt = new Map<string, number>();
+	const backendVersions = new Map<string, string>();
+	const writerEpoch = new Map<string, number>();
+	let statusContext: ExtensionContext | undefined;
+	let statusTimer: ReturnType<typeof setInterval> | undefined;
+	let healthPoll: Promise<void> | undefined;
+	let statusGeneration = 0;
+	const elapsed = (start: number) => Math.max(0, Date.now() - start);
+	const busyIndex = (detail: string) => /database is locked|SQLITE_BUSY|SQLITE_LOCKED|could not acquire file lock|failed to acquire index lock|failed to acquire Lockfile:/i.test(detail);
+
+	function monitor(cwd: string): IndexObservability {
+		let value = monitors.get(cwd);
+		if (!value) { value = new IndexObservability(cwd, { stateHome }); monitors.set(cwd, value); }
+		return value;
+	}
+
+	// Rendering reads memory only; read-only probes belong to a separate poll.
+	function publishHealth(cwd: string, ctx = statusContext): void {
+		if (ctx?.cwd === cwd) ctx.ui.setStatus("code-intel-indexes", monitor(cwd).footer());
+	}
+
+	async function snapshot(cwd: string): Promise<WorkspaceSnapshot | undefined> {
+		try { return await workspaceSnapshot(cwd, (bin, args, options) => pi.exec(bin, args, options)); }
+		catch { return undefined; }
+	}
+
+	function failed(which: IndexBackend, cwd: string, err: unknown): void {
+		const detail = err instanceof Error ? err.message : String(err);
+		const repair = repairNeeded.has(`${which}:${cwd}`);
+		const failure = /no completed build/.test(detail) ? "No completed build for this workspace" : /invalid JSON/.test(detail) ? "Backend returned invalid JSON" : /permission denied/i.test(detail) ? "Index access denied" : "Backend operation failed; inspect the backend or retained helper log";
+		const repairReason = /format|schema|incompatible/i.test(repairNeeded.get(`${which}:${cwd}`) ?? "") ? "Incompatible index format" : "Incomplete or corrupt index";
+		const reason = repair ? `${repairReason}; /code-intel-repair ${which}` : busyIndex(detail) ? "Another index writer is active" : failure;
+		monitor(cwd).update(which, { state: repair ? "repair" : busyIndex(detail) ? "updating" : "unavailable", reason, lastFailure: Date.now(), failureReason: reason });
+		publishHealth(cwd);
+	}
+
+	function updating(which: IndexBackend, cwd: string): void {
+		const key = `${which}:${cwd}`;
+		writerEpoch.set(key, (writerEpoch.get(key) ?? 0) + 1);
+		monitor(cwd).update(which, { state: "updating", reason: "" });
+		publishHealth(cwd);
+	}
+
+	async function succeeded(which: IndexBackend, cwd: string, before?: WorkspaceSnapshot): Promise<number | undefined> {
+		const key = `${which}:${cwd}`;
+		const after = await snapshot(cwd);
+		const changed = before && after && before.fingerprint !== after.fingerprint;
+		if (before) { syncedFingerprint.set(key, before.fingerprint); lastWrittenFingerprint.set(key, before.fingerprint); }
+		if (which !== "vera") verified.add(key);
+		const unchecked = which === "vera" && !verified.has(key);
+		const lag = changedAt.has(key) && !unchecked ? elapsed(changedAt.get(key)!) : undefined;
+		if (changed) { if (!changedAt.has(key)) changedAt.set(key, Date.now()); }
+		else if (!unchecked) changedAt.delete(key);
+		const advisory = indexAdvisories.get(key);
+		monitor(cwd).update(which, { state: changed || advisory ? "stale" : unchecked ? "unchecked" : "ready", reason: changed ? "Workspace changed during indexing" : advisory ?? (unchecked ? "Update completed; vector queries not yet verified" : ""), lastSuccess: Date.now(), changeToReadyMs: changed ? undefined : lag });
+		publishHealth(cwd);
+		return changed ? undefined : lag;
+	}
+
+	async function waitForWriter(which: IndexBackend, cwd: string, job: Promise<void>, trigger: Trigger): Promise<void> {
+		const start = Date.now();
+		let outcome: "success" | "failure" = "success";
+		try { await job; } catch (err) { outcome = "failure"; throw err; }
+		finally { monitor(cwd).record({ backend: which, event: "writer-wait", trigger, outcome, waitMs: elapsed(start) }); }
+	}
+
+	function helperLog(which: IndexBackend, cwd: string, output: string): void {
+		const path = output.match(/^[ \t]*logs: (\/[^\r\n]+)$/m)?.[1];
+		if (path) monitor(cwd).update(which, { logPath: join(path, `${which}.log`) });
+	}
+
+	async function refreshHealth(ctx: ExtensionContext): Promise<void> {
+		if (healthPoll) { await healthPoll; return refreshHealth(ctx); }
+		const generation = statusGeneration;
+		healthPoll = (async () => {
+			const frame = await snapshot(ctx.cwd);
+			const previous = observedFingerprint.get(ctx.cwd);
+			if (frame) observedFingerprint.set(ctx.cwd, frame.fingerprint);
+			await Promise.all((["codegraph", "vera", "graphify"] as IndexBackend[]).map(async (which) => {
+				const key = `${which}:${ctx.cwd}`;
+				const observer = monitor(ctx.cwd);
+				if (inFlight.has(key)) return undefined;
+				const installed = { codegraph: hasCodegraph, vera: hasVera, graphify: hasGraphify }[which];
+				if (!installed || !indexedWith(ctx).includes(which)) {
+					observer.update(which, { state: installed ? "missing" : "unavailable", reason: installed ? "No index; /code-intel-init" : "Executable not on PATH; install the code-intel topic" });
+					return undefined;
+				}
+				if (frame && previous && previous !== frame.fingerprint) {
+					if (!changedAt.has(key)) changedAt.set(key, Date.now());
+					if (!syncedFingerprint.has(key)) syncedFingerprint.set(key, previous);
+				}
+				if (repairNeeded.has(key)) { observer.update(which, { state: "repair", reason: `Index needs repair; /code-intel-repair ${which}` }); return undefined; }
+				const old = observer.get(which);
+				const epoch = writerEpoch.get(key);
+				let next: IndexHealth;
+				const start = Date.now();
+				try { next = await readIndexHealth(which, ctx.cwd, (bin, args, options) => pi.exec(bin, args, options), frame?.head); }
+				catch { next = { state: "unavailable" as const, reason: "Read-only health check failed" }; }
+				// A slow read must not paint over a writer that started meanwhile.
+				if (inFlight.has(key) || writerEpoch.get(key) !== epoch || generation !== statusGeneration) return undefined;
+				// A matching build commit does not cover later uncommitted edits.
+				if (which === "graphify" && next.state === "ready" && frame?.latestDirtyMtime !== undefined && next.lastSuccess !== undefined && frame.latestDirtyMtime > next.lastSuccess && frame.fingerprint !== syncedFingerprint.get(key))
+					next = { ...next, state: "stale", reason: "Working-tree edits are newer than the graph; /code-intel-sync" };
+				if (next.state === "repair") repairNeeded.set(key, `${which} index needs repair`);
+				else if (next.state === "unchecked" && which === "vera" && verified.has(key)) {
+					const stale = frame && syncedFingerprint.has(key) && frame.fingerprint !== syncedFingerprint.get(key);
+					next = { ...next, state: stale ? "stale" : "ready", reason: stale ? "Workspace changes await a verified sync" : "" };
+				} else if (next.state === "ready") {
+					const versionChanged = next.version && backendVersions.has(key) && backendVersions.get(key) !== next.version;
+					if (next.version) backendVersions.set(key, next.version);
+					if (frame && (versionChanged || !syncedFingerprint.has(key))) syncedFingerprint.set(key, frame.fingerprint);
+					if (frame && frame.fingerprint !== syncedFingerprint.get(key)) next = { ...next, state: "stale", reason: "Workspace changes await a verified sync" };
+				}
+				const lag = next.state === "ready" && changedAt.has(key) ? elapsed(changedAt.get(key)!) : undefined;
+				if (lag !== undefined) changedAt.delete(key);
+				if (next.lastSuccess !== undefined && old.lastSuccess !== undefined) next.lastSuccess = Math.max(next.lastSuccess, old.lastSuccess);
+				observer.update(which, { ...next, reason: next.reason ?? "", changeToReadyMs: lag, ...(["unavailable", "repair"].includes(next.state) ? { lastFailure: Date.now(), failureReason: next.reason } : {}) });
+				if (old.state !== next.state || (old.reason ?? "") !== (next.reason ?? "") || lag !== undefined)
+					observer.record({ backend: which, event: "probe", trigger: "health-check", outcome: ["unavailable", "repair"].includes(next.state) ? "failure" : next.state === "updating" ? "skipped" : "success", durationMs: elapsed(start), changeToReadyMs: lag });
+				return undefined;
+			}));
+			if (generation === statusGeneration) publishHealth(ctx.cwd, ctx);
+		})();
+		try { await healthPoll; } finally { healthPoll = undefined; }
+	}
+
+	function stopHealth(): void {
+		statusGeneration++;
+		if (statusTimer) clearInterval(statusTimer);
+		statusTimer = undefined;
+		statusContext?.ui.setStatus("code-intel-indexes", undefined);
+		statusContext = undefined;
+	}
+
+	async function startHealth(ctx: ExtensionContext): Promise<void> {
+		stopHealth();
+		if (!ctx.hasUI || ctx.mode !== "tui") return;
+		statusContext = ctx;
+		const generation = statusGeneration;
+		publishHealth(ctx.cwd);
+		await refreshHealth(ctx);
+		if (generation !== statusGeneration) return;
+		statusTimer = setInterval(() => { void refreshHealth(ctx).catch(() => {}); }, 30_000);
+		statusTimer.unref?.();
+	}
+	function repairMessage(which: IndexBackend, cwd: string, detail: string): string {
+		return `${which} index requires repair in ${cwd}: ${detail}\nRun /code-intel-repair ${which} for a confirmed rebuild, or /code-intel-sync after an external repair. Until then use lsp_* or read/grep; in strict mode use /code-intel on.`;
+	}
+	function recordRepair(which: IndexBackend, cwd: string, detail: string): void {
+		if (/index format version mismatch|incompatible (?:index|schema)|index is incomplete|SQLITE_CORRUPT|database disk image is malformed|could not load graph.*(?:invalid JSON|parse)/i.test(detail)) {
+			repairNeeded.set(`${which}:${cwd}`, detail.trim());
+			failed(which, cwd, detail);
+		}
+	}
+	function requireHealthy(which: IndexBackend, cwd: string): void {
+		const detail = repairNeeded.get(`${which}:${cwd}`);
+		if (detail) throw new Error(repairMessage(which, cwd, detail));
+	}
 
 	/** Only read operations retry: never start competing writers or clear locks. */
 	async function readIndex(bin: string, args: string[], cwd?: string, signal?: AbortSignal) {
@@ -113,11 +288,16 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 			const probe = args[0] === "status" || args[0] === "--json";
 			const result = await pi.exec(bin, args, { cwd, signal, timeout: probe ? Math.max(1, deadline - Date.now()) : EXEC_TIMEOUT });
 			const detail = `${result.stderr}\n${result.stdout}`;
-			const busy = /database is locked|SQLITE_BUSY|SQLITE_LOCKED|database is locked by another process|could not acquire file lock|failed to acquire index lock|failed to acquire Lockfile:/i.test(detail);
-			if (result.code === 0 || !busy || attempt >= 2) return result;
+			const busy = busyIndex(detail);
+			if (result.code === 0 || !busy || attempt >= 2) {
+				if (result.code !== 0 && cwd) recordRepair(bin as IndexBackend, cwd, detail);
+				return result;
+			}
 			const wait = attempt === 0 ? 250 : 1000;
 			if (Date.now() + wait >= deadline) return result;
-			await delay(wait, undefined, { signal });
+			const startedAt = Date.now();
+			try { await delay(wait, undefined, { signal }); }
+			finally { if (cwd) monitor(cwd).record({ backend: bin as IndexBackend, event: "lock-wait", trigger: "query", outcome: "skipped", waitMs: elapsed(startedAt) }); }
 		}
 	}
 
@@ -126,19 +306,25 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 		const args = which === "codegraph" ? ["status", "--json", cwd] : ["--json", "stats"];
 		const result = await readIndex(which, args, cwd);
 		if (result.code !== 0) {
+			requireHealthy(which, cwd);
 			throw new Error(`${which} index is unavailable: ${(result.stderr || result.stdout).trim()}\nUse lsp_* or read/grep for now; retry after indexing completes.`);
 		}
-		let status: { initialized?: boolean; lastIndexed?: string; worktreeMismatch?: unknown; file_count?: number };
+		let status: { initialized?: boolean; lastIndexed?: string; worktreeMismatch?: unknown; file_count?: number; index?: { reindexRecommended?: boolean } };
 		try {
 			status = JSON.parse(result.stdout);
 		} catch {
 			throw new Error(`${which} readiness probe returned invalid JSON; use lsp_* or read/grep for now.`);
 		}
 		if (which === "codegraph" && (status?.initialized !== true || typeof status.lastIndexed !== "string" || !status.lastIndexed || status.worktreeMismatch)) {
-			throw new Error("codegraph index has no completed build for this workspace. Wait for indexing to finish; if no build is running, explicitly repair the index. Use lsp_* or read/grep for now.");
+			throw new Error("codegraph index has no completed build for this workspace. Wait for indexing to finish; if no build is running, use /code-intel-repair codegraph for a confirmed rebuild. Use lsp_* or read/grep for now.");
 		}
 		if (which === "vera" && (!Number.isInteger(status?.file_count) || (status.file_count ?? -1) < 0)) {
 			throw new Error("vera readiness probe returned invalid index statistics; use lsp_* or read/grep for now.");
+		}
+		if (which === "codegraph") {
+			const key = `${which}:${cwd}`;
+			if (status.index?.reindexRecommended) indexAdvisories.set(key, "Codegraph recommends reindexing after an extractor upgrade. Run /code-intel-repair codegraph for a confirmed rebuild.");
+			else indexAdvisories.delete(key);
 		}
 	}
 
@@ -165,6 +351,13 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 	 * half-finished index is far more expensive than a slow one.
 	 */
 	const lastSync = new Map<string, number>();
+	const lastRevision = new Map<string, string | undefined>();
+	async function revision(cwd: string): Promise<string | undefined> {
+		try {
+			const r = await pi.exec("git", ["-C", cwd, "rev-parse", "HEAD"], { timeout: 5000 });
+			return r.code === 0 ? r.stdout.trim() || undefined : undefined;
+		} catch { return undefined; }
+	}
 	const inFlight = new Map<string, Promise<void>>();
 	/** Measured wall time of the last completed sync, per key. Beats estimating. */
 	const syncCostMs = new Map<string, number>();
@@ -173,35 +366,54 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 	 * or branch switch also invalidates), so it only ever short-circuits work. */
 	async function dirtyCount(cwd: string): Promise<number> {
 		try {
-			const r = await pi.exec("git", ["-C", cwd, "ls-files", "-m", "-o", "--exclude-standard"], { timeout: 5000 });
-			return r.stdout.split("\n").filter(Boolean).length;
+			const r = await pi.exec("git", ["-C", cwd, "--no-optional-locks", "status", "--porcelain", "--untracked-files=normal"], { timeout: 5000 });
+			return r.code === 0 ? r.stdout.split("\n").filter(Boolean).length : 1;
 		} catch {
-			return 0;
+			return 1;
 		}
 	}
 
-	async function sync(which: "codegraph" | "vera" | "graphify", cwd: string): Promise<void> {
+	async function sync(which: IndexBackend, cwd: string, trigger: Trigger = "query"): Promise<void> {
 		const key = `${which}:${cwd}`;
 		const running = inFlight.get(key);
-		if (running) return running;
+		if (running) return waitForWriter(which, cwd, running, trigger);
+		requireHealthy(which, cwd);
 
 		const last = lastSync.get(key) ?? 0;
-		if (Date.now() - last < SYNC_DEBOUNCE_MS) return;
+		if (Date.now() - last < SYNC_DEBOUNCE_MS) {
+			monitor(cwd).record({ backend: which, event: "debounce", trigger, outcome: "skipped" });
+			return;
+		}
 
 		const startedAt = Date.now();
+		updating(which, cwd);
+		if (which === "vera") verified.delete(key);
 		const job = (async () => {
 			try {
-				// Deliberately no `signal`: aborting mid-write is the expensive failure.
+				const before = await snapshot(cwd);
+				const previous = lastWrittenFingerprint.get(key);
+				const headAtStart = before?.head ?? await revision(cwd);
+				// No signal OR timeout: either would kill a partially written index.
 				let result: Awaited<ReturnType<ExtensionAPI["exec"]>>;
-				if (which === "codegraph") result = await pi.exec("codegraph", ["sync", cwd], { timeout: 120_000 });
-				else if (which === "graphify") result = await pi.exec("graphify", ["update", cwd], { timeout: 900_000 });
-				else result = await pi.exec("vera", ["update", cwd], { timeout: 900_000 });
+				if (which === "codegraph") result = await pi.exec("codegraph", ["sync", cwd], { cwd });
+				else if (which === "graphify") result = await pi.exec("graphify", ["update", cwd], { cwd });
+				else result = await pi.exec("vera", ["update", cwd], { cwd });
 				// pi.exec returns non-zero exits; it doesn't throw for them.
-				if (result.code !== 0) throw new Error(result.stderr || result.stdout || `${which} sync failed`);
+				if (result.code !== 0) {
+					const detail = result.stderr || result.stdout || `${which} sync failed`;
+					recordRepair(which, cwd, detail);
+					throw new Error(detail);
+				}
+				lastRevision.set(key, headAtStart);
 				if (which !== "graphify") await probeReady(which, cwd);
 				syncCostMs.set(key, Date.now() - startedAt);
 				lastSync.set(key, Date.now());
+				const lag = await succeeded(which, cwd, before);
+				monitor(cwd).record({ backend: which, event: "update", trigger, outcome: "success", durationMs: elapsed(startedAt), noChange: previous && before ? previous === before.fingerprint : undefined, changeToReadyMs: lag });
 			} catch (err) {
+				failed(which, cwd, err);
+				monitor(cwd).record({ backend: which, event: "update", trigger, outcome: "failure", durationMs: elapsed(startedAt) });
+				requireHealthy(which, cwd);
 				throw new Error(`${which} index could not be made ready: ${err instanceof Error ? err.message : String(err)}\nUse lsp_* or read/grep for now; retry after indexing completes. Cold indexing requires confirmation.`);
 			} finally {
 				inFlight.delete(key);
@@ -215,10 +427,22 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 	async function freshen(which: "codegraph" | "vera", cwd: string): Promise<void> {
 		const key = `${which}:${cwd}`;
 		// Even a clean probe must not bypass an updater already writing this index.
-		const running = inFlight.get(key);
-		if (running) await running;
-		await probeReady(which, cwd);
-		if (!lastSync.has(key) || (await dirtyCount(cwd)) > 0) await sync(which, cwd);
+		try {
+			const running = inFlight.get(key);
+			if (running) await waitForWriter(which, cwd, running, "query");
+			requireHealthy(which, cwd);
+			await probeReady(which, cwd);
+			requireHealthy(which, cwd);
+			const head = await revision(cwd);
+			const headChanged = lastRevision.has(key) && head !== lastRevision.get(key);
+			if (headChanged) lastSync.delete(key); // A branch switch must bypass debounce.
+			if (!lastSync.has(key) || headChanged || (await dirtyCount(cwd)) > 0)
+				await sync(which, cwd, headChanged ? "head-changed" : !lastSync.has(key) ? "first-query" : "files-changed");
+		} catch (err) {
+			failed(which, cwd, err);
+			monitor(cwd).record({ backend: which, event: "blocked-query", trigger: "query", outcome: "failure" });
+			throw err;
+		}
 	}
 
 	// ---------------------------------------------------------------- helpers
@@ -255,16 +479,35 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 	 */
 	async function run(bin: string, args: string[], signal?: AbortSignal, hint?: string, cwd?: string) {
 		const indexed = bin === "codegraph" || bin === "vera" || bin === "graphify";
+		const startedAt = Date.now();
 		const result = indexed
 			? await readIndex(bin, args, cwd, signal)
 			: await pi.exec(bin, args, { cwd, signal, timeout: EXEC_TIMEOUT });
 		if (result.code !== 0) {
 			const detail = (result.stderr || result.stdout || "").trim();
+			if (indexed && cwd) {
+				failed(bin as IndexBackend, cwd, detail);
+				monitor(cwd).record({ backend: bin as IndexBackend, event: "blocked-query", trigger: "query", outcome: "failure" });
+				requireHealthy(bin as IndexBackend, cwd);
+			}
 			throw new Error(`${bin} ${args[0]} failed (exit ${result.code})${hint ? `\n${hint}` : ""}\n${detail}${indexed ? "\nIndex may be unavailable. Use lsp_* or read/grep for now; missing or incomplete indexes require /code-intel-init or a confirmed repair. In strict mode, use /code-intel on to allow text searches." : ""}`);
 		}
+		if (bin === "vera" && cwd && args[0] === "search") {
+			const key = `vera:${cwd}`;
+			const firstVerification = !verified.has(key);
+			verified.add(key);
+			if (monitor(cwd).get("vera").state === "unchecked") {
+				const lag = changedAt.has(key) ? elapsed(changedAt.get(key)!) : undefined;
+				changedAt.delete(key);
+				monitor(cwd).update("vera", { state: "ready", reason: "", lastSuccess: Date.now(), changeToReadyMs: lag });
+				if (firstVerification) monitor(cwd).record({ backend: "vera", event: "probe", trigger: "query", outcome: "success", durationMs: elapsed(startedAt), changeToReadyMs: lag });
+				publishHealth(cwd);
+			}
+		}
 		const out = result.stdout.trim();
+		const advisory = cwd ? indexAdvisories.get(`${bin}:${cwd}`) : undefined;
 		return {
-			content: [{ type: "text" as const, text: out || "(no results)" }],
+			content: [{ type: "text" as const, text: out || "(no results)" }, ...(advisory ? [{ type: "text" as const, text: `[${advisory}]` }] : [])],
 			details: { command: `${bin} ${args.join(" ")}`, empty: out.length === 0 },
 		};
 	}
@@ -272,6 +515,10 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 	/** codegraph and vera both need a per-project index; fail with the fix, not a stack trace. */
 	function requireIndex(cwd: string, dir: string, tool: string): void {
 		if (!existsSync(join(cwd, dir))) {
+			const which = dir === ".vera" ? "vera" : "codegraph";
+			monitor(cwd).update(which, { state: "missing", reason: "No index; /code-intel-init" });
+			monitor(cwd).record({ backend: which, event: "blocked-query", trigger: "query", outcome: "failure" });
+			publishHealth(cwd);
 			throw new Error(
 				`No ${dir}/ in ${cwd} — this project isn't indexed for ${tool}. Run \`code-intel init\` in the repo root, then retry. Until then, use grep/read.`,
 			);
@@ -543,8 +790,15 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 		async function graphRun(cwd: string, args: string[], signal?: AbortSignal) {
 			requireGraph(cwd);
 			const running = inFlight.get(`graphify:${cwd}`);
-			if (running) await running;
-			if (rebuildCostMs(cwd) <= GRAPHIFY_AUTOSYNC_BUDGET_MS) await sync("graphify", cwd);
+			try {
+				if (running) await waitForWriter("graphify", cwd, running, "query");
+				requireHealthy("graphify", cwd);
+				if (rebuildCostMs(cwd) <= GRAPHIFY_AUTOSYNC_BUDGET_MS) await sync("graphify", cwd, lastSync.has(`graphify:${cwd}`) ? "query" : "first-query");
+			} catch (err) {
+				failed("graphify", cwd, err);
+				monitor(cwd).record({ backend: "graphify", event: "blocked-query", trigger: "query", outcome: "failure" });
+				throw err;
+			}
 			const res = await run("graphify", args, signal, undefined, cwd);
 			const note = await staleness(cwd);
 			if (note) res.content.push({ type: "text" as const, text: note });
@@ -695,18 +949,22 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 	}
 
 	pi.registerCommand("code-intel", {
-		description: "Structural code navigation mode: off | on | strict (no arg cycles)",
+		description: "Structural navigation: off | on | strict | status | history (no arg cycles)",
 		handler: async (args, ctx) => {
 			const arg = args.trim().toLowerCase();
+			if (arg === "history") { ctx.ui.notify(monitor(ctx.cwd).historySummary(), "info"); return; }
 			if (arg === "status" || arg === "?") {
+				await refreshHealth(ctx);
 				const available = OWNED_TOOLS.filter((t) => pi.getActiveTools().includes(t));
 				const { present, missing } = indexReport(ctx.cwd);
 				ctx.ui.notify(
 					[
 						`mode: ${mode}`,
-						`indexed:     ${present.length ? present.join(", ") : "none — run `code-intel init`"}`,
+						`index markers (not readiness): ${present.length ? present.join(", ") : "none — run `code-intel init`"}`,
+						monitor(ctx.cwd).details(),
 						missing.length ? `not indexed: ${missing.join(", ")} (\`code-intel init\` builds all three)` : "",
 						`tools: ${available.length ? available.join(", ") : "none registered"}`,
+						...["vera", "codegraph", "graphify"].filter((which) => repairNeeded.has(`${which}:${ctx.cwd}`)).map((which) => `repair needed: ${which} — /code-intel-repair ${which}`),
 					]
 						.filter(Boolean)
 						.join("\n"),
@@ -716,7 +974,7 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 			}
 			if (!arg) return cycle(ctx);
 			if (!MODES.includes(arg as Mode)) {
-				ctx.ui.notify(`Unknown mode '${arg}'. Use: off | on | strict | status`, "error");
+				ctx.ui.notify(`Unknown mode '${arg}'. Use: off | on | strict | status | history`, "error");
 				return;
 			}
 			setMode(arg as Mode, ctx);
@@ -731,16 +989,20 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 	pi.registerCommand("code-intel-init", {
 		description: "Build the missing code-intelligence indexes for this project (slow, asks first)",
 		handler: async (_args, ctx) => {
-			if (!have("code-intel")) {
+			if (!hasHelper) {
 				ctx.ui.notify("`code-intel` helper not on PATH (it lives in the dotfiles bin/ topic).", "error");
 				return;
 			}
 			const { present, missing } = indexReport(ctx.cwd);
 			if (missing.length === 0) {
-				ctx.ui.notify(`All indexes already present: ${present.join(", ")}. Use /code-intel-sync to refresh.`, "info");
+				ctx.ui.notify(`Index directories already exist: ${present.join(", ")}. Use /code-intel-sync for updates, or /code-intel-repair <backend> for an incompatible index.`, "info");
 				return;
 			}
 
+			if (!ctx.hasUI) {
+				ctx.ui.notify("Initial indexing needs confirmation. Run `code-intel init` explicitly in the repository.", "warning");
+				return;
+			}
 			// A first index is nothing like the incremental syncs. A cold vera build
 			// on a few thousand files is minutes of saturated CPU and hundreds of MB
 			// on disk, so this is always a deliberate, confirmed act — never something
@@ -760,19 +1022,109 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 
 			ctx.ui.setStatus("code-intel-init", ctx.ui.theme.fg("warning", "◆ indexing"));
 			try {
-				// No signal, long timeout: see above.
-				const res = await pi.exec("code-intel", ["init"], { cwd: ctx.cwd, timeout: 3_600_000 });
+				// Track the helper under every backend key so reads and shutdown wait.
+				const backends = [...present, ...missing] as IndexBackend[];
+				const keys = backends.map((which) => `${which}:${ctx.cwd}`);
+				await Promise.allSettled(backends.map((which) => {
+					const running = inFlight.get(`${which}:${ctx.cwd}`);
+					return running ? waitForWriter(which, ctx.cwd, running, "init") : undefined;
+				}));
+				const job = Promise.resolve().then(async () => {
+					const startedAt = Date.now();
+					const before = await snapshot(ctx.cwd);
+					for (const which of backends) updating(which, ctx.cwd);
+					let result;
+					try { result = await pi.exec("code-intel", ["init"], { cwd: ctx.cwd }); }
+					catch (err) {
+						for (const which of backends) {
+							failed(which, ctx.cwd, err);
+							monitor(ctx.cwd).record({ backend: which, event: "init", trigger: "init", outcome: "failure", durationMs: elapsed(startedAt) });
+						}
+						throw err;
+					}
+					for (const which of backends) {
+						helperLog(which, ctx.cwd, result.stdout);
+						// The helper reports each child exit, so a partial failure must
+						// not label its successful siblings as failed or repaired.
+						const childExit = result.stdout.match(new RegExp(`^[ \\t]*${which}: exit (\\d+) \\(log:`, "m"))?.[1];
+						const ok = result.code === 0 || childExit === "0";
+						let lag: number | undefined;
+						if (ok) {
+							repairNeeded.delete(`${which}:${ctx.cwd}`);
+							lastSync.delete(`${which}:${ctx.cwd}`);
+							verified.add(`${which}:${ctx.cwd}`); // Helper verified an actual search/graph read.
+							lag = await succeeded(which, ctx.cwd, before);
+						} else failed(which, ctx.cwd, result.stderr || result.stdout);
+						monitor(ctx.cwd).record({ backend: which, event: "init", trigger: "init", outcome: ok ? "success" : "failure", durationMs: elapsed(startedAt), changeToReadyMs: lag });
+					}
+					if (result.code !== 0) throw new Error([result.stdout, result.stderr].filter(Boolean).join("\n"));
+				});
+				for (const key of keys) inFlight.set(key, job);
+				try { await job; } finally {
+					for (const key of keys) if (inFlight.get(key) === job) inFlight.delete(key);
+				}
 				const after = indexReport(ctx.cwd);
-				ctx.ui.notify(
-					res.code === 0
-						? `code-intel init done. Indexed: ${after.present.join(", ") || "none"}${
-								after.missing.length ? ` (still missing: ${after.missing.join(", ")})` : ""
-							}`
-						: `code-intel init exited ${res.code}. Indexed: ${after.present.join(", ") || "none"}\n${(res.stderr || res.stdout).slice(-500)}`,
-					res.code === 0 ? "info" : "error",
-				);
+				ctx.ui.notify(`code-intel init done. Indexed: ${after.present.join(", ") || "none"}${after.missing.length ? ` (still missing: ${after.missing.join(", ")})` : ""}`, after.missing.length ? "warning" : "info");
+			} catch (err) {
+				ctx.ui.notify(`Initial indexing failed: ${err instanceof Error ? err.message : String(err)}`, "error");
 			} finally {
 				ctx.ui.setStatus("code-intel-init", undefined);
+			}
+		},
+	});
+
+	pi.registerCommand("code-intel-repair", {
+		description: "Rebuild one backend: vera | codegraph | graphify (asks first; keeps a log)",
+		handler: async (args, ctx) => {
+			const which = args.trim().toLowerCase() as IndexBackend;
+			if (!["vera", "codegraph", "graphify"].includes(which)) {
+				ctx.ui.notify("Use /code-intel-repair vera | codegraph | graphify", "error");
+				return;
+			}
+			if (!hasHelper) {
+				ctx.ui.notify("`code-intel` helper is not on PATH.", "error");
+				return;
+			}
+			if (!ctx.hasUI) {
+				ctx.ui.notify(`Repair needs confirmation. Run \`code-intel repair ${which}\` explicitly in ${ctx.cwd}.`, "warning");
+				return;
+			}
+			if (!(await ctx.ui.confirm(`Rebuild ${which} for this project?`, `Directory: ${ctx.cwd}\nThis can take minutes. The helper coordinates its watcher, retains a private log, and runs to completion without a timeout. Graphify does not force a smaller graph or discard its semantic layer.`))) return;
+			const key = `${which}:${ctx.cwd}`;
+			ctx.ui.setStatus("code-intel-repair", ctx.ui.theme.fg("warning", `◆ rebuilding ${which}`));
+			try {
+				const running = inFlight.get(key);
+				if (running) await waitForWriter(which, ctx.cwd, running, "repair").catch(() => {});
+				// Register before starting work. Queries and shutdown share this promise.
+				const job = Promise.resolve().then(async () => {
+					const startedAt = Date.now();
+					const before = await snapshot(ctx.cwd);
+					updating(which, ctx.cwd);
+					try {
+						const result = await pi.exec("code-intel", ["repair", which], { cwd: ctx.cwd });
+						helperLog(which, ctx.cwd, result.stdout);
+						if (result.code !== 0) throw new Error([result.stdout, result.stderr].filter(Boolean).join("\n") || `repair exited ${result.code}`);
+						repairNeeded.delete(key);
+						if (which !== "graphify") await probeReady(which, ctx.cwd);
+						lastSync.set(key, Date.now());
+						lastRevision.set(key, before?.head ?? await revision(ctx.cwd));
+						verified.add(key); // Helper verified an actual search/graph read.
+						const lag = await succeeded(which, ctx.cwd, before);
+						monitor(ctx.cwd).record({ backend: which, event: "repair", trigger: "repair", outcome: "success", durationMs: elapsed(startedAt), changeToReadyMs: lag });
+						ctx.ui.notify(`Repaired: ${which}\n${result.stdout.trim()}`, "info");
+					} catch (err) {
+						recordRepair(which, ctx.cwd, err instanceof Error ? err.message : String(err));
+						failed(which, ctx.cwd, err);
+						monitor(ctx.cwd).record({ backend: which, event: "repair", trigger: "repair", outcome: "failure", durationMs: elapsed(startedAt) });
+						throw err;
+					}
+				});
+				inFlight.set(key, job);
+				try { await job; } finally { if (inFlight.get(key) === job) inFlight.delete(key); }
+			} catch (err) {
+				ctx.ui.notify(`Repair failed: ${err instanceof Error ? err.message : String(err)}`, "error");
+			} finally {
+				ctx.ui.setStatus("code-intel-repair", undefined);
 			}
 		},
 	});
@@ -791,8 +1143,9 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 			try {
 				for (const which of idx as ("codegraph" | "vera" | "graphify")[]) {
 					lastSync.delete(`${which}:${ctx.cwd}`);
+					repairNeeded.delete(`${which}:${ctx.cwd}`);
 					try {
-						await sync(which, ctx.cwd);
+						await sync(which, ctx.cwd, "manual-sync");
 						synced.push(which);
 					} catch (err) {
 						failures.push(err instanceof Error ? err.message : String(err));
@@ -805,10 +1158,29 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 		},
 	});
 
+	// Edits made through Pi can be noticed immediately; external edits and Git
+	// switches are caught by the read-only poll. These hooks never run writers.
+	pi.on("tool_result", async (event, ctx) => {
+		if (event.isError || !(["write", "edit"].includes(event.toolName) || (event.toolName === "ast_rewrite" && (event.input as { apply?: boolean }).apply))) return;
+		const frame = await snapshot(ctx.cwd);
+		if (!frame) return;
+		const previous = observedFingerprint.get(ctx.cwd);
+		observedFingerprint.set(ctx.cwd, frame.fingerprint);
+		for (const which of indexedWith(ctx) as IndexBackend[]) {
+			const key = `${which}:${ctx.cwd}`;
+			const baseline = syncedFingerprint.get(key) ?? previous;
+			if (baseline ? baseline === frame.fingerprint : !frame.dirty) continue;
+			if (!changedAt.has(key)) changedAt.set(key, Date.now());
+			if (monitor(ctx.cwd).get(which).state === "ready") monitor(ctx.cwd).update(which, { state: "stale", reason: "Workspace edited; awaiting a verified sync" });
+		}
+		publishHealth(ctx.cwd);
+	});
+
 	// Never abandon an in-flight index write. Killing `vera update` partway is
 	// the one genuinely expensive mistake available here (measured: a single
 	// interrupted run cost 19.5 minutes to reconcile), so shutdown waits it out.
 	pi.on("session_shutdown", async () => {
+		stopHealth();
 		if (inFlight.size === 0) return;
 		await Promise.allSettled([...inFlight.values()]);
 	});
@@ -838,6 +1210,7 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 	}
 
 	pi.on("session_start", async (event, ctx) => {
+		await startHealth(ctx);
 		const flag = String(pi.getFlag("code-intel") ?? "").toLowerCase();
 		if (MODES.includes(flag as Mode)) {
 			setMode(flag as Mode, ctx, true);

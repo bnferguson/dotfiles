@@ -27,7 +27,16 @@ fi
 # leave the machine without Pi if the download fails.
 if [ -x "$PI_MANAGED_BIN" ] && "$PI_MANAGED_BIN" --version >/dev/null 2>&1; then
   echo "  Pi managed install is available"
+  if [ "${DOTFILES_UPDATE:-0}" = 1 ]; then
+    echo "  Updating Pi and its configured packages..."
+    # Global packages only; ignore trust-gated project settings and preserve pins.
+    (cd / && "$PI_MANAGED_BIN" update --all --no-approve) || exit $?
+  fi
 else
+  if [ "${DOTFILES_UNATTENDED:-0}" = 1 ]; then
+    echo "  Pi needs initial setup — run pi/install.sh interactively." >&2
+    exit 1
+  fi
   echo "  Installing Pi with Pi's managed installer..."
 
   # Hide mise's direct Pi paths, universal shim, and known legacy wrapper.
@@ -71,11 +80,23 @@ if [ ! -f "$EXT_DIR/package.json" ]; then
 fi
 
 if command -v npm >/dev/null 2>&1; then
-  echo "  Installing pi extension deps..."
-  (cd "$EXT_DIR" && npm install --silent --no-audit --no-fund) || \
-    echo "  pi extension deps failed — the lsp extension will not load"
+  # Pi's SDK supports script-free npm installs. The runtime dependency,
+  # vscode-jsonrpc, also needs no lifecycle scripts. Do not approve transitive
+  # scripts merely to silence npm's allowScripts warnings.
+  echo "  Installing pi extension deps (lifecycle scripts disabled)..."
+  (cd "$EXT_DIR" && npm install --ignore-scripts --no-audit --no-fund) || exit $?
+  if [ "${DOTFILES_UPDATE:-0}" = 1 ]; then
+    echo "  Updating pi extension deps within declared version ranges..."
+    (cd "$EXT_DIR" && npm update --ignore-scripts --no-audit --no-fund) || exit $?
+  fi
+  echo "  Checking pi extension dependency imports..."
+  (cd "$EXT_DIR" && node --input-type=module -e '
+    await import("vscode-jsonrpc/node.js");
+    await import("@earendil-works/pi-coding-agent");
+  ') || exit $?
 else
-  echo "  Skipping pi extension deps — npm not found"
+  echo "  Cannot install pi extension deps — npm not found" >&2
+  exit 1
 fi
 
 # Language servers are what the lsp extension actually drives. It discovers them

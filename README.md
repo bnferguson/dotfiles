@@ -82,7 +82,22 @@ Install these before running bootstrap, or let `dots` handle it on macOS:
 
 ## maintenance
 
-Run `dots` periodically to pull the latest dotfiles from origin, update homebrew, and run installers. Use `dots -e` to open the dotfiles in your editor.
+Run `dots` periodically for unattended maintenance. It pulls `main`, updates Homebrew and global mise tools, then runs topic installers. It also updates Pi, its configured packages, local extension dependencies, Codegraph, and installed Rust toolchains. Version pins stay unchanged. Meridian tracks the latest eligible release.
+
+`dots` disables stdin prompts and requires existing sudo authorization. It skips machine setup, macOS system updates, and interactive Omarchy package and system updates. Use `dots --interactive` for those tasks. Use `script/bootstrap` for initial setup. Use `dots -e` to open the dotfiles in your editor.
+
+Each run shows output live on stdout and writes a private log under `${XDG_STATE_HOME:-~/.local/state}/dots/`. `dots --log-path` prints the path to `latest.log` without running maintenance. Set `DOTS_LOG_DIR` to change the directory. Logs remain until you remove them. They contain tool output, so review them before sharing.
+
+For an agent investigation, provide the path from `dots --log-path` and ask the agent to read that file. Logs show step boundaries, exit codes, skips, and a final status. Failed steps do not stop independent updates. A failed update or installer gives a nonzero exit status. A failed Git pull remains a warning and does not block maintenance.
+
+Some existing topic installers still hide errors internally. A zero exit status does not prove that every third-party installer completed its work. Scripts that bypass stdin or invoke sudo by absolute path can bypass the prompt controls.
+
+Run the maintenance regression tests without changing installed tools:
+
+```sh
+python3 script/test-dots.py
+python3 script/test-maintenance.py
+```
 
 ## coding agents
 

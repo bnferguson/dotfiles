@@ -52,6 +52,12 @@
         "statusKey": "vcs",
         "position": "left",
         "selfColorize": true
+      },
+      {
+        "id": "indexes",
+        "statusKey": "code-intel-indexes",
+        "position": "left",
+        "color": "accent"
       }
     ],
     "layout": {
@@ -61,6 +67,7 @@
         "shell_mode",
         "path",
         "custom:vcs",
+        "custom:indexes",
         "queue",
         "context_pct",
         "cache_read",

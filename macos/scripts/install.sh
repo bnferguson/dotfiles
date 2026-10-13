@@ -1,7 +1,13 @@
+#!/bin/sh
 # The Brewfile handles Homebrew-based app and library installs, but there may
 # still be updates and installables in the Mac App Store. There's a nifty
 # command line interface to it that we can use to just install everything, so
 # yeah, let's do that.
+
+if [ "${DOTFILES_UNATTENDED:-0}" = 1 ]; then
+  echo "› SKIP: macOS system updates (run dots --interactive when ready)."
+  exit 0
+fi
 
 if [ "$(uname -s)" = "Darwin" ]; then
   echo "› sudo softwareupdate -i -a"
