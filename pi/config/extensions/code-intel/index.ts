@@ -19,8 +19,9 @@
  * Toggle with /code-intel, Ctrl+Alt+I, or --code-intel <mode>. Auto-enables
  * `on` when a repo already has .codegraph/ or .vera/.
  *
- * Routine synchronization happens before queries. Confirmed initialization and
- * repair use the `code-intel` helper, which coordinates watchers and keeps logs.
+ * Routine synchronization runs in the background and before queries.
+ * Confirmed initialization and repair use the `code-intel` helper, which
+ * coordinates watchers and keeps logs.
  */
 
 import { existsSync, readFileSync, statSync } from "node:fs";
@@ -63,6 +64,7 @@ const OWNED_TOOLS = [
  * to avoid re-syncing between sibling tool calls in one batch.
  */
 const SYNC_DEBOUNCE_MS = 5_000;
+const BACKGROUND_DEBOUNCE_MS = 2_000;
 
 /**
  * Budget for auto-syncing graphify before a gf_* call. Above this it stays
@@ -192,6 +194,53 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 		if (path) monitor(cwd).update(which, { logPath: join(path, `${which}.log`) });
 	}
 
+	const backgroundTimers = new Map<string, { fingerprint: string; timer: ReturnType<typeof setTimeout> }>();
+	const backgroundJobs = new Set<Promise<void>>();
+	const backgroundAttempts = new Map<string, string>();
+
+	function scheduleBackground(which: IndexBackend, cwd: string, frame: WorkspaceSnapshot, trigger: Trigger): void {
+		const key = `${which}:${cwd}`;
+		if (statusContext?.cwd !== cwd || repairNeeded.has(key)) return;
+		if (!["ready", "unchecked", "stale"].includes(monitor(cwd).get(which).state)) return;
+		if (which === "graphify" && rebuildCostMs(cwd) > GRAPHIFY_AUTOSYNC_BUDGET_MS) return;
+		if (lastWrittenFingerprint.get(key) === frame.fingerprint || backgroundAttempts.get(key) === frame.fingerprint) return;
+		const pending = backgroundTimers.get(key);
+		if (pending?.fingerprint === frame.fingerprint) return;
+		if (pending) clearTimeout(pending.timer);
+		const generation = statusGeneration;
+		const wait = Math.max(BACKGROUND_DEBOUNCE_MS, (lastSync.get(key) ?? 0) + SYNC_DEBOUNCE_MS - Date.now());
+		const timer = setTimeout(() => {
+			backgroundTimers.delete(key);
+			if (generation !== statusGeneration) return;
+			const job = updateInBackground(which, cwd, trigger, generation).catch(err => { failed(which, cwd, err); });
+			backgroundJobs.add(job);
+			void job.finally(() => { backgroundJobs.delete(job); });
+		}, wait);
+		timer.unref?.();
+		backgroundTimers.set(key, { fingerprint: frame.fingerprint, timer });
+	}
+
+	async function updateInBackground(which: IndexBackend, cwd: string, trigger: Trigger, generation: number): Promise<void> {
+		const key = `${which}:${cwd}`;
+		const running = inFlight.get(key);
+		if (running) await waitForWriter(which, cwd, running, trigger);
+		const frame = await snapshot(cwd);
+		if (!frame || generation !== statusGeneration) return;
+		if (lastWrittenFingerprint.get(key) === frame.fingerprint || backgroundAttempts.get(key) === frame.fingerprint) return;
+		if (Date.now() - (lastSync.get(key) ?? 0) < SYNC_DEBOUNCE_MS) {
+			scheduleBackground(which, cwd, frame, trigger);
+			return;
+		}
+		// One attempt per fingerprint: a failed writer must not loop every poll.
+		backgroundAttempts.set(key, frame.fingerprint);
+		requireHealthy(which, cwd);
+		if (which !== "graphify") await probeReady(which, cwd);
+		await sync(which, cwd, trigger);
+		if (which === "vera") await run("vera", ["search", "index health verification", "--limit", "1"], undefined, undefined, cwd);
+		const after = await snapshot(cwd);
+		if (after && generation === statusGeneration) scheduleBackground(which, cwd, after, "files-changed");
+	}
+
 	async function refreshHealth(ctx: ExtensionContext): Promise<void> {
 		if (healthPoll) { await healthPoll; return refreshHealth(ctx); }
 		const generation = statusGeneration;
@@ -240,6 +289,8 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 				observer.update(which, { ...next, reason: next.reason ?? "", changeToReadyMs: lag, ...(["unavailable", "repair"].includes(next.state) ? { lastFailure: Date.now(), failureReason: next.reason } : {}) });
 				if (old.state !== next.state || (old.reason ?? "") !== (next.reason ?? "") || lag !== undefined)
 					observer.record({ backend: which, event: "probe", trigger: "health-check", outcome: ["unavailable", "repair"].includes(next.state) ? "failure" : next.state === "updating" ? "skipped" : "success", durationMs: elapsed(start), changeToReadyMs: lag });
+				if (frame) scheduleBackground(which, ctx.cwd, frame,
+					lastRevision.has(key) && frame.head !== lastRevision.get(key) ? "head-changed" : previous && previous !== frame.fingerprint ? "files-changed" : "health-check");
 				return undefined;
 			}));
 			if (generation === statusGeneration) publishHealth(ctx.cwd, ctx);
@@ -251,6 +302,8 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 		statusGeneration++;
 		if (statusTimer) clearInterval(statusTimer);
 		statusTimer = undefined;
+		for (const { timer } of backgroundTimers.values()) clearTimeout(timer);
+		backgroundTimers.clear();
 		statusContext?.ui.setStatus("code-intel-indexes", undefined);
 		statusContext = undefined;
 	}
@@ -263,7 +316,9 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 		publishHealth(ctx.cwd);
 		await refreshHealth(ctx);
 		if (generation !== statusGeneration) return;
-		statusTimer = setInterval(() => { void refreshHealth(ctx).catch(() => {}); }, 30_000);
+		statusTimer = setInterval(() => {
+			if (generation === statusGeneration) void refreshHealth(ctx).catch(() => {});
+		}, 30_000);
 		statusTimer.unref?.();
 	}
 	function repairMessage(which: IndexBackend, cwd: string, detail: string): string {
@@ -717,6 +772,17 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 		});
 	}
 
+	/** Share the same rebuild budget between background updates and queries. */
+	function rebuildCostMs(cwd: string): number {
+		const measured = syncCostMs.get(`graphify:${cwd}`);
+		if (measured !== undefined) return measured;
+		try {
+			return (statSync(join(cwd, "graphify-out", "graph.json")).size / 1_000_000) * GRAPHIFY_MS_PER_MB;
+		} catch {
+			return Number.POSITIVE_INFINITY;
+		}
+	}
+
 	// ------------------------------------------------------------- graphify
 
 	/**
@@ -769,21 +835,6 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 				// silently return "" on every call, so the note never appeared and the
 				// tool looked like it was working.
 				return `\n\n[staleness check failed: ${err instanceof Error ? err.message : String(err)}]`;
-			}
-		}
-
-		/**
-		 * Auto-sync only when a rebuild is cheap enough to hide behind a query.
-		 * Measured steady-state: 2.2s on an 8MB graph, 41.6s on a 55MB one — the
-		 * first is worth paying for silently, the second very much is not.
-		 */
-		function rebuildCostMs(cwd: string): number {
-			const measured = syncCostMs.get(`graphify:${cwd}`);
-			if (measured !== undefined) return measured;
-			try {
-				return (statSync(graphPath(cwd)).size / 1_000_000) * GRAPHIFY_MS_PER_MB;
-			} catch {
-				return Number.POSITIVE_INFINITY;
 			}
 		}
 
@@ -1159,7 +1210,7 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 	});
 
 	// Edits made through Pi can be noticed immediately; external edits and Git
-	// switches are caught by the read-only poll. These hooks never run writers.
+	// switches are caught by the read-only poll. Queue writers outside the hooks.
 	pi.on("tool_result", async (event, ctx) => {
 		if (event.isError || !(["write", "edit"].includes(event.toolName) || (event.toolName === "ast_rewrite" && (event.input as { apply?: boolean }).apply))) return;
 		const frame = await snapshot(ctx.cwd);
@@ -1172,6 +1223,7 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 			if (baseline ? baseline === frame.fingerprint : !frame.dirty) continue;
 			if (!changedAt.has(key)) changedAt.set(key, Date.now());
 			if (monitor(ctx.cwd).get(which).state === "ready") monitor(ctx.cwd).update(which, { state: "stale", reason: "Workspace edited; awaiting a verified sync" });
+			scheduleBackground(which, ctx.cwd, frame, "files-changed");
 		}
 		publishHealth(ctx.cwd);
 	});
@@ -1181,8 +1233,7 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 	// interrupted run cost 19.5 minutes to reconcile), so shutdown waits it out.
 	pi.on("session_shutdown", async () => {
 		stopHealth();
-		if (inFlight.size === 0) return;
-		await Promise.allSettled([...inFlight.values()]);
+		await Promise.allSettled([...backgroundJobs, ...inFlight.values()]);
 	});
 
 	// Auto-enable where it pays off: a repo that's already indexed. Explicit
