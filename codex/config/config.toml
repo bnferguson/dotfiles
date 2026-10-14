@@ -101,3 +101,12 @@ trusted_hash = "sha256:ebd2d8065d85ba3289e3d90c767bc2da44db81dc465b4dae21d692746
 
 [hooks.state."/Users/bnferguson/.codex/hooks.json:post_tool_use:1:0"]
 trusted_hash = "sha256:ebbe8f98629162c9f02b18bdc32d5cb27f01e664d2387f98aff08d7ff8dac5ea"
+
+[mcp_servers.rea]
+command = "npx"
+args = [ "-y", "rea-agents@6.4.0", "mcp" ]
+startup_timeout_sec = 30
+
+[mcp_servers.rea.env]
+GHIDRA_INSTALL_DIR = "/opt/homebrew/opt/ghidra/libexec"
+JAVA_HOME = "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
