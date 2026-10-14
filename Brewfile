@@ -21,6 +21,7 @@ brew "ast-grep"     # structural code search
 brew "actionlint"   # github actions linter
 brew "uv"           # python package manager
 brew "rustup"       # rust toolchain manager
+brew "ghidra"       # reverse engineering engine for REA (pinned in ghidra/install.sh)
 
 # Third-party taps
 tap "mirendev/tap"  # miren deploy CLI (Linux gets it via the miren/ topic)
