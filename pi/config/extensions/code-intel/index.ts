@@ -12,7 +12,7 @@
  *
  *   off     tools registered, no pressure
  *   on      grep/find get one redirect to the structural equivalent, then
- *           pass through if the model still wants them (instructive default)
+ *           pass through if the model still wants them (opt-in)
  *   strict  grep/find removed from the active tool set entirely — the model
  *           has no textual fallback. This is the measurement mode.
  *
@@ -1254,7 +1254,7 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 				}
 			}
 		} catch {
-			// Unavailable session history falls back to index-based mode detection.
+			// Unavailable session history falls back to off.
 			return undefined;
 		}
 		return undefined;
@@ -1282,26 +1282,8 @@ export default function codeIntelExtension(pi: ExtensionAPI): void {
 			}
 		}
 
-		const { present, missing } = indexReport(ctx.cwd);
-		if (present.length === 0) return;
-
-		// Announce rather than enable silently. Auto-enable changes how tool calls
-		// behave, and an unannounced behaviour change is the same failure mode as a
-		// stale index answering confidently: correct-looking, but not what you
-		// think is happening.
-		setMode("on", ctx, true);
-		ctx.ui.notify(
-			[
-				`code-intel: on — ${present.join(", ")} indexed here.`,
-				missing.length
-					? `Not indexed: ${missing.join(", ")}. They answer different questions; \`code-intel init\` builds the full set.`
-					: "",
-				"Text searches get one redirect to a structural tool. /code-intel to change mode.",
-			]
-				.filter(Boolean)
-				.join("\n"),
-			"info",
-		);
+		// Existing indexes do not opt a session into structural routing.
+		setMode("off", ctx, true);
 	});
 
 	/**

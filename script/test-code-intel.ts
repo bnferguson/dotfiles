@@ -36,7 +36,7 @@ function harness(syncFails = false, override?: (call: Call) => Promise<ExecResul
 		codeIntelExtension({
 			registerTool: (tool: any) => tools.set(tool.name, tool),
 			registerFlag() {}, registerCommand: (name: string, command: any) => commands.set(name, command), registerShortcut() {}, on: (name: string, handler: any) => events.set(name, handler),
-			getActiveTools: () => [...tools.keys()], getFlag: () => "off", appendEntry() {}, events: { emit() {} },
+			getActiveTools: () => [...tools.keys()], getFlag: () => "", appendEntry() {}, events: { emit() {} },
 			exec: async (bin: string, args: string[], options: Record<string, unknown>) => {
 				const call = { bin, args, options };
 				calls.push(call);
@@ -72,6 +72,22 @@ function harness(syncFails = false, override?: (call: Call) => Promise<ExecResul
 		execute: (name: string, params: unknown) => tools.get(name).execute("test", params, undefined, undefined, { cwd }),
 	};
 }
+
+test("indexed workspaces start off and can explicitly enable routing", async () => {
+	const h = harness();
+	const c = liveContext();
+	const ctx = { ...c.ctx, hasUI: false, mode: "print" };
+	try {
+		await h.events.get("session_start")({ reason: "startup" }, ctx);
+		expect(c.published.get("code-intel")).toBeUndefined();
+		expect(c.notices).toHaveLength(0);
+		const search = { toolName: "grep", input: { pattern: "example" } };
+		expect(await h.events.get("tool_call")(search, ctx)).toBeUndefined();
+		await h.commands.get("code-intel").handler("on", ctx);
+		expect(c.notices.at(-1)).toContain("code-intel: on");
+		expect((await h.events.get("tool_call")(search, ctx))?.block).toBe(true);
+	} finally { await h.events.get("session_shutdown")(); }
+});
 
 test("context uses explore, with a file limit rather than an unsupported node flag", async () => {
 	const h = harness();
