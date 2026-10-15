@@ -223,27 +223,14 @@ Codegraph's reindex recommendation appears as an advisory, not a forced rebuild.
 - `strict` — `grep`/`find` removed from the tool set *and* shell text search
   blocked. No textual fallback exists. This is the measurement mode.
 
-Auto-enables `on` when a repo already has any of `.codegraph/`, `.vera/`, or
-`graphify-out/`, and **says so** rather than changing tool behaviour silently —
-an unannounced behaviour change is the same failure mode as a stale index
-answering confidently. The custom footer also shows `intel:off`, `intel:on`, or
-`intel:strict` beside the model. It also names what's *missing*, since the three are
-complementary rather than alternatives and a project with one of them is
-under-served:
-
-```
-code-intel: on — vera indexed here.
-Not indexed: codegraph, graphify. They answer different questions;
-`code-intel init` builds the full set.
-Text searches get one redirect to a structural tool. /code-intel to change mode.
-```
-
-Interactive sessions only; `pi -p` stays quiet. `/code-intel status` reports the
-same present/missing split on demand.
+New sessions default to `off`, even in repositories with existing indexes.
+Use `/code-intel on` or `pi --code-intel on` to enable structural routing.
+Tools and background index maintenance remain available in `off` mode.
+`/code-intel status` reports present and missing indexes on demand.
 
 Mode survives `/resume` — it's persisted per session and restored (including
 re-pruning the tool set in `strict`). Precedence is `--code-intel` flag, then the
-resumed session's mode, then index auto-detection. Without this a long
+resumed session's mode, then `off`. Without this a long
 strict-mode refactor would quietly stop being strict on resume, which is exactly
 the kind of silent drift that ruins a comparison.
 

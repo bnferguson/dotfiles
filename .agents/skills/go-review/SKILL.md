@@ -17,6 +17,8 @@ Focus on `*.go` files and Go-specific concerns.
 
 ## Instructions
 
+Before reviewing code, read `~/.agents/skills/effective-go/SKILL.md` and `~/.agents/skills/go-concurrency-patterns/SKILL.md` completely. Apply both skills during the review.
+
 1. **Identify Go Changes:**
    - Use `git diff origin/main...HEAD --name-only -- '*.go'` to find changed files
    - Use `git diff HEAD -- '*.go'` to see uncommitted changes
