@@ -24,13 +24,13 @@
  * in progress rather than returning a confidently empty answer.
  */
 
-import { spawn, type ChildProcess } from "node:child_process";
+import { setTimeout as delay } from "node:timers/promises";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, extname, isAbsolute, join, relative, resolve } from "node:path";
 import { pathToFileURL, fileURLToPath } from "node:url";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import * as rpc from "vscode-jsonrpc/node";
+import { LspTransport } from "./transport.ts";
 
 // --------------------------------------------------------------- server table
 
@@ -181,8 +181,8 @@ interface OpenDoc {
 }
 
 interface Session {
-	conn: rpc.MessageConnection;
-	proc: ChildProcess;
+	transport: LspTransport;
+	conn: LspTransport["conn"];
 	root: string;
 	opened: Map<string, OpenDoc>;
 	/** Count of in-flight server-reported work items (indexing, cargo check...). */
@@ -217,23 +217,26 @@ export default function lspExtension(pi: ExtensionAPI): void {
 	/** Latest diagnostics per file URI, pushed by servers asynchronously. */
 	const diagnostics = new Map<string, unknown[]>();
 
-	async function getSession(spec: ServerSpec, root: string): Promise<Session> {
+	async function getSession(spec: ServerSpec, root: string, signal?: AbortSignal): Promise<Session> {
+		signal?.throwIfAborted();
 		const key = `${spec.id}:${root}`;
 		const existing = sessions.get(key);
-		if (existing) return existing;
+		if (existing) {
+			await existing.transport.wait(existing.ready, "initialization", signal);
+			return existing;
+		}
 
 		const bin = which(spec.cmd);
 		if (!bin) throw new Error(`Language server '${spec.cmd}' not found on PATH.`);
 
-		const proc = spawn(bin, spec.args, { cwd: root, stdio: ["pipe", "pipe", "pipe"] });
-		proc.stderr?.resume(); // drain, or a chatty server fills the pipe and blocks
-
-		const conn = rpc.createMessageConnection(
-			new rpc.StreamMessageReader(proc.stdout!),
-			new rpc.StreamMessageWriter(proc.stdin!),
-		);
-
-		const session: Session = { conn, proc, root, opened: new Map(), busy: 0, warm: false, ready: Promise.resolve() };
+		const transport = new LspTransport(spec.cmd, bin, spec.args, root, () => {
+			if (sessions.get(key)?.transport === transport) sessions.delete(key);
+			for (const uri of session.opened.keys()) diagnostics.delete(uri);
+		});
+		const conn = transport.conn;
+		const session: Session = { transport, conn, root, opened: new Map(), busy: 0, warm: false, ready: Promise.resolve() };
+		// Publish before awaiting initialization so concurrent tools share one server.
+		sessions.set(key, session);
 
 		// Servers hang forever if these go unanswered — respond to all of them.
 		conn.onRequest("workspace/configuration", (p: { items: unknown[] }) => p.items.map(() => ({})));
@@ -256,17 +259,23 @@ export default function lspExtension(pi: ExtensionAPI): void {
 		conn.listen();
 
 		const rootUri = pathToFileURL(root).toString();
-		await conn.sendRequest("initialize", {
-			processId: process.pid,
-			rootUri,
-			rootPath: root,
-			capabilities: LSP_CAPABILITIES,
-			workspaceFolders: [{ uri: rootUri, name: root }],
-			initializationOptions: spec.initOptions?.(root) ?? {},
-		});
-		conn.sendNotification("initialized", {});
-
-		sessions.set(key, session);
+		session.ready = (async () => {
+			try {
+				await transport.request("initialize", {
+					processId: process.pid,
+					rootUri,
+					rootPath: root,
+					capabilities: LSP_CAPABILITIES,
+					workspaceFolders: [{ uri: rootUri, name: root }],
+					initializationOptions: spec.initOptions?.(root) ?? {},
+				});
+				await conn.sendNotification("initialized", {});
+			} catch (error) {
+				transport.stop(`initialization failed: ${error instanceof Error ? error.message : String(error)}`);
+				throw error;
+			}
+		})();
+		await transport.wait(session.ready, "initialization", signal);
 		return session;
 	}
 
@@ -352,22 +361,20 @@ export default function lspExtension(pi: ExtensionAPI): void {
 	 * queries then answer at full speed. `busy` is still honoured for the servers
 	 * that do report it (rust-analyzer, gopls), which take far longer to index.
 	 */
-	async function settled<T>(session: Session, fn: () => Promise<T>, fingerprint: (r: T) => string): Promise<T> {
-		let result = await fn();
+	async function settled<T>(session: Session, fn: (signal: AbortSignal) => Promise<T>, fingerprint: (r: T) => string, signal?: AbortSignal): Promise<T> {
+		const bounded = AbortSignal.any([AbortSignal.timeout(60_000), ...(signal ? [signal] : [])]);
+		let result = await fn(bounded);
 		if (session.warm) return result;
 
-		const deadline = Date.now() + 60_000;
-		while (Date.now() < deadline) {
-			await new Promise((r) => setTimeout(r, 1000));
-			const next = await fn();
+		while (true) {
+			await delay(1000, undefined, { signal: bounded });
+			const next = await fn(bounded);
 			if (session.busy === 0 && fingerprint(next) === fingerprint(result)) {
 				session.warm = true;
 				return next;
 			}
 			result = next;
 		}
-		session.warm = true;
-		return result;
 	}
 
 	const locationFingerprint = (r: unknown): string => {
@@ -383,7 +390,7 @@ export default function lspExtension(pi: ExtensionAPI): void {
 	 * word-boundary scan so it still works for locals and for servers with weak
 	 * documentSymbol support.
 	 */
-	async function locate(cwd: string, path: string, symbol: string): Promise<Resolved> {
+	async function locate(cwd: string, path: string, symbol: string, signal?: AbortSignal): Promise<Resolved> {
 		const file = isAbsolute(path) ? path : resolve(cwd, path.replace(/^@/, ""));
 		if (!existsSync(file)) throw new Error(`No such file: ${file}`);
 
@@ -395,17 +402,18 @@ export default function lspExtension(pi: ExtensionAPI): void {
 			);
 		}
 
-		const session = await getSession(spec, findRoot(file, spec, cwd));
+		const session = await getSession(spec, findRoot(file, spec, cwd), signal);
 		refreshAll();
 		const uri = openDoc(session, file);
 
 		// 1. Ask the server where its symbols are.
 		try {
-			const syms = await session.conn.sendRequest("textDocument/documentSymbol", { textDocument: { uri } });
+			const syms = await session.transport.request("textDocument/documentSymbol", { textDocument: { uri } }, signal);
 			const hit = findSymbol(syms as SymbolNode[], symbol);
 			if (hit) return { session, uri, file, ...hit };
-		} catch {
-			// server doesn't support documentSymbol — fall through
+		} catch (error) {
+			// Only unsupported document symbols justify a text-position fallback.
+			if (!(error instanceof Error) || !("code" in error) || error.code !== -32601) throw error;
 		}
 
 		// 2. Text scan for the identifier as a whole word.
@@ -483,15 +491,16 @@ export default function lspExtension(pi: ExtensionAPI): void {
 		],
 		parameters: Type.Object(symbolParams),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
-			const at = await locate(ctx.cwd, params.path, params.symbol);
-			const res = await settled(
+			const at = await locate(ctx.cwd, params.path, params.symbol, _signal);
+			const res = await settled<Loc | Loc[] | null>(
 				at.session,
-				() =>
-					at.session.conn.sendRequest("textDocument/definition", {
+				(signal) =>
+					at.session.transport.request<Loc | Loc[] | null>("textDocument/definition", {
 						textDocument: { uri: at.uri },
 						position: { line: at.line, character: at.character },
-					}) as Promise<Loc[]>,
+					}, signal),
 				locationFingerprint,
+				_signal,
 			);
 			return ok(fmtLocations(ctx.cwd, res));
 		},
@@ -511,16 +520,17 @@ export default function lspExtension(pi: ExtensionAPI): void {
 			includeDeclaration: Type.Optional(Type.Boolean({ description: "Include the declaration itself (default false)" })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
-			const at = await locate(ctx.cwd, params.path, params.symbol);
-			const res = await settled(
+			const at = await locate(ctx.cwd, params.path, params.symbol, _signal);
+			const res = await settled<Loc[] | null>(
 				at.session,
-				() =>
-					at.session.conn.sendRequest("textDocument/references", {
+				(signal) =>
+					at.session.transport.request<Loc[] | null>("textDocument/references", {
 						textDocument: { uri: at.uri },
 						position: { line: at.line, character: at.character },
 						context: { includeDeclaration: params.includeDeclaration ?? false },
-					}) as Promise<Loc[]>,
+					}, signal),
 				locationFingerprint,
+				_signal,
 			);
 			const out = fmtLocations(ctx.cwd, res);
 			const n = Array.isArray(res) ? res.length : 0;
@@ -539,11 +549,11 @@ export default function lspExtension(pi: ExtensionAPI): void {
 		],
 		parameters: Type.Object(symbolParams),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
-			const at = await locate(ctx.cwd, params.path, params.symbol);
-			const res = (await at.session.conn.sendRequest("textDocument/hover", {
+			const at = await locate(ctx.cwd, params.path, params.symbol, _signal);
+			const res = (await at.session.transport.request("textDocument/hover", {
 				textDocument: { uri: at.uri },
 				position: { line: at.line, character: at.character },
-			})) as { contents?: unknown } | null;
+			}, _signal)) as { contents?: unknown } | null;
 
 			const c = res?.contents as { value?: string } | { value?: string }[] | string | undefined;
 			const text = !c
@@ -572,12 +582,12 @@ export default function lspExtension(pi: ExtensionAPI): void {
 			apply: Type.Optional(Type.Boolean({ description: "Write the edits. Default false = preview only." })),
 		}),
 		async execute(_id, params, _signal, _onUpdate, ctx) {
-			const at = await locate(ctx.cwd, params.path, params.symbol);
-			const edit = (await at.session.conn.sendRequest("textDocument/rename", {
+			const at = await locate(ctx.cwd, params.path, params.symbol, _signal);
+			const edit = (await at.session.transport.request("textDocument/rename", {
 				textDocument: { uri: at.uri },
 				position: { line: at.line, character: at.character },
 				newName: params.newName,
-			})) as { changes?: Record<string, unknown[]>; documentChanges?: unknown[] } | null;
+			}, _signal)) as { changes?: Record<string, unknown[]>; documentChanges?: unknown[] } | null;
 
 			if (!edit) return ok(`Server declined to rename '${params.symbol}'.`);
 
@@ -645,12 +655,12 @@ export default function lspExtension(pi: ExtensionAPI): void {
 			if (!existsSync(file)) throw new Error(`No such file: ${file}`);
 			const spec = specFor(file);
 			if (!spec) throw new Error(`No language server available for ${extname(file)}.`);
-			const session = await getSession(spec, findRoot(file, spec, ctx.cwd));
+			const session = await getSession(spec, findRoot(file, spec, ctx.cwd), _signal);
 			refreshAll();
 			const uri = openDoc(session, file);
 
 			// Diagnostics arrive as a push notification, so give the server a beat.
-			await new Promise((r) => setTimeout(r, session.busy > 0 ? 3000 : 1200));
+			await session.transport.wait(delay(session.busy > 0 ? 3000 : 1200, undefined, { signal: _signal }), "diagnostics", _signal);
 
 			const diags = (diagnostics.get(uri) ?? []) as {
 				range: { start: { line: number; character: number } };
@@ -689,12 +699,12 @@ export default function lspExtension(pi: ExtensionAPI): void {
 			if (!existsSync(file)) throw new Error(`No such file: ${file}`);
 			const spec = specFor(file);
 			if (!spec) throw new Error(`No language server available for ${extname(file)}.`);
-			const session = await getSession(spec, findRoot(file, spec, ctx.cwd));
+			const session = await getSession(spec, findRoot(file, spec, ctx.cwd), _signal);
 			refreshAll();
 			const uri = openDoc(session, file);
-			const syms = (await session.conn.sendRequest("textDocument/documentSymbol", {
+			const syms = (await session.transport.request("textDocument/documentSymbol", {
 				textDocument: { uri },
-			})) as SymbolNode[] | null;
+			}, _signal)) as SymbolNode[] | null;
 
 			const kinds = ["", "File", "Module", "Namespace", "Package", "Class", "Method", "Property", "Field",
 				"Constructor", "Enum", "Interface", "Function", "Variable", "Constant", "String", "Number",
@@ -738,14 +748,16 @@ export default function lspExtension(pi: ExtensionAPI): void {
 	// Language servers are long-lived child processes; leaking them across
 	// sessions would leave rust-analyzer instances chewing CPU in the background.
 	pi.on("session_shutdown", async () => {
-		for (const s of sessions.values()) {
+		await Promise.all([...sessions.values()].map(async (s) => {
 			try {
-				await s.conn.sendRequest("shutdown");
-				s.conn.sendNotification("exit");
-			} catch {}
-			s.conn.dispose();
-			s.proc.kill();
-		}
+				await s.transport.request("shutdown", null, undefined, 1500);
+				await s.conn.sendNotification("exit");
+			} catch {
+				// Dead or unresponsive servers still need forced cleanup.
+			} finally {
+				s.transport.stop("session shut down");
+			}
+		}));
 		sessions.clear();
 	});
 }
