@@ -1,5 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { readStatus } from "./status.ts";
+import { readWorkLinks, formatWorkLinks } from "./work-links.ts";
 
 // Powerline consumes this status through its documented custom-item API.
 export default function vcsStatus(pi: ExtensionAPI, getStatus = readStatus) {
@@ -25,8 +26,9 @@ export default function vcsStatus(pi: ExtensionAPI, getStatus = readStatus) {
     const current = generation;
     pending = true;
     try {
-      const status = await getStatus(ctx.cwd);
+      const [status, links] = await Promise.all([getStatus(ctx.cwd), readWorkLinks(ctx.cwd)]);
       if (current !== generation) return;
+      ctx.ui.setStatus("work-links", formatWorkLinks(links));
       let text: string | undefined;
       if (status) {
         const color = status.warning || status.dirty ? "warning" : "success";
@@ -45,6 +47,7 @@ export default function vcsStatus(pi: ExtensionAPI, getStatus = readStatus) {
     context = ctx;
     const current = generation;
     ctx.ui.setStatus("vcs", undefined);
+    ctx.ui.setStatus("work-links", undefined);
     await refresh();
     if (current !== generation) return;
     timer = setInterval(() => { void refresh(); }, 5000);
@@ -62,5 +65,6 @@ export default function vcsStatus(pi: ExtensionAPI, getStatus = readStatus) {
   pi.on("session_shutdown", (_event, ctx) => {
     stop();
     ctx.ui.setStatus("vcs", undefined);
+    ctx.ui.setStatus("work-links", undefined);
   });
 }

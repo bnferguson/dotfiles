@@ -1,0 +1,33 @@
+--- a/index.ts
++++ b/index.ts
+@@ -1111,7 +1111,7 @@
+ 
+ /**
+  * Responsive segment layout - fits segments into top bar, overflows to secondary row.
+- * When terminal is wide enough, secondary segments move up to top bar.
++ * Explicit secondary layout entries stay on a separate row even on wide terminals.
+  * When narrow, top bar segments overflow down to secondary row.
+  * With `secondaryOverflow: "wrap"`, secondary overflow continues on additional rows.
+  */
+@@ -1126,11 +1126,11 @@
+   const sepWidth = visibleWidth(separatorDef.left) + 2; // separator + spaces around it
+ 
+   // Render all segments and get their widths
+-  const renderedSegments: { content: string; width: number }[] = [];
++  const renderedSegments: { id: StatusLineSegmentId; content: string; width: number }[] = [];
+   for (const segId of allSegmentIds) {
+     const { content, width, visible } = renderSegmentWithWidth(segId, ctx);
+     if (visible) {
+-      renderedSegments.push({ content, width });
++      renderedSegments.push({ id: segId, content, width });
+     }
+   }
+ 
+@@ -1147,6 +1147,7 @@
+   let overflow = false;
+ 
+   for (const seg of renderedSegments) {
++    if (config.layout?.secondary?.includes(seg.id)) overflow = true;
+     const neededWidth = seg.width + (topSegments.length > 0 ? sepWidth : 0);
+ 
+     if (!overflow && currentWidth + neededWidth <= availableWidth) {

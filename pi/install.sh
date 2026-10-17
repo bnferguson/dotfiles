@@ -99,6 +99,9 @@ else
   exit 1
 fi
 
+# Package updates replace the installed renderer, so reapply the tracked layout patch.
+sh "$DOTFILES_ROOT/pi/apply-powerline-patch.sh" || exit $?
+
 # Language servers are what the lsp extension actually drives. It discovers them
 # on PATH and in nvim's mason bin dir, so anything already installed for the
 # editor is reused — nothing to install here. Report the gap instead of

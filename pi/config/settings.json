@@ -54,24 +54,36 @@
         "selfColorize": true
       },
       {
+        "id": "work-links",
+        "statusKey": "work-links",
+        "position": "left",
+        "color": "accent"
+      },
+      {
         "id": "indexes",
         "statusKey": "code-intel-indexes",
         "position": "left",
         "color": "accent"
       }
     ],
+    "secondaryOverflow": "wrap",
     "layout": {
       "left": [
+        "path",
+        "custom:vcs",
+        "custom:work-links"
+      ],
+      "right": [],
+      "secondary": [
         "model",
         "thinking",
         "shell_mode",
-        "path",
-        "custom:vcs",
-        "custom:indexes",
-        "queue",
         "context_pct",
         "cache_read",
-        "cost"
+        "cost",
+        "custom:indexes",
+        "queue",
+        "extension_statuses"
       ]
     }
   },
