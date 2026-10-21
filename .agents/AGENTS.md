@@ -29,3 +29,7 @@ When posting to GitHub on Brandon's behalf, identify yourself as an AI assistant
 # Prose
 When writing on Brandon's behalf, read [`style-guide.md`](~/.claude/style-guide.md) and [`tropes.md`](~/.claude/tropes.md). Be direct and specific.
 Use `simple-english` in pragmatic mode for technical docs and longer prose. Brandon's voice takes priority: keep contractions, natural rhythm, and warmth. Use strict STE only when requested.
+
+# graphify
+- **graphify** (`~/.claude/skills/graphify/SKILL.md`) - any input to knowledge graph. Trigger: `/graphify`
+When the user types `/graphify`, use the installed graphify skill or instructions before doing anything else.

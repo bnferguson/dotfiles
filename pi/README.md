@@ -7,6 +7,22 @@ directory) so sessions, caches, and `pi install`ed packages survive. Extensions
 under `pi/config/extensions/` are symlinked per-extension into `~/.pi/agent/extensions/`
 for the same reason.
 
+## MCP servers
+
+Pi's native MCP client reads `~/.pi/agent/mcp.json`, linked from
+`pi/config/mcp.json` by bootstrap. Existing Linear, Notion, and REA entries
+remain configured. OAuth tokens stay in Pi's untracked `mcp-auth.json`.
+
+The `terraform` server runs the official HashiCorp image pinned to `1.3.0`.
+Docker must be running and available on `PATH`. Only the public Registry
+toolset is enabled; it needs no AWS credentials, HCP token, or host mounts.
+It searches provider and module documentation. It cannot run local Terraform
+`plan` or `apply` commands.
+
+Run `pi mcp list` to check connections. Use `/reload` in an existing Pi session
+after changing the file, then inspect the server with `/mcp`. Terraform tools
+use Pi's default `codemode` exposure.
+
 ## Extensions
 
 Both exist to answer one question: **does structural, code-aware navigation

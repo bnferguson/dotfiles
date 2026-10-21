@@ -250,6 +250,7 @@ install_larger_paths () {
   mkdir -p "$HOME/.pi/agent"
   link_file "$DOTFILES_ROOT/pi/config/settings.json" "$HOME/.pi/agent/settings.json"
   link_file "$DOTFILES_ROOT/pi/config/models.json" "$HOME/.pi/agent/models.json"
+  link_file "$DOTFILES_ROOT/pi/config/mcp.json" "$HOME/.pi/agent/mcp.json"
   # pi extensions — linked per-extension, not as a whole directory, so that
   # extensions installed with `pi install` keep their place alongside these.
   # node_modules is linked too: jiti resolves imports from a parent of the
