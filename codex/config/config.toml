@@ -110,3 +110,7 @@ startup_timeout_sec = 30
 [mcp_servers.rea.env]
 GHIDRA_INSTALL_DIR = "/opt/homebrew/opt/ghidra/libexec"
 JAVA_HOME = "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+
+[mcp_servers.terraform]
+command = "docker"
+args = ["run", "-i", "--rm", "hashicorp/terraform-mcp-server:latest"]
