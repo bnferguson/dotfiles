@@ -307,6 +307,7 @@ setup_gitconfig
 setup_jjconfig
 install_dotfiles
 install_larger_paths
+"$DOTFILES_ROOT/pstack/install.sh"
 
 # Trust the mise config at its real path so mise doesn't prompt in sandboxed environments
 if command -v mise &>/dev/null; then
