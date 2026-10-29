@@ -52,6 +52,19 @@ config_file = "./agents/zig-core-code-reviewer.toml"
 command = "codegraph"
 args = ["serve", "--mcp"]
 
+[mcp_servers.rea]
+command = "npx"
+args = ["-y", "rea-agents@6.4.0", "mcp"]
+startup_timeout_sec = 30.0
+
+[mcp_servers.rea.env]
+GHIDRA_INSTALL_DIR = "/opt/homebrew/opt/ghidra/libexec"
+JAVA_HOME = "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+
+[mcp_servers.terraform]
+command = "docker"
+args = ["run", "-i", "--rm", "hashicorp/terraform-mcp-server:latest"]
+
 [projects."/Users/bnferguson/dev/soffi-main"]
 trust_level = "trusted"
 
@@ -68,6 +81,9 @@ trust_level = "trusted"
 trust_level = "trusted"
 
 [projects."/Users/bnferguson/dev/ai-video-studio"]
+trust_level = "trusted"
+
+[projects."/home/bnferguson/dev/tf"]
 trust_level = "trusted"
 
 [hooks.state]
@@ -102,15 +118,15 @@ trusted_hash = "sha256:ebd2d8065d85ba3289e3d90c767bc2da44db81dc465b4dae21d692746
 [hooks.state."/Users/bnferguson/.codex/hooks.json:post_tool_use:1:0"]
 trusted_hash = "sha256:ebbe8f98629162c9f02b18bdc32d5cb27f01e664d2387f98aff08d7ff8dac5ea"
 
-[mcp_servers.rea]
-command = "npx"
-args = [ "-y", "rea-agents@6.4.0", "mcp" ]
-startup_timeout_sec = 30
+[hooks.state."/home/bnferguson/.codex/hooks.json:session_start:0:0"]
+trusted_hash = "sha256:633b285cb781e7d857d132b25c6ddcf21b1643444fc17aabe1944d838e50b634"
 
-[mcp_servers.rea.env]
-GHIDRA_INSTALL_DIR = "/opt/homebrew/opt/ghidra/libexec"
-JAVA_HOME = "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
+[features]
+hooks = true
 
-[mcp_servers.terraform]
-command = "docker"
-args = ["run", "-i", "--rm", "hashicorp/terraform-mcp-server:latest"]
+[marketplaces.sentry-plugin-marketplace]
+source_type = "git"
+source = "https://github.com/getsentry/plugin-codex.git"
+
+[plugins."sentry@sentry-plugin-marketplace"]
+enabled = true
