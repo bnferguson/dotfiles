@@ -2,6 +2,8 @@ git/gitconfig.local.symlink
 
 # Generated / cached
 .cache/
+# pstack keeps its pinned source in Git and renders adapters during install.
+/pstack/generated/
 .migration-backups/
 __pycache__/
 .DS_Store

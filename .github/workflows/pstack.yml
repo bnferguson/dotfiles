@@ -1,0 +1,16 @@
+name: pstack
+on:
+  push:
+    paths: ['pstack/**', 'bin/pstack-sync', 'bin/dots', 'script/install', 'script/bootstrap', 'script/test-pstack-sync.py', 'script/test-dots.py', '.github/workflows/pstack.yml']
+  pull_request:
+    paths: ['pstack/**', 'bin/pstack-sync', 'bin/dots', 'script/install', 'script/bootstrap', 'script/test-pstack-sync.py', 'script/test-dots.py', '.github/workflows/pstack.yml']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 script/test-pstack-sync.py
+      - run: python3 script/test-dots.py
+      - run: bin/pstack-sync verify

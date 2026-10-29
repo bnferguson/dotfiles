@@ -126,4 +126,7 @@ if command -v mise >/dev/null 2>&1; then
 	run mise -C / upgrade --yes
 fi
 run "$ZSH/script/install"
+if [ -x "$ZSH/bin/pstack-sync" ]; then
+	run "$ZSH/bin/pstack-sync" check
+fi
 [ "$failures" -eq 0 ]

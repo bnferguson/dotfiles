@@ -157,6 +157,26 @@ class DotsTest(unittest.TestCase):
         self.assertIn("upgrade-failed", log.read_text())
         self.assertIn("exit=7", log.read_text())
 
+    def test_pstack_check_runs_after_install_and_is_logged(self):
+        checker = self.repo / "bin/pstack-sync"
+        checker.write_text('#!/bin/sh\n'
+                           'test -f "$HOME/installed" || exit 9\n'
+                           'test "$1" = check || exit 10\n'
+                           'echo pstack-update-available\n')
+        checker.chmod(0o755)
+        self.assert_installed(self.dots())
+        log = (self.root / ".local/state/dots/latest.log").read_text()
+        self.assertIn("pstack-update-available", log)
+
+    def test_pstack_network_error_preserves_install_and_fails_maintenance(self):
+        checker = self.repo / "bin/pstack-sync"
+        checker.write_text('#!/bin/sh\necho pstack-network-error >&2\nexit 7\n')
+        checker.chmod(0o755)
+        result = self.dots()
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue((self.root / "installed").exists())
+        self.assertIn("pstack-network-error", result.stdout)
+
     def test_macos_maintenance_does_not_run_setup(self):
         self.stub("uname", "echo Darwin")
         scripts = self.repo / "macos/scripts"
