@@ -65,6 +65,9 @@ JAVA_HOME = "/opt/homebrew/opt/openjdk@21/libexec/openjdk.jdk/Contents/Home"
 command = "docker"
 args = ["run", "-i", "--rm", "hashicorp/terraform-mcp-server:latest"]
 
+[mcp_servers.sentry]
+url = "https://mcp.sentry.dev/mcp"
+
 [projects."/Users/bnferguson/dev/soffi-main"]
 trust_level = "trusted"
 
