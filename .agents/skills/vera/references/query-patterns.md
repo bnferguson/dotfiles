@@ -30,6 +30,7 @@ For structural queries about call relationships, use `references` or `dead-code`
 ```sh
 vera references parse_config            # who calls parse_config?
 vera references parse_config --callees  # what does parse_config call?
+vera references parse_config --path 'src/**/*.rs' --path tests  # either path
 vera dead-code                          # candidates with no indexed caller matches
 ```
 
@@ -64,7 +65,7 @@ Add one filter at a time:
 2. `--path "src/auth/**"`: restrict to a path glob; repeat it to OR multiple patterns
 3. `--type function`: restrict to symbol type
 4. `--limit 3`: fewer, higher-confidence results
-5. `--scope source`: restrict to application source; other scopes are `docs`, `runtime`, and `all`
+5. `--scope source`: source-oriented files, including tests and config; other scopes are `docs`, `runtime`, and `all`
 
 ## Multi-Query Search
 
