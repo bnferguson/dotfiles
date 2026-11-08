@@ -85,6 +85,16 @@ printf '%s\\n' "$HOME/selected gh"
         self.assertTrue(self.gh.is_symlink())
         self.assertEqual(list(self.local.glob("gh.mise-backup.*")), [])
 
+    def test_preserves_symlink_to_legacy_launcher(self):
+        self.selected.write_text(LEGACY)
+        self.gh.symlink_to(self.selected)
+        result = self.run_command(["sh", str(ROOT / "gh/install.sh")])
+        # The preserved legacy launcher calls mise use, which the stub refuses.
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertTrue(self.gh.is_symlink())
+        self.assertEqual(self.selected.read_text(), LEGACY)
+        self.assertEqual(list(self.local.glob("gh.mise-backup.*")), [])
+
     def test_leaves_unknown_launcher_untouched(self):
         custom = '#!/bin/sh\nexit 0\n'
         self.gh.write_text(custom)
