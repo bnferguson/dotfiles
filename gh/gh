@@ -1,0 +1,4 @@
+#!/bin/sh
+# Resolve the configured version without installing or changing global config.
+gh_bin=$(mise which gh) || exit $?
+exec "$gh_bin" "$@"

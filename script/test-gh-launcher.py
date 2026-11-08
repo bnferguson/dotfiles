@@ -70,6 +70,21 @@ printf '%s\\n' "$HOME/selected gh"
         self.assertEqual(again.returncode, 0, again.stderr)
         self.assertEqual(len(list(self.local.glob("gh.mise-backup.*"))), 1)
 
+    def test_missing_version_does_not_replace_legacy_launcher(self):
+        self.gh.write_text(LEGACY)
+        self.gh.chmod(0o755)
+        result = self.run_command(["sh", str(ROOT / "gh/install.sh")], MISSING_GH="1")
+        self.assertEqual(result.returncode, 42, result.stderr)
+        self.assertEqual(self.gh.read_text(), LEGACY)
+        self.assertEqual(list(self.local.glob("gh.mise-backup.*")), [])
+
+    def test_preserves_symlinked_launcher(self):
+        self.gh.symlink_to(self.selected)
+        result = self.run_command(["sh", str(ROOT / "gh/install.sh")])
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(self.gh.is_symlink())
+        self.assertEqual(list(self.local.glob("gh.mise-backup.*")), [])
+
     def test_leaves_unknown_launcher_untouched(self):
         custom = '#!/bin/sh\nexit 0\n'
         self.gh.write_text(custom)
