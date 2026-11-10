@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#
+# Export Rex.app preferences (fonts, themes, tabs, server toggles) from macOS
+# defaults into this directory. Run after changing settings in Rex.
+
+set -e
+exec /usr/bin/python3 "$(cd "$(dirname "$0")" && pwd -P)/rexprefs.py" export

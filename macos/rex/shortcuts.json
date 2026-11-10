@@ -1,0 +1,25 @@
+{
+  "layer" : {
+    "bindings" : [
+      {
+        "action" : "session.next",
+        "keys" : [
+          "cmd+`"
+        ],
+        "source" : "settings"
+      },
+      {
+        "action" : "session.previous",
+        "keys" : [
+          "shift+cmd+`"
+        ],
+        "source" : "settings"
+      }
+    ],
+    "name" : "settings"
+  },
+  "migrations" : [
+    "bracket-characters"
+  ],
+  "version" : 1
+}

@@ -27,6 +27,7 @@ Cross-platform topics live at the repo root. OS-specific topics live under `linu
 | `starship/` | Starship prompt config |
 | `system/` | PATH, EDITOR, ls aliases, keybindings |
 | `zed/` | Zed editor settings |
+| `rex/` | Rex `init.lua` (key bindings), linked to `~/.config/rex/` |
 | `zellij/` | Zellij terminal multiplexer config |
 | `zsh/` | Shell config, completion, prompt |
 | `shell.env` | Single source of truth for `$SHELL` — read by `script/install` and (via symlink) by `linux/environment.d/shell.conf` |
@@ -46,6 +47,7 @@ Cross-platform topics live at the repo root. OS-specific topics live under `linu
 |-------|-------------|
 | `macos/bettertouchtool/` | BTT preset export/import scripts |
 | `macos/karabiner/` | Karabiner-Elements config |
+| `macos/rex/` | Rex.app preference export/import (fonts, themes, tabs, server toggles) |
 | `macos/scripts/` | macOS defaults, duti file associations, hostname, sudoers, MAS install |
 
 ## how it works
