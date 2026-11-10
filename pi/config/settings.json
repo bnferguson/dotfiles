@@ -1,5 +1,5 @@
 {
-  "lastChangelogVersion": "1.4.0",
+  "lastChangelogVersion": "1.5.0",
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-6.1-sol",
   "subagents": {
@@ -28,10 +28,22 @@
     "npm:pi-claude-cli",
     "npm:pi-lmstudio",
     "npm:pi-web-access",
-    "npm:@tintinweb/pi-subagents",
+    {
+      "source": "npm:@tintinweb/pi-subagents",
+      "extensions": [],
+      "skills": [],
+      "prompts": [],
+      "themes": []
+    },
     "npm:pi-powerline-footer",
     "npm:pi-lens",
-    "npm:@nateberkopec/pi-meridian@0.1.0-beta.1",
+    {
+      "source": "npm:@nateberkopec/pi-meridian@0.1.0-beta.1",
+      "extensions": [],
+      "skills": [],
+      "prompts": [],
+      "themes": []
+    },
     "git:github.com/nateberkopec/pi-openai-guidance",
     "npm:pi-intercom",
     "npm:pi-context-view"
@@ -88,5 +100,12 @@
     }
   },
   "theme": "dark",
-  "defaultThinkingLevel": "medium"
+  "defaultThinkingLevel": "medium",
+  "extensionChangelogVersions": {
+    "{\"source\":\"npm:pi-web-access\",\"scope\":\"user\"}": "0.47.0",
+    "{\"source\":\"npm:@tintinweb/pi-subagents\",\"scope\":\"user\"}": "0.23.0",
+    "{\"source\":\"npm:pi-powerline-footer\",\"scope\":\"user\"}": "0.22.0",
+    "{\"source\":\"npm:pi-lens\",\"scope\":\"user\"}": "4.4.9",
+    "{\"source\":\"npm:pi-context-view\",\"scope\":\"user\"}": "0.8.3"
+  }
 }
