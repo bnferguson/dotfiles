@@ -39,7 +39,7 @@ Other conventions:
 - `*.symlink` files → symlinked to `$HOME` as dotfiles (e.g., `git/gitconfig.symlink` → `~/.gitconfig`)
 - `bin/` → added to `$PATH`, contains git extensions and utilities
 - `functions/` → autoloaded zsh functions (files starting with `_` are completion functions)
-- Deeper paths (nvim, starship, gh, ghostty, ssh, jj, claude, pi, zed, zellij at root; `linux/hyprland`, `linux/environment.d`, `macos/karabiner` under OS buckets) are symlinked into `~/.config/`, `~/.claude/`, or `~/.pi/agent/` by `install_larger_paths` in bootstrap
+- Deeper paths (nvim, starship, gh, ghostty, ssh, jj, claude, pi, rex, zed, zellij at root; `linux/hyprland`, `linux/environment.d`, `macos/karabiner` under OS buckets) are symlinked into `~/.config/`, `~/.claude/`, or `~/.pi/agent/` by `install_larger_paths` in bootstrap
 
 ## Key Architecture Details
 
@@ -65,6 +65,7 @@ Bootstrap uses **relative symlinks** (via perl `File::Spec->abs2rel`) so they wo
 - `zsh/zshrc.symlink` has an LM Studio PATH append at the bottom that was added outside the dotfiles pattern — don't duplicate this kind of thing
 - The `.cache/` directory holds generated files (like kubectl completions) — these are gitignored
 - BTT presets are not auto-synced; manual export/import is required after changes
+- Rex.app settings are in the same boat: they live in the `com.superlogical.rex` defaults domain, not `init.lua`. Run `macos/rex/export` after changing them in the app. The export skips per-machine keys (window frames, focus history, server routes) via `EXCLUDED_KEYS` in `macos/rex/rexprefs.py`. Custom themes are decoded into `themes.json` so diffs stay readable.
 - BTT preset arrow-key bindings store an implicit Fn modifier (`BTTShortcutModifierKeys: 10354688` = Hyper+Fn) because Apple keyboards attach Fn to arrow keys at the hardware level. When documenting those shortcuts, write them as `Hyper+Up` etc. — not `Fn+Hyper+Up`.
 - `nvim/lazy-lock.json` tracks neovim plugin versions — changes here are from plugin updates
 - Zed extensions are synced declaratively via `auto_install_extensions` in `zed/settings.json` — add new registry extensions there so other machines pick them up (Zed doesn't write back to this list).

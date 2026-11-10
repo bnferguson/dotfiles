@@ -1,0 +1,3 @@
+-- Rex config, linked to ~/.config/rex/init.lua by script/bootstrap.
+-- Bind keys with rex.bind and remove defaults with rex.unbind.
+-- Run `rex config check` to validate and `rex config reload` to apply.

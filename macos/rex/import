@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+#
+# Import Rex.app preferences (fonts, themes, tabs, server toggles) from this
+# directory into macOS defaults. Quit Rex first, or restart it afterward.
+
+set -e
+exec /usr/bin/python3 "$(cd "$(dirname "$0")" && pwd -P)/rexprefs.py" import

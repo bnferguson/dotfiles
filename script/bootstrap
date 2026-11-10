@@ -196,6 +196,9 @@ install_larger_paths () {
   mkdir -p "$HOME/.config/zellij"
   link_file "$DOTFILES_ROOT/zellij/config.kdl" "$HOME/.config/zellij/config.kdl"
 
+  mkdir -p "$HOME/.config/rex"
+  link_file "$DOTFILES_ROOT/rex/init.lua" "$HOME/.config/rex/init.lua"
+
   mkdir -p "$HOME/.ssh"
   chmod 700 "$HOME/.ssh"
   link_file "$DOTFILES_ROOT/ssh/config" "$HOME/.ssh/config"
@@ -342,6 +345,14 @@ if [ "$(uname -s)" == "Darwin" ]; then
     info "  To import later: macos/bettertouchtool/import"
     info "  Enable Socket Server: BTT → Settings → Scripting → Command Line"
   fi
+fi
+
+# Rex.app — restore fonts, themes, and layout settings from the repo.
+# The app ships as "Rex.app" or "Rex Beta.app" depending on channel.
+if [ "$(uname -s)" == "Darwin" ] && compgen -G "/Applications/Rex*.app" > /dev/null; then
+  info "importing Rex preferences"
+  "$DOTFILES_ROOT/macos/rex/import"
+  success "Rex preferences imported"
 fi
 
 echo ''
