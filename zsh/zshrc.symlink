@@ -22,6 +22,12 @@ else
 fi
 config_files=($ZSH/(^(.git|.cache|node_modules|$other_os))/**/*.zsh)
 
+# The private overlay (see script/link-private-overlay) uses the same layout.
+export DOTFILES_PRIVATE=${DOTFILES_PRIVATE:-$HOME/.dotfiles-private}
+if [[ -d $DOTFILES_PRIVATE ]]; then
+  config_files+=($DOTFILES_PRIVATE/(^(.git|.cache|node_modules|$other_os))/**/*.zsh(N))
+fi
+
 # load the path files
 for file in ${(M)config_files:#*/path.zsh}
 do
