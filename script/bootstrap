@@ -333,6 +333,11 @@ then
   fi
 fi
 
+# Linux needs the same package and topic setup after its links are in place.
+if [ "$(uname -s)" = "Linux" ]; then
+  "$DOTFILES_ROOT/script/install" || exit $?
+fi
+
 # BetterTouchTool — import presets if BTT is reachable, otherwise remind.
 if [ "$(uname -s)" == "Darwin" ]; then
   BTTCLI="/Applications/BetterTouchTool.app/Contents/SharedSupport/bin/bttcli"

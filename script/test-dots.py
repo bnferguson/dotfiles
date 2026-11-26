@@ -157,6 +157,10 @@ class DotsTest(unittest.TestCase):
         self.assertIn("upgrade-failed", log.read_text())
         self.assertIn("exit=7", log.read_text())
 
+    def test_mise_upgrade_runs_after_prerequisites(self):
+        self.stub("mise", 'test -f "$HOME/installed" || exit 18')
+        self.assert_installed(self.dots())
+
     def test_pstack_check_runs_after_install_and_is_logged(self):
         checker = self.repo / "bin/pstack-sync"
         checker.write_text('#!/bin/sh\n'

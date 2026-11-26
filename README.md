@@ -71,10 +71,11 @@ script/bootstrap
 
 ### dependencies
 
-Install these before running bootstrap, or let `dots` handle it on macOS:
+Bootstrap installs packages on macOS, Omarchy, Debian, and Ubuntu. Debian and Ubuntu need Git and Bash to start, plus root access or sudo for APT.
 
-- [starship](https://starship.rs) — `brew install starship` or `curl -sS https://starship.rs/install.sh | sh`
-- [mise](https://mise.jdx.dev) — `brew install mise` or `curl https://mise.run | sh`
+On Debian and Ubuntu, setup installs mise, uv, rustup, Starship, Syncthing, and the build dependencies. It installs the mise tools before the topic installers and puts them on PATH for that run. Go is included so mise can build `gopls`.
+
+Use `script/install` to install packages and tools without creating the bootstrap links. Run initial setup interactively for Pi and Vera. GitHub extensions need `gh auth login` before their first install.
 
 ### post-install
 
@@ -84,7 +85,7 @@ Install these before running bootstrap, or let `dots` handle it on macOS:
 
 ## maintenance
 
-Run `dots` periodically for unattended maintenance. It pulls `main`, updates Homebrew and global mise tools, then runs topic installers. It also updates Pi, its configured packages, local extension dependencies, Codegraph, and installed Rust toolchains. Version pins stay unchanged. Meridian tracks the latest eligible release.
+Run `dots` periodically for unattended maintenance. It pulls `main`, updates Homebrew, runs package and topic setup, then upgrades global mise tools. It also updates Pi, its configured packages, local extension dependencies, Codegraph, and installed Rust toolchains. Version pins stay unchanged. Meridian tracks the latest eligible release.
 
 `dots` disables stdin prompts and requires existing sudo authorization. It skips machine setup, macOS system updates, and interactive Omarchy package and system updates. Use `dots --interactive` for those tasks. Use `script/bootstrap` for initial setup. Use `dots -e` to open the dotfiles in your editor.
 

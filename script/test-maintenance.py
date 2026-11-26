@@ -54,6 +54,7 @@ class MaintenanceTest(unittest.TestCase):
 
     def pi_setup(self, body='echo "pi:$*:$PWD" >> "$HOME/calls"'):
         script = self.copy("pi/install.sh")
+        self.copy("pi/apply-powerline-patch.sh")
         ext = self.repo / "pi/config/extensions"
         ext.mkdir(parents=True)
         (ext / "package.json").write_text('{"dependencies": {}}')
@@ -112,6 +113,100 @@ class MaintenanceTest(unittest.TestCase):
         self.assertTrue((self.home / "ran").exists())
         self.assertFalse((self.home / "unexpected").exists())
         self.assertIn("a-fails/install.sh (exit=7)", result.stdout)
+
+    def test_tools_are_installed_and_activated_before_consumers(self):
+        script = self.copy("script/install")
+        self.copy("mise/install.sh")
+        self.copy("mise/config.toml")
+        tools = self.home / "managed-bin"
+        tools.mkdir()
+        for name in ["npm", "go", "gh"]:
+            tool = tools / name
+            tool.write_text("#!/bin/sh\nexit 0\n")
+            tool.chmod(0o755)
+        self.stub("mise", '''case "$*" in
+  *install*)
+    grep -q '^go = ' "$MISE_GLOBAL_CONFIG_FILE" || exit 17
+    touch "$HOME/tools-installed";;
+  *env*)
+    test -f "$HOME/tools-installed" || exit 18
+    echo "export PATH=\\\"$HOME/managed-bin:$PATH\\\"";;
+esac''')
+        self.topic("a-consumer", '''test -f "$HOME/tools-installed" || exit 19
+for tool in npm go gh; do
+  test "$(command -v "$tool")" = "$HOME/managed-bin/$tool" || exit 20
+done''')
+        result = self.run_script(script)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertLess(result.stdout.index("mise/install.sh"), result.stdout.index("a-consumer"))
+
+    def debian_setup(self):
+        script = self.copy("script/install-debian")
+        (self.commands / "mise").unlink()
+        self.stub("apt-get", 'echo "apt:$*" >> "$HOME/calls"')
+        self.stub("id", "echo 0")
+        # Each downloaded installer creates its executable in the documented
+        # destination. Nothing touches the host's package manager or network.
+        self.stub("curl", '''echo "curl:$*" >> "$HOME/calls"
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --output) destination="$2"; shift;;
+    https://mise.run) tool=mise;;
+    https://astral.sh/uv/install.sh) tool=uv;;
+    https://sh.rustup.rs) tool=rustup;;
+    https://starship.rs/install.sh) tool=starship;;
+  esac
+  shift
+done
+printf '#!/bin/sh\\nmkdir -p "$HOME/.local/bin" "$HOME/.cargo/bin"\\nprintf "#!/bin/sh\\\\nexit 0\\\\n" > "$HOME/.local/bin/%s"\\nchmod +x "$HOME/.local/bin/%s"\\n' "$tool" "$tool" > "$destination"
+''')
+        return script
+
+    def test_debian_installs_prerequisites_and_reruns_without_downloads(self):
+        script = self.debian_setup()
+        result = self.run_script(script)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for tool in ["mise", "uv", "rustup", "starship"]:
+            self.assertTrue((self.home / ".local/bin" / tool).is_file())
+        calls = (self.home / "calls").read_text()
+        self.assertIn("build-essential", calls)
+        self.assertIn("syncthing", calls)
+        (self.home / "calls").unlink()
+        result = self.run_script(script)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("curl:", (self.home / "calls").read_text())
+
+    def test_debian_download_failure_is_reported(self):
+        script = self.debian_setup()
+        self.stub("curl", "exit 22")
+        result = self.run_script(script)
+        self.assertEqual(result.returncode, 22)
+        self.assertFalse((self.home / ".local/bin/uv").exists())
+
+    def test_debian_package_failure_stops_prerequisite_downloads(self):
+        script = self.debian_setup()
+        self.stub("apt-get", "exit 9")
+        self.stub("curl", 'touch "$HOME/downloaded"')
+        result = self.run_script(script)
+        self.assertEqual(result.returncode, 9)
+        self.assertFalse((self.home / "downloaded").exists())
+
+    def test_debian_non_root_uses_sudo(self):
+        script = self.debian_setup()
+        self.stub("id", "echo 1000")
+        self.stub("sudo", 'echo "sudo:$*" >> "$HOME/calls"; exec "$@"')
+        result = self.run_script(script)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("sudo:apt-get update", (self.home / "calls").read_text())
+
+    def test_failed_mise_environment_is_reported_and_topics_continue(self):
+        script = self.copy("script/install")
+        self.stub("mise", 'case "$*" in *env*) exit 8;; esac')
+        self.topic("topic", 'echo ran > "$HOME/ran"')
+        result = self.run_script(script)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertTrue((self.home / "ran").exists())
+        self.assertIn("Could not load the mise tool environment", result.stderr)
 
     def test_package_failure_does_not_skip_topics(self):
         script = self.copy("script/install")

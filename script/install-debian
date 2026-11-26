@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Debian/Ubuntu prerequisites that are supplied by Homebrew or Omarchy elsewhere.
+set -e
+
+as_root() {
+  if [ "$(id -u)" -eq 0 ]; then
+    "$@"
+  else
+    sudo "$@"
+  fi
+}
+
+as_root apt-get update
+as_root apt-get install -y \
+  ca-certificates curl git build-essential pkg-config libssl-dev \
+  python3 perl unzip xz-utils zsh neovim jq fzf fd-find syncthing
+
+export PATH="$HOME/.local/bin:${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
+mkdir -p "$HOME/.local/bin"
+installer_dir="$(mktemp -d "${TMPDIR:-/tmp}/dotfiles-prerequisites.XXXXXX")"
+trap 'rm -rf "$installer_dir"' EXIT
+
+# Download before executing so a failed transfer cannot look like a successful
+# empty pipeline. Leave existing package-manager installs under their ownership.
+if ! command -v mise >/dev/null 2>&1; then
+  echo "› installing mise"
+  curl --fail --silent --show-error --location https://mise.run --output "$installer_dir/mise"
+  MISE_INSTALL_PATH="$HOME/.local/bin/mise" sh "$installer_dir/mise"
+fi
+if ! command -v uv >/dev/null 2>&1; then
+  echo "› installing uv"
+  curl --fail --silent --show-error --location https://astral.sh/uv/install.sh --output "$installer_dir/uv"
+  UV_INSTALL_DIR="$HOME/.local/bin" UV_NO_MODIFY_PATH=1 sh "$installer_dir/uv"
+fi
+if ! command -v rustup >/dev/null 2>&1; then
+  echo "› installing rustup"
+  curl --fail --silent --show-error --location https://sh.rustup.rs --output "$installer_dir/rustup"
+  sh "$installer_dir/rustup" -y --no-modify-path --profile minimal --default-toolchain none
+fi
+if ! command -v starship >/dev/null 2>&1; then
+  echo "› installing starship"
+  curl --fail --silent --show-error --location https://starship.rs/install.sh --output "$installer_dir/starship"
+  sh "$installer_dir/starship" --yes --bin-dir "$HOME/.local/bin"
+fi
+
+for tool in mise uv rustup starship; do
+  command -v "$tool" >/dev/null 2>&1 || {
+    echo "! Prerequisite installer did not provide $tool on PATH." >&2
+    exit 1
+  }
+done

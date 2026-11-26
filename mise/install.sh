@@ -5,10 +5,17 @@
 # unlike Neovim's private Mason directory, these servers must be visible to
 # headless agent sessions on PATH.
 
+set -e
+
 if ! command -v mise >/dev/null 2>&1; then
-  echo "  Skipping mise tools — mise not found"
-  exit 0
+  echo "  Cannot install development tools — mise not found"
+  exit 1
 fi
 
 echo "  Installing mise-managed tools..."
-mise install
+DOTFILES_ROOT="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd -P)"
+export MISE_GLOBAL_CONFIG_FILE="$DOTFILES_ROOT/mise/config.toml"
+mise trust "$MISE_GLOBAL_CONFIG_FILE"
+# Install compilers before packages that invoke them during installation.
+mise -C / install --yes go node
+mise -C / install --yes

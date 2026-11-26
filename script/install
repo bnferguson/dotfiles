@@ -4,6 +4,11 @@
 
 cd "$(dirname "$0")"/.. || exit 1
 failures=0
+# Non-interactive shells do not source the topic PATH files.
+export PATH="$HOME/.local/bin:${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
+# Use the tracked global tools even before bootstrap has linked the config,
+# and ignore tool pins in the directory from which install was invoked.
+export MISE_GLOBAL_CONFIG_FILE="$PWD/mise/config.toml"
 
 # Run package setup in its own fail-fast subshell, then continue topics even
 # if a package manager fails. The caller can inspect the aggregate exit code.
@@ -79,13 +84,7 @@ elif command -v omarchy >/dev/null 2>&1; then
   fi
 elif command -v apt-get >/dev/null 2>&1; then
   echo "› installing packages via apt"
-  sudo apt-get update
-  sudo apt-get install -y zsh neovim jq fzf fd-find
-  # These need separate install methods on Ubuntu:
-  # starship: curl -sS https://starship.rs/install.sh | sh
-  # mise:     curl https://mise.run | sh
-  # gh comes from mise once it is installed — see mise/config.toml.
-  echo "  Note: starship and mise need manual install on Ubuntu — see README"
+  bash script/install-debian
 fi
 )
 install_packages
@@ -119,6 +118,25 @@ elif [ -f shell.env ]; then
   fi
 fi
 
+# Language runtimes and CLIs must exist before their topic consumers run.
+if [ -f mise/install.sh ]; then
+  echo "› START: ./mise/install.sh"
+  sh mise/install.sh
+  status=$?
+  echo "› END: ./mise/install.sh (exit=$status)"
+  [ "$status" -eq 0 ] || failures=$((failures + 1))
+fi
+if command -v mise >/dev/null 2>&1; then
+  mise_environment="$(mise -C / env --shell bash)"
+  status=$?
+  if [ "$status" -eq 0 ]; then
+    eval "$mise_environment"
+  else
+    echo "! Could not load the mise tool environment (exit=$status)." >&2
+    failures=$((failures + 1))
+  fi
+fi
+
 # Run topic installers
 # Read the installer list on fd 3 so each installer inherits the real stdin
 # (the terminal). Piping find into `while read` would leave stdin as the pipe,
@@ -130,6 +148,7 @@ case "$(uname -s)" in
   *) excluded_os='./no-os-bucket' ;;
 esac
 while IFS= read -r installer <&3 ; do
+  [ "$installer" != ./mise/install.sh ] || continue
   echo "› START: $installer"
   "$installer"
   status=$?

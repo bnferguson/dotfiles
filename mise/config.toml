@@ -10,6 +10,8 @@
 
 [tools]
 node = "26"
+# Required by the go backend when it builds gopls.
+go = "1"
 pnpm = "12"
 # Rust is owned by rustup, not mise — see the rust/ topic. rustup is the
 # upstream-recommended installer and manages toolchains + per-project overrides

@@ -37,6 +37,7 @@ if [ "${DOTS_LOGGING:-0}" != 1 ]; then
 	exit "${statuses[0]}"
 fi
 
+export PATH="$HOME/.local/bin:${CARGO_HOME:-$HOME/.cargo}/bin:$PATH"
 export ZSH="$dotfilesDirectory"
 export DOTFILES_UPDATE=1
 failures=0
@@ -121,11 +122,12 @@ case "$(uname -s)" in
 		fi ;;
 esac
 
+# Install prerequisites before attempting upgrades on a fresh machine.
+run "$ZSH/script/install"
 # Only upgrade the global mise toolchain, never the invoking project's pins.
 if command -v mise >/dev/null 2>&1; then
 	run mise -C / upgrade --yes
 fi
-run "$ZSH/script/install"
 if [ -x "$ZSH/bin/pstack-sync" ]; then
 	run "$ZSH/bin/pstack-sync" check
 fi
