@@ -21,7 +21,7 @@ macos/bettertouchtool/export  # Export BTT presets after changing them in BTT
 macos/bettertouchtool/import  # Restore BTT presets on a new machine
 ```
 
-There is no single test suite. Validate shell changes by sourcing the shell or running bootstrap. Run `python3 script/test-migrate-agent-skills.py` and `python3 script/test-migrate-agent-directories.py` for the shared and native directory migrations, and `python3 script/test-link-private-overlay.py` for the private overlay.
+There is no single test suite. Validate shell changes by sourcing the shell or running bootstrap. Run `python3 script/test-migrate-agent-skills.py` and `python3 script/test-migrate-agent-directories.py` for the shared and native directory migrations.
 
 ## Loading Conventions
 
