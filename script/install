@@ -143,6 +143,14 @@ done 3< <(find . \( -name .git -o -name .cache -o -name node_modules \
   -o -path './pstack/upstream' -o -path './pstack/generated' -o -path './claude/config/skills' \
   -o -path './codex/config/skills' -o -path './pi/config/skills' -o -path "$excluded_os" \) -prune \
   -o -name install.sh -type f -print | LC_ALL=C sort)
+# Link the private overlay's skills and agents before consolidation, so
+# Claude's native skill links already exist when it runs.
+echo "› START: private overlay"
+python3 script/link-private-overlay
+status=$?
+echo "› END: private overlay (exit=$status)"
+[ "$status" -eq 0 ] || failures=$((failures + 1))
+
 # Direct native installs are tracked immediately; consolidate portable copies
 # after installers finish. This does not bootstrap global directory links.
 if [ -f script/migrate-agent-directories ]; then

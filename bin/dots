@@ -97,6 +97,19 @@ if [ -n "$(git -C "$dotfilesDirectory" ls-files --unmerged)" ]; then
 	echo "! Repository has unresolved conflicts; skipping the rest of dots." >&2
 	exit 1
 fi
+# The private overlay follows the same best-effort policy; script/install
+# links whatever it now contains.
+privateDirectory="${DOTFILES_PRIVATE:-$HOME/.dotfiles-private}"
+if [ -d "$privateDirectory/.git" ]; then
+	privateBranch="$(git -C "$privateDirectory" symbolic-ref --quiet --short HEAD || true)"
+	if [ "$privateBranch" = main ]; then
+		echo "› git pull (private overlay)"
+		git -C "$privateDirectory" pull --no-rebase --ff-only --no-autostash origin main ||
+			echo "! Private overlay update failed; continuing with its current state." >&2
+	else
+		echo "! Private overlay not on main; skipping its update." >&2
+	fi
+fi
 
 case "$(uname -s)" in
 	Darwin)

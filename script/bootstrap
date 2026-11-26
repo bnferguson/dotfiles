@@ -245,6 +245,8 @@ install_larger_paths () {
   # compatibility links without following them into the canonical catalog.
   python3 "$DOTFILES_ROOT/script/migrate-agent-directories" --root "$DOTFILES_ROOT"
 
+  setup_private_overlay
+
   mkdir -p "$HOME/.config/jj"
   link_file "$DOTFILES_ROOT/jj/config.toml" "$HOME/.config/jj/config.toml"
 
@@ -285,6 +287,19 @@ install_larger_paths () {
     link_file "$DOTFILES_ROOT/linux/environment.d/shell.conf" "$HOME/.config/environment.d/shell.conf"
 
   fi
+}
+
+# The private overlay is optional: without access, bootstrap skips it and the
+# public dotfiles work on their own.
+setup_private_overlay () {
+  local private="${DOTFILES_PRIVATE:-$HOME/.dotfiles-private}"
+  local repo="${DOTFILES_PRIVATE_REPO:-bnferguson/dotfiles-private}"
+  if ! [ -d "$private" ] && command -v gh >/dev/null 2>&1 \
+    && gh repo view "$repo" >/dev/null 2>&1; then
+    info "cloning private overlay $repo"
+    gh repo clone "$repo" "$private" || info "could not clone $repo; skipping it"
+  fi
+  python3 "$DOTFILES_ROOT/script/link-private-overlay" --root "$DOTFILES_ROOT"
 }
 
 setup_jjconfig () {

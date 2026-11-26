@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+#
+# Pre-commit guard: stop private overlay material from reaching this public repo.
+# Installed as .git/hooks/pre-commit by script/link-private-overlay.
+# Bypass with `git commit --no-verify` when a match is a false positive.
+
+set -euo pipefail
+
+private="${DOTFILES_PRIVATE:-$HOME/.dotfiles-private}"
+status=0
+
+# /auto-mode-setup and the /permissions Auto mode tab write autoMode into
+# ~/.claude/settings.json, which is this repo's file. It belongs in the
+# overlay's claude/managed-settings.json instead.
+settings=claude/config/settings.json
+if git diff --cached --name-only --diff-filter=AM | grep -qx "$settings" &&
+  git show ":$settings" | jq -e 'has("autoMode")' >/dev/null; then
+  echo "! $settings has an autoMode block." >&2
+  echo "  Move it to $private/claude/managed-settings.json." >&2
+  status=1
+fi
+
+# The denylist holds one case-insensitive fixed string per line; # starts a
+# comment. It lives in the overlay so the strings themselves stay private.
+denylist="$private/denylist"
+if [ -f "$denylist" ]; then
+  patterns="$(grep -v -e '^[[:space:]]*#' -e '^[[:space:]]*$' "$denylist" || true)"
+  if [ -n "$patterns" ]; then
+    matches="$(git diff --cached -U0 --no-color --no-ext-diff |
+      grep -e '^+++ ' -e '^+' |
+      awk '/^\+\+\+ / { file = substr($0, 7); next } { print file ": " substr($0, 2) }' |
+      grep -iF -- "$patterns" || true)"
+    if [ -n "$matches" ]; then
+      echo "! Staged lines match $denylist:" >&2
+      printf '%s\n' "$matches" | sed 's/^/  /' >&2
+      status=1
+    fi
+  fi
+fi
+
+exit "$status"
