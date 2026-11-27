@@ -137,6 +137,16 @@ if command -v mise >/dev/null 2>&1; then
   fi
 fi
 
+# Detach writable settings before agent installers can update them.
+if [ -f script/sync-agent-settings ]; then
+  echo "› START: shared agent settings"
+  uv run --no-project --script script/sync-agent-settings
+  status=$?
+  echo "› END: shared agent settings (exit=$status)"
+  # Updating agents through old links after a failed migration dirties the repo.
+  [ "$status" -eq 0 ] || exit "$status"
+fi
+
 # Run topic installers
 # Read the installer list on fd 3 so each installer inherits the real stdin
 # (the terminal). Piping find into `while read` would leave stdin as the pipe,

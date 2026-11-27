@@ -6,3 +6,5 @@
 # still work, they just don't carry omarchy's bundle.
 
 [[ $- != *i* ]] && return
+
+export PATH="$HOME/.local/bin:$PATH"

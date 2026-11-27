@@ -7,11 +7,6 @@ approvals_reviewer = "auto_review"
 # Mirror the Claude status line with the closest native Codex fields.
 status_line = ["current-dir", "git-branch", "pull-request-number", "model-with-reasoning", "context-used", "estimated-thread-cost", "branch-changes"]
 status_line_use_colors = true
-screen_reader_detection_done = true
-
-[tui.model_availability_nux]
-gpt-6-astra = 4
-"gpt-6.1-sol" = 4
 
 [agents]
 max_concurrent_threads_per_session = 8
@@ -63,71 +58,6 @@ args = ["run", "-i", "--rm", "hashicorp/terraform-mcp-server:latest"]
 
 [mcp_servers.sentry]
 url = "https://mcp.sentry.dev/mcp"
-
-[projects."/Users/bnferguson/dev/soffi-main"]
-trust_level = "trusted"
-
-[projects."/Users/bnferguson/dev/soffi-main/.git/modules"]
-trust_level = "trusted"
-
-[projects."/Users/bnferguson/.dotfiles"]
-trust_level = "trusted"
-
-[projects."/home/bnferguson/.dotfiles"]
-trust_level = "trusted"
-
-[projects."/home/bnferguson/dev/soffi-main"]
-trust_level = "trusted"
-
-[projects."/Users/bnferguson/dev/ai-video-studio"]
-trust_level = "trusted"
-
-[projects."/home/bnferguson/dev/tf"]
-trust_level = "trusted"
-
-[projects."/Users/bnferguson/dev/tf"]
-trust_level = "trusted"
-
-[hooks.state]
-
-[hooks.state."/home/bnferguson/.codex/hooks.json:pre_tool_use:0:0"]
-trusted_hash = "sha256:b69f891b6b7e25e0d6bd6e10e5654691170f2e1909b15b0e9cbe7678813fc5b9"
-
-[hooks.state."/home/bnferguson/.codex/hooks.json:pre_tool_use:0:1"]
-trusted_hash = "sha256:3a539b4c8cc9bc94780c19022d237703946d4ca41d24126faa6bc27f14c098ac"
-
-[hooks.state."/home/bnferguson/.codex/hooks.json:pre_tool_use:0:2"]
-trusted_hash = "sha256:a4483974926f997d27c62aa0df436c19061670d44bec294b923f532484074ad3"
-
-[hooks.state."/home/bnferguson/.codex/hooks.json:post_tool_use:0:0"]
-trusted_hash = "sha256:ebd2d8065d85ba3289e3d90c767bc2da44db81dc465b4dae21d692746761a6ae"
-
-[hooks.state."/home/bnferguson/.codex/hooks.json:post_tool_use:1:0"]
-trusted_hash = "sha256:ebbe8f98629162c9f02b18bdc32d5cb27f01e664d2387f98aff08d7ff8dac5ea"
-
-[hooks.state."/Users/bnferguson/.codex/hooks.json:pre_tool_use:0:0"]
-trusted_hash = "sha256:b69f891b6b7e25e0d6bd6e10e5654691170f2e1909b15b0e9cbe7678813fc5b9"
-
-[hooks.state."/Users/bnferguson/.codex/hooks.json:pre_tool_use:0:1"]
-trusted_hash = "sha256:3a539b4c8cc9bc94780c19022d237703946d4ca41d24126faa6bc27f14c098ac"
-
-[hooks.state."/Users/bnferguson/.codex/hooks.json:pre_tool_use:0:2"]
-trusted_hash = "sha256:a4483974926f997d27c62aa0df436c19061670d44bec294b923f532484074ad3"
-
-[hooks.state."/Users/bnferguson/.codex/hooks.json:post_tool_use:0:0"]
-trusted_hash = "sha256:ebd2d8065d85ba3289e3d90c767bc2da44db81dc465b4dae21d692746761a6ae"
-
-[hooks.state."/Users/bnferguson/.codex/hooks.json:post_tool_use:1:0"]
-trusted_hash = "sha256:ebbe8f98629162c9f02b18bdc32d5cb27f01e664d2387f98aff08d7ff8dac5ea"
-
-[hooks.state."/home/bnferguson/.codex/hooks.json:session_start:0:0"]
-trusted_hash = "sha256:633b285cb781e7d857d132b25c6ddcf21b1643444fc17aabe1944d838e50b634"
-
-[hooks.state."/Users/bnferguson/.codex/hooks.json:session_start:0:0"]
-trusted_hash = "sha256:7ac16f27c7b29bec5952047d0a2193dc7595d731faca5a12c3c476194bd2d532"
-
-[hooks.state."/Users/bnferguson/.codex/hooks.json:session_start:1:0"]
-trusted_hash = "sha256:7ac16f27c7b29bec5952047d0a2193dc7595d731faca5a12c3c476194bd2d532"
 
 [features]
 hooks = true

@@ -1,0 +1,171 @@
+#!/usr/bin/env -S uv run --no-project --script
+# /// script
+# requires-python = ">=3.11"
+# dependencies = ["tomlkit==0.13.3"]
+# ///
+"""Apply shared agent preferences while keeping writable settings local."""
+import argparse
+from collections.abc import MutableMapping
+from copy import deepcopy
+import fcntl
+import json
+import os
+from pathlib import Path
+import tempfile
+
+import tomlkit
+
+
+MISSING = object()
+SETTINGS = (
+    ("claude", "claude/config/settings.json", ".claude/settings.json"),
+    ("codex", "codex/config/config.toml", ".codex/config.toml"),
+    ("pi", "pi/config/settings.json", ".pi/agent/settings.json"),
+)
+
+
+def shared_settings(name, settings):
+    """Ignore historical runtime fields when migrating an older checkout."""
+    settings = deepcopy(settings)
+    if name == "codex":
+        settings.pop("projects", None)
+        settings.get("hooks", {}).pop("state", None)
+        settings.get("tui", {}).pop("model_availability_nux", None)
+        settings.get("tui", {}).pop("screen_reader_detection_done", None)
+    else:
+        keys = ("autoMode",) if name == "claude" else (
+            "deviceId", "lastChangelogVersion", "extensionChangelogVersions",
+        )
+        for key in keys:
+            settings.pop(key, None)
+    return settings
+
+
+def remove_managed(current, previous):
+    if isinstance(current, dict) and isinstance(previous, dict):
+        result = deepcopy(current)
+        for key, value in previous.items():
+            if key in result:
+                remaining = remove_managed(result[key], value)
+                if remaining is MISSING:
+                    del result[key]
+                else:
+                    result[key] = remaining
+        return result if result else MISSING
+    if isinstance(current, list) and isinstance(previous, list):
+        remaining = [item for item in current if item not in previous]
+        return remaining if remaining else MISSING
+    return MISSING
+
+
+def merge_settings(current, previous, desired):
+    if isinstance(desired, dict):
+        result = deepcopy(current) if isinstance(current, dict) else {}
+        previous = previous if isinstance(previous, dict) else {}
+        for key in previous.keys() - desired.keys():
+            if key in result:
+                remaining = remove_managed(result[key], previous[key])
+                if remaining is MISSING:
+                    del result[key]
+                else:
+                    result[key] = remaining
+        for key, value in desired.items():
+            result[key] = merge_settings(result.get(key), previous.get(key), value)
+        return result
+    if isinstance(desired, list):
+        previous = previous if isinstance(previous, list) else []
+        current = current if isinstance(current, list) else []
+        local = [item for item in current if item not in previous and item not in desired]
+        return deepcopy(desired + local)
+    return deepcopy(desired)
+
+
+def update_toml(document, desired):
+    """Keep comments on local tables while changing shared preferences."""
+    for key in list(document):
+        if key not in desired:
+            del document[key]
+    for key, value in desired.items():
+        if isinstance(value, dict) and isinstance(document.get(key), MutableMapping):
+            update_toml(document[key], value)
+        elif document.get(key, MISSING) != value:
+            document[key] = value
+
+
+def atomic_write(path, content):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    descriptor, temporary = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.")
+    try:
+        with os.fdopen(descriptor, "w") as stream:
+            stream.write(content)
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def plan_settings(root, home, state, name, source, destination):
+    source = root / source
+    destination = home / destination
+    if destination.is_symlink() and destination.resolve() != source.resolve():
+        raise ValueError(f"{destination} links to an unmanaged file; leaving it alone")
+    original = destination.read_text() if destination.exists() else None
+    parse = tomlkit.parse if name == "codex" else json.loads
+    shared = parse(source.read_text())
+    current = parse(original) if original is not None else {}
+    if name == "codex":
+        shared = shared.unwrap()
+        current = current.unwrap() if original is not None else {}
+    if not isinstance(shared, dict) or not isinstance(current, dict):
+        raise ValueError(f"{source} and {destination} must contain settings objects")
+    desired = shared_settings(name, shared)
+    baseline = state / f"{name}.json"
+    previous = json.loads(baseline.read_text()) if baseline.exists() else {}
+    result = merge_settings(current, previous, desired)
+    if name == "codex":
+        document = parse(original) if original is not None else tomlkit.document()
+        update_toml(document, result)
+        content = tomlkit.dumps(document)
+    else:
+        content = json.dumps(result, indent=2, ensure_ascii=False) + "\n"
+    # Parse every proposed file before replacing any live settings.
+    parse(content)
+    return destination, original, content, baseline, json.dumps(desired, indent=2) + "\n"
+
+
+def sync_settings(root, home, state):
+    state.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with (state / "lock").open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        plans = [plan_settings(root, home, state, *entry) for entry in SETTINGS]
+        for destination, original, content, baseline, shared in plans:
+            latest = destination.read_text() if destination.exists() else None
+            if latest != original:
+                raise ValueError(f"{destination} changed during sync; run it again")
+            backup = state / "backups" / destination.name
+            # Claude and Pi both call their file settings.json.
+            backup = backup.with_name(f"{baseline.stem}-{backup.name}")
+            if original is not None and not backup.exists():
+                atomic_write(backup, original)
+            if destination.is_symlink() or original != content:
+                atomic_write(destination, content)
+                print(f"› applied shared {baseline.stem} settings to {destination}")
+            if not baseline.exists() or baseline.read_text() != shared:
+                atomic_write(baseline, shared)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--home", type=Path, default=Path.home())
+    args = parser.parse_args()
+    state = Path(os.environ.get("XDG_STATE_HOME", args.home / ".local/state"))
+    os.umask(0o077)
+    try:
+        sync_settings(args.root.resolve(), args.home, state / "dotfiles/agent-settings")
+    except (OSError, ValueError) as error:
+        parser.exit(1, f"! Agent settings sync failed: {error}\n")
+
+
+if __name__ == "__main__":
+    main()

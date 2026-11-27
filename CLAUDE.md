@@ -52,7 +52,8 @@ Other conventions:
 - Portable skills are shared by default. Native skill directories contain links to `.agents/skills`, with agent-only exceptions declared in `.agents/agent-specific-skills.json`. Register exceptions before installing agent-specific skills. Use `npx skills add <source> -g` for shared installs; direct native copies are consolidated by `dots` or `script/migrate-agent-directories --skills-only`.
 - Native skill roots and Claude rules use whole-directory links into each agent's `config/` directory. `script/migrate-agent-directories` preserves shared versions on conflict and backs up originals under `~/.local/state/dotfiles/migrations/`. Installs become Git-visible, not automatically committed. Claude's generated `skills/synced` catalog and `.trash`, and Codex's bundled `.system` skills, are ignored.
 - Claude/Codex agents and hooks already use whole-directory links. Agent home directories remain separate to preserve auth, sessions, and runtime state.
-- pi coding agent config files and extensions are linked individually, while native skills use a directory link. Sessions, caches, and installed packages remain outside the repo — see `pi/config/`
+- Claude, Codex, and Pi writable settings are real local files. `script/install` runs `script/sync-agent-settings` before agent updates. Edit the tracked settings files to share preferences. The sync preserves local-only keys and list additions, and records prior shared values under `${XDG_STATE_HOME:-~/.local/state}/dotfiles/agent-settings/` to handle removals. Private Claude managed settings remain in the private overlay.
+- Pi's other config files and extensions are linked individually, while native skills use a directory link. Sessions, caches, and installed packages remain outside the repo — see `pi/config/`
 - pi extensions live in `pi/config/extensions/` and are symlinked per-extension into `~/.pi/agent/extensions/`. Pi loads the direct LSP client and the other linked extensions automatically. See `pi/README.md`.
 - The `script/install` script supports macOS (brew), Arch (pacman), and Ubuntu (apt) with graceful fallbacks
 
@@ -62,8 +63,8 @@ Other conventions:
 
 - It uses this repo's layout. `script/link-private-overlay` (run by bootstrap and `script/install`) links its `.agents/skills/*` and `claude/config/agents/*` into this repo. It lists those paths in a generated block in `.git/info/exclude`, so even the names stay out of Git. It never replaces a real file, and it removes links whose overlay entry is gone.
 - zsh loads the overlay's `*.zsh` files the same way it loads this repo's.
-- Claude Code reads `autoMode` only from user and managed settings, and the user file here is public. The overlay's `claude/managed-settings.json` is linked as `managed-settings.d/50-dotfiles-private.json` (needs sudo once). Its lists merge with `claude/config/settings.json`.
-- The linker installs `script/check-private-leaks` as the pre-commit hook. It refuses an `autoMode` block in `claude/config/settings.json`, which `/auto-mode-setup` writes there, and any string listed in the overlay's `denylist`. jj doesn't run Git hooks, so commit with `git` when the overlay has changed.
+- The overlay's private Claude `autoMode` settings live in `claude/managed-settings.json`, linked as `managed-settings.d/50-dotfiles-private.json` (needs sudo once). `/auto-mode-setup` writes to the local user settings, outside Git. Keep intentional private settings in the overlay.
+- The linker installs `script/check-private-leaks` as the pre-commit hook. It refuses an `autoMode` block in public `claude/config/settings.json` and any string listed in the overlay's `denylist`. jj doesn't run Git hooks, so commit with `git` when the overlay has changed.
 - To promote something, move it into this repo and rerun `script/link-private-overlay`.
 
 ## Symlink Strategy

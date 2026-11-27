@@ -18,6 +18,10 @@ class MaintenanceTest(unittest.TestCase):
         self.home = Path(self.temp.name)
         self.repo = self.home / "dotfiles"
         self.repo.mkdir()
+        # These fixtures exercise maintenance ordering, without installing an overlay.
+        overlay = self.repo / "script/link-private-overlay"
+        overlay.parent.mkdir()
+        overlay.write_text("# No private overlay in this disposable repository.\n")
         self.commands = self.home / "commands"
         self.commands.mkdir()
         self.env = {**os.environ, "HOME": str(self.home),
@@ -139,6 +143,24 @@ done''')
         result = self.run_script(script)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertLess(result.stdout.index("mise/install.sh"), result.stdout.index("a-consumer"))
+
+    def test_settings_are_detached_before_agent_installers(self):
+        script = self.copy("script/install")
+        self.copy("script/sync-agent-settings")
+        self.stub("uv", '''test "$*" = "run --no-project --script script/sync-agent-settings" || exit 18
+touch "$HOME/settings-synced"''')
+        self.topic("agent", 'test -f "$HOME/settings-synced" || exit 19')
+        result = self.run_script(script)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_settings_migration_failure_stops_agent_installers(self):
+        script = self.copy("script/install")
+        self.copy("script/sync-agent-settings")
+        self.stub("uv", "exit 7")
+        self.topic("agent", 'touch "$HOME/agent-updated"')
+        result = self.run_script(script)
+        self.assertEqual(result.returncode, 7)
+        self.assertFalse((self.home / "agent-updated").exists())
 
     def debian_setup(self):
         script = self.copy("script/install-debian")

@@ -1,5 +1,4 @@
 {
-  "lastChangelogVersion": "1.5.0",
   "defaultProvider": "openai-codex",
   "defaultModel": "gpt-6.1-sol",
   "subagents": {
@@ -93,12 +92,5 @@
     }
   },
   "theme": "dark",
-  "defaultThinkingLevel": "medium",
-  "extensionChangelogVersions": {
-    "{\"source\":\"npm:pi-web-access\",\"scope\":\"user\"}": "0.47.0",
-    "{\"source\":\"npm:@tintinweb/pi-subagents\",\"scope\":\"user\"}": "0.23.0",
-    "{\"source\":\"npm:pi-powerline-footer\",\"scope\":\"user\"}": "0.22.0",
-    "{\"source\":\"npm:pi-lens\",\"scope\":\"user\"}": "4.4.9",
-    "{\"source\":\"npm:pi-context-view\",\"scope\":\"user\"}": "0.8.3"
-  }
+  "defaultThinkingLevel": "medium"
 }
