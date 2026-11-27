@@ -239,6 +239,34 @@ printf '#!/bin/sh\\nmkdir -p "$HOME/.local/bin" "$HOME/.cargo/bin"\\nprintf "#!/
         self.assertTrue((self.home / "ran").exists())
         self.assertIn("packages (exit=9)", result.stdout)
 
+    def test_omarchy_sets_the_browser_behind_its_launcher(self):
+        script = self.copy("script/install")
+        (self.commands / "brew").unlink()
+        self.stub("omarchy", "exit 0")
+        self.stub("sudo", "exit 0")
+        self.stub("xdg-settings", '''case "$1" in
+  get)
+    if [ -n "$XDG_CURRENT_DESKTOP" ] || [ -n "$BROWSER" ]; then
+      echo omarchy-browser.desktop
+    elif [ -f "$HOME/browser" ]; then
+      cat "$HOME/browser"
+    fi
+    ;;
+  set)
+    [ -z "$XDG_CURRENT_DESKTOP$BROWSER" ] || exit 4
+    [ "$*" = "set default-web-browser firefox.desktop" ] || exit 5
+    echo firefox.desktop > "$HOME/browser"
+    echo set-browser >> "$HOME/calls"
+    ;;
+esac''')
+        for _ in range(2):
+            result = self.run_script(
+                script, DOTFILES_UNATTENDED="0", XDG_CURRENT_DESKTOP="Hyprland", BROWSER="omarchy-launch-browser",
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn("packages (exit=0)", result.stdout)
+        self.assertEqual((self.home / "calls").read_text(), "set-browser\n")
+
     def test_maintenance_consolidates_direct_installs_after_topics(self):
         script = self.copy("script/install")
         self.copy("script/migrate-agent-directories")

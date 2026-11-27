@@ -36,12 +36,12 @@ elif command -v omarchy >/dev/null 2>&1; then
     ttf-ibmplex-mono-nerd \
     firefox telegram-desktop signal-desktop zed
 
-  # Default browser — only set if not already Firefox so we don't fight
-  # a user override on subsequent `dots` runs.
+  # Read back the underlying browser. Omarchy's desktop entry still handles
+  # web links and delegates to the browser set in the generic MIME list.
   if command -v xdg-settings >/dev/null 2>&1 \
-    && [ "$(xdg-settings get default-web-browser 2>/dev/null)" != "firefox.desktop" ]; then
+    && [ "$(env -u BROWSER XDG_CURRENT_DESKTOP= xdg-settings get default-web-browser 2>/dev/null)" != "firefox.desktop" ]; then
     echo "› setting Firefox as default browser"
-    xdg-settings set default-web-browser firefox.desktop
+    env -u BROWSER XDG_CURRENT_DESKTOP= xdg-settings set default-web-browser firefox.desktop
   fi
 
   # AUR packages — use Omarchy's availability check and package wrapper.
