@@ -23,6 +23,14 @@ __pycache__/
 # Codex refreshes its bundled system skills independently of user installs.
 /codex/config/skills/.system
 
+# Omarchy installs and updates these skills on each machine.
+/.agents/skills/diagnose-crash
+/.agents/skills/omarchy
+/.agents/skills/omarchy-app
+/*/config/skills/diagnose-crash
+/*/config/skills/omarchy
+/*/config/skills/omarchy-app
+
 # pi extensions — npm deps for the lsp extension (vscode-jsonrpc), installed
 # per-machine by pi/install.sh
 pi/config/extensions/node_modules/
