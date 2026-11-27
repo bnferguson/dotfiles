@@ -136,6 +136,52 @@ Run `npx skills@latest update -p` from the dotfiles root to refresh package-mana
 
 Use `claude-yolo` or `codex-yolo` for an unrestricted session. `codex-auto` keeps Codex's workspace sandbox and sends approval requests to its automatic reviewer. Use `claude-review` or `codex-review` to review a PR or branch in an isolated worktree. Use `claude-work` or `codex-work` to start new work on a branch in an isolated worktree.
 
+### Writable agent settings
+
+Claude, Codex, and Pi write to real local settings files. Their tracked settings files hold shared preferences.
+Bootstrap and `dots` apply those preferences through `script/install`, before updating the agents.
+
+#### Before the first pull on an existing machine
+
+If your live settings still link into the checkout, detach them before you pull or run `dots`.
+The pull replaces the tracked files those links point to.
+Once this change is on `main`, run the following from the dotfiles root.
+
+```sh
+(
+  set -e
+  git fetch origin main
+  target=$(git rev-parse FETCH_HEAD)
+  migration=$(mktemp)
+  trap 'rm -f "$migration"' EXIT
+  git show "$target:script/sync-agent-settings" > "$migration"
+  uv run --no-project --script "$migration" --root "$PWD" --detach-only
+  git merge --ff-only "$target"
+)
+```
+
+The detach step copies the live settings byte for byte. If Git reports local edits, save them before updating the checkout.
+
+#### Sync shared preferences
+
+To apply settings without installing or updating packages:
+
+```sh
+uv run --no-project --script script/sync-agent-settings
+```
+
+The migration saves the original settings under `${XDG_STATE_HOME:-~/.local/state}/dotfiles/agent-settings/backups/`.
+Backups and migrated settings use private file permissions.
+The script uses uv and a pinned `tomlkit` dependency. The first run can download that dependency.
+
+Shared values take precedence when you sync. Local-only keys survive, including Codex trust approvals and Pi device and changelog state.
+Lists keep local additions alongside shared entries. Later syncs remove entries that disappeared from the shared settings.
+The script records the last applied preferences in the same state directory to distinguish shared entries from local additions.
+Keep that state directory when moving a machine's settings.
+
+Changes made through an app stay local. To share a preference, edit its tracked settings file and run the sync command.
+Private Claude auto-mode settings stay in the private overlay's managed-settings drop-in; this script leaves that file alone.
+
 Codex requires a one-time review of personal hooks. Start a new Codex session and use `/hooks` to inspect and trust them after bootstrap.
 
 ## keyboard setup

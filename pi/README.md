@@ -2,10 +2,14 @@
 
 Config and extensions for the [pi coding agent](https://github.com/earendil-works/pi-mono).
 
-`pi/config/*.json` is symlinked file-by-file into `~/.pi/agent/` (not the whole
-directory) so sessions, caches, and `pi install`ed packages survive. Extensions
-under `pi/config/extensions/` are symlinked per-extension into `~/.pi/agent/extensions/`
-for the same reason.
+`pi/config/settings.json` holds shared preferences. `script/sync-agent-settings`
+applies them to a real `~/.pi/agent/settings.json`, preserving local package additions,
+device identity, and changelog state. Bootstrap and `dots` run this sync before agent updates.
+Edit the tracked file to share a preference; changes made through Pi stay local.
+
+The other config files are linked individually into `~/.pi/agent/`, so sessions,
+caches, and installed packages survive. Extensions under `pi/config/extensions/`
+are linked per extension into `~/.pi/agent/extensions/` for the same reason.
 
 ## MCP servers
 

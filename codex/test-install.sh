@@ -24,6 +24,7 @@ cat > "$TEST_ROOT/bin/curl" <<'EOF'
 printf '%s\n' "$*" >> "$TEST_LOG/curl"
 printf '%s\n' \
   'printf '\''%s\n'\'' "$CODEX_NON_INTERACTIVE" > "$TEST_LOG/non-interactive"' \
+  'case ":$PATH:" in *":$HOME/.local/bin:"*) ;; *) echo touched > "$HOME/.bashrc";; esac' \
   'mkdir -p "$HOME/.local/bin"' \
   'touch "$HOME/.local/bin/codex"' \
   'chmod +x "$HOME/.local/bin/codex"'
@@ -41,6 +42,7 @@ grep -qx 'uninstall -a codex' "$TEST_ROOT/log/mise"
 grep -qx -- '-fsSL https://chatgpt.com/codex/install.sh' "$TEST_ROOT/log/curl"
 grep -qx '1' "$TEST_ROOT/log/non-interactive"
 test -x "$TEST_ROOT/home/.local/bin/codex"
+test ! -e "$TEST_ROOT/home/.bashrc"
 
 grep -Eq 'CODEX_NON_INTERACTIVE=(1|true|yes)' "$DOTFILES_ROOT/codex/install.sh"
 

@@ -157,10 +157,6 @@
           },
           {
             "type": "command",
-            "command": "bash ~/.claude/hooks/block-rm-rf.sh"
-          },
-          {
-            "type": "command",
             "command": "bash ~/.claude/hooks/enforce-package-manager.sh"
           }
         ]

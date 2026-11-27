@@ -56,3 +56,10 @@ o.bind(hyper_key("LEFT"), "Tile left", hl.dsp.window.move({ direction = "l" }))
 o.bind(hyper_key("RIGHT"), "Tile right", hl.dsp.window.move({ direction = "r" }))
 
 o.bind(hyper_key("ESCAPE"), "Sleep display", "sleep 0.5 && hyprctl dispatch dpms off")
+
+-- Dictation keys from before Alt + Space and Right Alt became the defaults.
+-- Remove these lines to give the keys back to applications.
+if o.dictation_installed and o.dictation_installed() then
+  o.bind("SUPER + CTRL + X", "Toggle dictation", "omarchy-dictation toggle")
+  o.bind_hold("F9", "Start dictation (push-to-talk)", "omarchy-dictation start", "Stop dictation (push-to-talk)", "omarchy-dictation stop")
+end
