@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """Exercise dots in disposable repositories, without running real installers."""
+import errno
 import os
+import pty
 import shutil
 import subprocess
 import tempfile
@@ -59,12 +61,35 @@ class DotsTest(unittest.TestCase):
         self.git("commit", "-m", "upstream", cwd=upstream)
         self.git("push", "origin", "main", cwd=upstream)
 
-    def dots(self, *args, **env):
-        return subprocess.run(["bash", str(self.repo / "bin/dots"), *args], cwd=self.root,
-                              env={**os.environ, "HOME": str(self.root),
-                                   "XDG_STATE_HOME": str(self.root / ".local/state"),
-                                   "PATH": f"{self.commands}:/usr/bin:/bin", **env},
-                              capture_output=True, text=True)
+    def dots(self, *args, terminal=False, **env):
+        command = ["bash", str(self.repo / "bin/dots"), *args]
+        environment = {**os.environ, "HOME": str(self.root),
+                       "XDG_STATE_HOME": str(self.root / ".local/state"),
+                       "PATH": f"{self.commands}:/usr/bin:/bin", **env}
+        if not terminal:
+            return subprocess.run(command, cwd=self.root, env=environment, capture_output=True, text=True)
+
+        master, slave = pty.openpty()
+        try:
+            try:
+                result = subprocess.run(command, cwd=self.root, env={"TERM": "xterm", **environment},
+                                        input="yes\n", stdout=slave, stderr=slave, text=True, timeout=10)
+            finally:
+                os.close(slave)
+            output = bytearray()
+            while True:
+                try:
+                    chunk = os.read(master, 4096)
+                except OSError as error:
+                    if error.errno != errno.EIO:
+                        raise
+                    break
+                if not chunk:
+                    break
+                output.extend(chunk)
+        finally:
+            os.close(master)
+        return subprocess.CompletedProcess(result.args, result.returncode, output.decode(), "")
 
     def assert_installed(self, result):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -221,6 +246,43 @@ class DotsTest(unittest.TestCase):
         for output in ["live-output", "error-output"]:
             self.assertIn(output, result.stdout)
             self.assertIn(output, log)
+
+    def test_terminal_keeps_successful_command_output_in_the_log(self):
+        installer = self.repo / "script/install"
+        installer.write_text('#!/bin/sh\necho routine-output\nprintf installed > "$HOME/installed"\n')
+        result = self.dots(terminal=True, TERM="xterm", NO_COLOR="")
+        self.assert_installed(result)
+        self.assertIn("\x1b[1;36mdots\x1b[0m", result.stdout)
+        self.assertIn("Install packages and apply dotfiles", result.stdout)
+        self.assertIn("Maintenance complete", result.stdout)
+        self.assertNotIn("routine-output", result.stdout)
+        log = (self.root / ".local/state/dots/latest.log").read_text()
+        self.assertIn("routine-output", log)
+        self.assertNotIn("\x1b", log)
+
+    def test_terminal_failure_shows_the_step_and_recent_output(self):
+        self.stub("mise", "echo tool-upgrade-failed >&2; exit 7")
+        result = self.dots(terminal=True, TERM="xterm", NO_COLOR="1")
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("Upgrade mise tools  ·  exit 7", result.stdout)
+        self.assertIn("tool-upgrade-failed", result.stdout)
+        self.assertIn("Maintenance failed", result.stdout)
+        self.assertIn("Full log", result.stdout)
+        self.assertNotIn("\x1b", result.stdout)
+
+    def test_terminal_interactive_keeps_prompts_and_verbose_keeps_output(self):
+        installer = self.repo / "script/install"
+        installer.write_text('#!/bin/sh\n'
+                             'if [ "$DOTFILES_UNATTENDED" = 0 ]; then\n'
+                             '  printf "Continue? "\n  read answer\n  test "$answer" = yes || exit 4\n'
+                             'fi\necho full-output\nprintf installed > "$HOME/installed"\n')
+        for mode in ("--interactive", "--verbose"):
+            with self.subTest(mode=mode):
+                result = self.dots(mode, terminal=True, TERM="xterm")
+                self.assert_installed(result)
+                self.assertIn("full-output", result.stdout)
+                if mode == "--interactive":
+                    self.assertIn("Continue? ", result.stdout)
 
     def test_redundant_log_flag_is_rejected(self):
         result = self.dots("--log")

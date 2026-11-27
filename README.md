@@ -88,7 +88,9 @@ Run `dots` periodically for unattended maintenance. It pulls `main`, updates Hom
 
 `dots` disables stdin prompts and requires existing sudo authorization. It skips machine setup, macOS system updates, and interactive Omarchy package and system updates. Use `dots --interactive` for those tasks. Use `script/bootstrap` for initial setup. Use `dots -e` to open the dotfiles in your editor.
 
-Each run shows output live on stdout and writes a private log under `${XDG_STATE_HOME:-~/.local/state}/dots/`. `dots --log-path` prints the path to `latest.log` without running maintenance. Set `DOTS_LOG_DIR` to change the directory. Logs remain until you remove them. They contain tool output, so review them before sharing.
+In a terminal, `dots` shows step status, elapsed time, and recent output from failed commands. Use `--verbose` to stream all command output. Interactive runs and redirected stdout also show all command output. Set `NO_COLOR=1` to turn off colors in the `dots` display.
+
+Each run writes a private log under `${XDG_STATE_HOME:-~/.local/state}/dots/`. `dots --log-path` prints the path to `latest.log` without running maintenance. Set `DOTS_LOG_DIR` to change the directory. Logs remain until you remove them. They contain tool output, so review them before sharing.
 
 For an agent investigation, provide the path from `dots --log-path` and ask the agent to read that file. Logs show step boundaries, exit codes, skips, and a final status. Failed steps do not stop independent updates. A failed update or installer gives a nonzero exit status. A failed Git pull remains a warning and does not block maintenance.
 
