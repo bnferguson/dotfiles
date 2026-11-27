@@ -5,6 +5,8 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -77,6 +79,49 @@ class AgentSettingsTest(unittest.TestCase):
             self.assertEqual(saved.stat().st_mode & 0o777, 0o600)
         self.assertNotIn("deviceId", json.loads((self.state / "pi.json").read_text()))
         self.assertNotIn("projects", json.loads((self.state / "codex.json").read_text()))
+
+    def test_detach_before_template_update_preserves_original_bytes(self):
+        name = "pi"
+        source = self.sources[name]
+        destination = self.destinations[name]
+        original = b'{\r\n  "deviceId": "local-device", "theme": "old"\r\n}\r\n'
+        source.write_bytes(original)
+        destination.parent.mkdir(parents=True)
+        destination.symlink_to(source)
+        self.write_local("claude", {"theme": "unchanged"})
+        existing = self.destinations["claude"].read_bytes()
+
+        sync.sync_settings(self.repo, self.home, self.state, detach_only=True)
+        self.assertFalse(destination.is_symlink())
+        self.assertEqual(destination.read_bytes(), original)
+        self.assertEqual((self.state / "backups/pi-settings.json").read_bytes(), original)
+        self.assertEqual(self.destinations["claude"].read_bytes(), existing)
+        self.assertFalse((self.state / "pi.json").exists())
+
+        self.write_source(name, {"theme": "new"})
+        self.run_sync()
+        self.assertEqual(self.read_local(name), {"deviceId": "local-device", "theme": "new"})
+        self.assertEqual((self.state / "backups/pi-settings.json").read_bytes(), original)
+
+    def test_empty_or_relative_state_home_uses_home_directory(self):
+        for value in ("", "relative-state"):
+            with self.subTest(value=value):
+                result = subprocess.run(
+                    [sys.executable, str(SCRIPT), "--root", str(self.repo), "--home", str(self.home)],
+                    cwd=self.repo, env={**os.environ, "XDG_STATE_HOME": value},
+                    capture_output=True, text=True,
+                )
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertTrue((self.state / "pi.json").is_file())
+                self.assertFalse((self.repo / "dotfiles").exists())
+                self.assertFalse((self.repo / "relative-state").exists())
+
+    def test_state_directory_cannot_point_into_checkout(self):
+        state = self.directory / "state-link"
+        state.symlink_to(self.repo)
+        with self.assertRaisesRegex(ValueError, "outside the checkout"):
+            sync.sync_settings(self.repo, self.home, state / "agent-settings")
+        self.assertFalse((self.repo / "agent-settings").exists())
 
     def test_shared_updates_and_removals_keep_local_keys_and_list_entries(self):
         self.write_source("claude", {"permissions": {"allow": ["shared-old"], "defaultMode": "old"},
