@@ -56,6 +56,16 @@ Other conventions:
 - pi extensions live in `pi/config/extensions/` and are symlinked per-extension into `~/.pi/agent/extensions/`. Pi loads the direct LSP client and the other linked extensions automatically. See `pi/README.md`.
 - The `script/install` script supports macOS (brew), Arch (pacman), and Ubuntu (apt) with graceful fallbacks
 
+## Private Overlay
+
+`~/.dotfiles-private` (`$DOTFILES_PRIVATE`, a private repo) holds work-specific skills, agents, and experiments that aren't ready to be public. It is optional. `script/bootstrap` clones it when `gh` has access, and `dots` pulls it.
+
+- It uses this repo's layout. `script/link-private-overlay` (run by bootstrap and `script/install`) links its `.agents/skills/*` and `claude/config/agents/*` into this repo. It lists those paths in a generated block in `.git/info/exclude`, so even the names stay out of Git. It never replaces a real file, and it removes links whose overlay entry is gone.
+- zsh loads the overlay's `*.zsh` files the same way it loads this repo's.
+- Claude Code reads `autoMode` only from user and managed settings, and the user file here is public. The overlay's `claude/managed-settings.json` is linked as `managed-settings.d/50-dotfiles-private.json` (needs sudo once). Its lists merge with `claude/config/settings.json`.
+- The linker installs `script/check-private-leaks` as the pre-commit hook. It refuses an `autoMode` block in `claude/config/settings.json`, which `/auto-mode-setup` writes there, and any string listed in the overlay's `denylist`. jj doesn't run Git hooks, so commit with `git` when the overlay has changed.
+- To promote something, move it into this repo and rerun `script/link-private-overlay`.
+
 ## Symlink Strategy
 
 Bootstrap uses **relative symlinks** (via perl `File::Spec->abs2rel`) so they work regardless of absolute path. The `link_file` function handles conflicts interactively (skip/overwrite/backup).
