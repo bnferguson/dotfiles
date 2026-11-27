@@ -48,10 +48,6 @@ config_file = "./agents/test-writer.toml"
 description = "Review changed Zig code for safety, performance, explicitness, and quality."
 config_file = "./agents/zig-core-code-reviewer.toml"
 
-[mcp_servers.codegraph]
-command = "codegraph"
-args = ["serve", "--mcp"]
-
 [mcp_servers.rea]
 command = "npx"
 args = ["-y", "rea-agents@6.4.0", "mcp"]

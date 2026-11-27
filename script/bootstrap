@@ -260,7 +260,6 @@ install_larger_paths () {
   # extension's realpath, and linking it keeps resolution working either way.
   mkdir -p "$HOME/.pi/agent/extensions"
   link_file "$DOTFILES_ROOT/pi/config/extensions/claude-statusline.ts" "$HOME/.pi/agent/extensions/claude-statusline.ts"
-  link_file "$DOTFILES_ROOT/pi/config/extensions/code-intel" "$HOME/.pi/agent/extensions/code-intel"
   link_file "$DOTFILES_ROOT/pi/config/extensions/lsp" "$HOME/.pi/agent/extensions/lsp"
   link_file "$DOTFILES_ROOT/pi/config/extensions/telemetry" "$HOME/.pi/agent/extensions/telemetry"
   link_file "$DOTFILES_ROOT/pi/config/extensions/vcs-status" "$HOME/.pi/agent/extensions/vcs-status"

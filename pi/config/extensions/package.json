@@ -1,7 +1,7 @@
 {
   "name": "dotfiles-pi-extensions",
   "private": true,
-  "description": "Deps for the code-intel and lsp pi extensions. pi loads extensions via jiti, which resolves node_modules from a parent directory, so one install here covers both.",
+  "description": "Dependencies for the Pi LSP extension.",
   "devDependencies": {
     "@earendil-works/pi-coding-agent": "^1.2.0",
     "@types/node": "^22.0.0",

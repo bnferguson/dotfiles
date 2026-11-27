@@ -3,7 +3,7 @@
  *
  * Generic on purpose: it hooks pi's own tool and turn events, so it sees
  * built-in tools, every extension's tools, and anything added later, without
- * knowing anything about them. Nothing here is code-intel specific.
+ * knowing anything about them.
  *
  * It exists because you cannot evaluate a change to an agent's tooling without
  * a record of what it did. "Did structural navigation help this refactor?" is
@@ -150,9 +150,7 @@ export default function telemetryExtension(pi: ExtensionAPI): void {
 			ms,
 			ok: !event.isError,
 			bytes: text.length,
-			// An interception (code-intel's nudge, a permission gate) surfaces as an
-			// error result. Keeping the first line makes those countable without
-			// storing whole outputs.
+			// Keep the first line of an error to count failures without storing whole outputs.
 			note: event.isError ? text.split("\n")[0]?.slice(0, 200) : undefined,
 			input: VERBOSE ? event.input : undefined,
 		});

@@ -11,9 +11,8 @@ Cross-platform topics live at the repo root. OS-specific topics live under `linu
 | Topic | What it does |
 |-------|-------------|
 | `.agents/` | Shared skills for Claude Code, Codex, and pi |
-| `bin/` | Scripts added to `$PATH` — `git-tree`, `git-sync`, `code-intel`, etc. |
+| `bin/` | Scripts added to `$PATH` including `git-tree` and `git-sync`. |
 | `claude/` | Claude Code config, agents, and Claude-only skills |
-| `code-intel/` | Installs the code-intelligence stack — vera, codegraph, graphify |
 | `codex/` | Codex config, hooks, agents, and Codex-only skills |
 | `gh/` | GitHub CLI config, and installs extensions — `gh-stack` |
 | `ghostty/` | Ghostty terminal config (`config.linux` and `config.macos` siblings handle OS-specific bindings) |
@@ -75,7 +74,7 @@ Bootstrap installs packages on macOS, Omarchy, Debian, and Ubuntu. Debian and Ub
 
 On Debian and Ubuntu, setup installs mise, uv, rustup, Starship, Syncthing, and the build dependencies. It installs the mise tools before the topic installers and puts them on PATH for that run. Go is included so mise can build `gopls`.
 
-Use `script/install` to install packages and tools without creating the bootstrap links. Run initial setup interactively for Pi and Vera. GitHub extensions need `gh auth login` before their first install.
+Use `script/install` to install packages and tools without creating the bootstrap links. Run initial Pi setup interactively. GitHub extensions need `gh auth login` before their first install.
 
 ### post-install
 
@@ -85,7 +84,7 @@ Use `script/install` to install packages and tools without creating the bootstra
 
 ## maintenance
 
-Run `dots` periodically for unattended maintenance. It pulls `main`, updates Homebrew, runs package and topic setup, then upgrades global mise tools. It also updates Pi, its configured packages, local extension dependencies, Codegraph, and installed Rust toolchains. Version pins stay unchanged. Meridian tracks the latest eligible release.
+Run `dots` periodically for unattended maintenance. It pulls `main`, updates Homebrew, runs package and topic setup, then upgrades global mise tools. It also updates Pi, its configured packages, local extension dependencies, and installed Rust toolchains. Version pins stay unchanged. Meridian tracks the latest eligible release.
 
 `dots` disables stdin prompts and requires existing sudo authorization. It skips machine setup, macOS system updates, and interactive Omarchy package and system updates. Use `dots --interactive` for those tasks. Use `script/bootstrap` for initial setup. Use `dots -e` to open the dotfiles in your editor.
 

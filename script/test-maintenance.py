@@ -270,54 +270,6 @@ esac''')
         self.assertEqual(result.returncode, 0)
         self.assertNotIn("rustup:update", (self.home / "calls").read_text())
 
-    def codegraph_setup(self, current="0.9.4", installer_status=0, latest="v1.6.2"):
-        self.stub("codegraph", f'echo "{current}"')
-        installer = self.home / "upstream-installer"
-        installer.write_text(f'''#!/bin/sh
-exit_status={installer_status}
-[ "$exit_status" = 0 ] || exit "$exit_status"
-printf '#!/bin/sh\\necho %s\\n' "${{CODEGRAPH_VERSION#v}}" > "$HOME/commands/codegraph"
-chmod +x "$HOME/commands/codegraph"
-''')
-        self.stub("curl", f'''echo "curl:$*" >> "$HOME/calls"
-case "$*" in
-  *--head*) echo 'https://github.com/colbymchenry/codegraph/releases/tag/{latest}';;
-  *) while [ "$#" -gt 0 ]; do
-       if [ "$1" = --output ]; then cp "$HOME/upstream-installer" "$2"; exit; fi
-       shift
-     done; exit 8;;
-esac''')
-        return self.copy("code-intel/update-codegraph.sh")
-
-    def test_codegraph_updates_existing_install(self):
-        result = self.run_script(self.codegraph_setup())
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("0.9.4 -> v1.6.2", result.stdout)
-        version = subprocess.check_output([str(self.commands / "codegraph")], text=True)
-        self.assertEqual(version.strip(), "1.6.2")
-
-    def test_code_intel_updates_existing_codegraph_during_dots(self):
-        self.codegraph_setup()
-        result = self.run_script(self.copy("code-intel/install.sh"))
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn("Updating Codegraph", result.stdout)
-
-    def test_codegraph_current_version_does_not_download_bundle(self):
-        result = self.run_script(self.codegraph_setup(current="1.6.2"))
-        self.assertEqual(result.returncode, 0)
-        self.assertNotIn("raw.githubusercontent", (self.home / "calls").read_text())
-
-    def test_codegraph_installer_failure_keeps_old_launcher(self):
-        result = self.run_script(self.codegraph_setup(installer_status=9))
-        self.assertEqual(result.returncode, 9)
-        version = subprocess.check_output([str(self.commands / "codegraph")], text=True)
-        self.assertEqual(version.strip(), "0.9.4")
-
-    def test_codegraph_unresolved_release_is_an_error(self):
-        result = self.run_script(self.codegraph_setup(latest="latest"))
-        self.assertNotEqual(result.returncode, 0)
-        self.assertNotIn("raw.githubusercontent", (self.home / "calls").read_text())
-
     def test_system_updates_are_deferred(self):
         script = self.copy("macos/scripts/install.sh")
         self.stub("sudo", 'echo prompted > "$HOME/prompted"; exit 3')
