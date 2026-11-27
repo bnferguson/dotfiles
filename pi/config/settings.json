@@ -70,12 +70,6 @@
         "statusKey": "work-links",
         "position": "left",
         "color": "accent"
-      },
-      {
-        "id": "indexes",
-        "statusKey": "code-intel-indexes",
-        "position": "left",
-        "color": "accent"
       }
     ],
     "secondaryOverflow": "wrap",
@@ -93,7 +87,6 @@
         "context_pct",
         "cache_read",
         "cost",
-        "custom:indexes",
         "queue",
         "extension_statuses"
       ]

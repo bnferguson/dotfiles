@@ -1,16 +1,6 @@
 /**
  * lsp — compiler-accurate code navigation as pi tools.
  *
- * This is the index-free layer of the structural stack. vera/codegraph/graphify
- * all need a built index and go stale between refreshes; a language server
- * reads the same source of truth the compiler does, in any repo, with zero
- * setup beyond having the server on PATH. Different tradeoff, not a duplicate:
- *
- *   codegraph   whole-repo call graph, fast, approximate, needs .codegraph/
- *   lsp         exact within a project, type-aware, no index, slower to warm
- *   ast-grep    syntax shapes, no semantics, instant
- *   vera        meaning, when you can't name the thing
- *
  * Design note — the real problem here is addressing. LSP is positional
  * (file, line, character); an LLM has no idea what column a symbol sits in and
  * will hallucinate one. So every tool below takes a SYMBOL NAME plus a file,
@@ -571,10 +561,10 @@ export default function lspExtension(pi: ExtensionAPI): void {
 		name: "lsp_rename",
 		label: "Rename",
 		description:
-			"Rename a symbol project-wide using the language server's own refactor. This is the SAFE way to rename: it updates exactly the semantic references and nothing else, unlike sed or ast_rewrite which cannot tell a real usage from a same-named one. Previews the edit set by default; pass apply:true to write.",
+			"Rename a symbol project-wide using the language server's own refactor. This is the SAFE way to rename: it updates exactly the semantic references and nothing else, unlike text replacement which cannot tell a real usage from a same-named one. Previews the edit set by default; pass apply:true to write.",
 		promptSnippet: "Rename a symbol project-wide via the language server (preview by default)",
 		promptGuidelines: [
-			"Use lsp_rename for renames rather than edit, sed, or ast_rewrite — only the language server knows which occurrences are actually the same symbol. Preview first, then re-run with apply:true.",
+			"Use lsp_rename for renames rather than text replacement — only the language server knows which occurrences are actually the same symbol. Preview first, then re-run with apply:true.",
 		],
 		parameters: Type.Object({
 			...symbolParams,
