@@ -27,10 +27,6 @@
       {
         "hooks": [
           {
-            "command": "bash ~/.codex/hooks/block-rm-rf.sh",
-            "type": "command"
-          },
-          {
             "command": "bash ~/.codex/hooks/block-dangerous-commands.sh",
             "type": "command"
           },
